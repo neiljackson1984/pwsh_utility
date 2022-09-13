@@ -170,6 +170,8 @@
                 If (-NOT $Item.PSIsContainer) {
                     If ($PSCmdlet.ShouldProcess($Item, 'Set File Owner')) {
                         Try {
+                            $Item.Directory.SetAccessControl($FileAdminAcl)
+                            $Item.SetAccessControl($FileOwner)
                             $Item.SetAccessControl($FileOwner)
                         } Catch {
                             Write-Warning "Couldn't take ownership of $($Item.FullName)! Taking FullControl of $($Item.Directory.FullName)"
@@ -180,6 +182,8 @@
                 } Else {
                     If ($PSCmdlet.ShouldProcess($Item, 'Set Directory Owner')) {                        
                         Try {
+                            $Item.Parent.SetAccessControl($DirAdminAcl) 
+                            $Item.SetAccessControl($DirOwner)
                             $Item.SetAccessControl($DirOwner)
                         } Catch {
                             Write-Warning "Couldn't take ownership of $($Item.FullName)! Taking FullControl of $($Item.Parent.FullName)"
@@ -199,8 +203,8 @@
     }
     End {  
         #Remove priviledges that had been granted
-        [void][TokenAdjuster]::RemovePrivilege("SeRestorePrivilege") 
-        [void][TokenAdjuster]::RemovePrivilege("SeBackupPrivilege") 
-        [void][TokenAdjuster]::RemovePrivilege("SeTakeOwnershipPrivilege")     
+        # [void][TokenAdjuster]::RemovePrivilege("SeRestorePrivilege") 
+        # [void][TokenAdjuster]::RemovePrivilege("SeBackupPrivilege") 
+        # [void][TokenAdjuster]::RemovePrivilege("SeTakeOwnershipPrivilege")     
     }
 }
