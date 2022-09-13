@@ -10,18 +10,34 @@ Param(
     [String]$pathOfSourceFolder,
 
     [Parameter(Position=1)]
-    [String]$pathOfDestinationFolder
+    [String]$pathOfDestinationFolder,
+
+    [Parameter(Position=2)]
+    [String]$pathOfSourceMessageFile,
+
+    [Parameter(Position=3)]
+    [Boolean]$appendHashToOutputFileNames
 )
 
 # $pathOfSourceFolder=(Join-Path $PSScriptRoot "message_files")
 # $pathOfDestinationFolder=(Join-Path $PSScriptRoot "attachments")
 
-if (! (test-path -Path $pathOfDestinationFolder -PathType Container) ){
-    #make the destination folder if it does not already exist
-    New-Item -ItemType directory -Path $pathOfDestinationFolder 
+#make the destination folder if it does not already exist
+if( $pathOfSourceFolder ){
+    if (! (test-path -Path $pathOfDestinationFolder -PathType Container) ){
+        New-Item -ItemType directory -Path $pathOfDestinationFolder 
+    }
 }
 
-$pathsOfMessageFilesToProcess = ( Get-Item -Path (Join-Path $pathOfSourceFolder "*.msg") )
+$pathsOfMessageFilesToProcess = @()
+
+if ($pathOfSourceFolder){
+    $pathsOfMessageFilesToProcess = $pathsOfMessageFilesToProcess + @(( Get-Item -Path (Join-Path $pathOfSourceFolder "*.msg") ).FullName)
+}
+
+if ($pathOfSourceMessageFile){
+    $pathsOfMessageFilesToProcess = $pathsOfMessageFilesToProcess +  @((Get-Item -Path $pathOfSourceMessageFile).FullName)
+}
 
 # Add-Type -assembly "Microsoft.Office.Interop.Outlook"
 # add-type -assembly "System.Runtime.Interopservices"
@@ -39,7 +55,11 @@ foreach ($pathOfMessageFile in $pathsOfMessageFilesToProcess){
         $attachedFile.SaveAsFile($pathOfTempFile)
         $hashOfAttachedFile = (Get-FileHash -Path $pathOfTempFile -Algorithm SHA1).hash
 
-        $filenameOfDestinationFile = (Split-Path -Path $attachedFile.Filename -LeafBase) + "--" + $hashOfAttachedFile + (Split-Path -Path $attachedFile.Filename -Extension) 
+        if($appendHashToOutputFileNames) {
+            $filenameOfDestinationFile = (Split-Path -Path $attachedFile.Filename -LeafBase) + "--" + $hashOfAttachedFile + (Split-Path -Path $attachedFile.Filename -Extension) 
+        } else {
+            $filenameOfDestinationFile = Split-Path -Path $attachedFile.Filename -Leaf
+        }
         $pathOfDestinationFile = (Join-Path $pathOfDestinationFolder $filenameOfDestinationFile)
         Move-Item -Path $pathOfTempFile -Destination $pathOfDestinationFile
 
