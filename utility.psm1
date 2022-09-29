@@ -132,7 +132,8 @@ function grantUserAccessToMailbox(
     $sendInstructionalMessageToUsersThatHaveBeenGrantedAccess=$False, 
     $emailAccountForSendingAdvisoryMessages="neil@autoscaninc.com", 
     $dummyAddressForAdvisoryMessages="administrator@autoscaninc.com",
-    $sendAdvisoryMessageToDummyAddressInsteadOfRealRecipientAddress=$False
+    $sendAdvisoryMessageToDummyAddressInsteadOfRealRecipientAddress=$False,
+    $createInboxRuleToRedirect=$False
 ){
 
     $azureAdUserToBeGrantedAccess = Get-AzureADUser -ObjectID $idOfUserToBeGrantedAccess
@@ -145,40 +146,84 @@ function grantUserAccessToMailbox(
     Add-MailboxPermission    -Identity $mailbox.Id   -User    $azureAdUserToBeGrantedAccess.ObjectID -AccessRights FullAccess -Automapping:$false 
     Add-RecipientPermission  -Identity $mailbox.Id   -Trustee $azureAdUserToBeGrantedAccess.ObjectID -AccessRights SendAs  -confirm:$false
 
+    if($createInboxRuleToRedirect){
+        $nameOfInboxRule = "redirect to $($azureAdUserToBeGrantedAccess.Mail) 5146a9a247d64ef9ba6dcfd1057e00e3"
+        Remove-InboxRule -confirm:$false -Mailbox $mailbox.Id -Identity $nameOfInboxRule -ErrorAction SilentlyContinue
+        $s = @{
+            Mailbox                    = $mailbox.Id 
+            Name                       = $nameOfInboxRule      
+            RedirectTo                 = $azureAdUserToBeGrantedAccess.Mail
+            StopProcessingRules        = $False
+        }; New-InboxRule @s
+    }
+
+
     # send an email to the user informing them that they now have full access to the mailbox and how to access it.
     $azureAdUserToBeAdvised = $azureAdUserToBeGrantedAccess
     $recipientAddress = ($azureAdUserToBeAdvised.DisplayName + "<" + $azureAdUserToBeAdvised.Mail + ">")
     if($sendInstructionalMessageToUsersThatHaveBeenGrantedAccess){
+        $messageBodyLines = @()
+        $messageBodyLines += 
+            @( 
+                "Dear $($azureAdUserToBeAdvised.DisplayName), " 
+
+                ""
+
+                "You now have full access to the $($mailbox.PrimarySmtpAddress) mailbox."
+
+                ""
+
+                "You can access this mailbox's webmail interface at https://outlook.office.com/mail/$($mailbox.PrimarySmtpAddress) ."
+
+                ""
+
+                "If so desired, you can add this mailbox to the left sidebar of "    + `
+                "Outlook on your computer by doing the following: Within Outlook, "  + `
+                "go to File -> Account Settings -> Account Settings -> Change -> "   + `
+                " More Settings -> Advanced -> Add .  Then, type " + `
+                "'$($mailbox.PrimarySmtpAddress)' as the address of the mailbox that you want to add."
+
+                ""
+            )
+
+        if($createInboxRuleToRedirect){
+            $messageBodyLines += 
+                @( 
+
+                    "In addition to you having full access to the $($mailbox.PrimarySmtpAddress) mailbox, " +
+                    "there is an Inbox Rule within the $($mailbox.PrimarySmtpAddress) mailbox " +
+                    "that is causing a copy of any message sent to that mailbox to be deposited in your inbox.  " +
+                    "If so desired, you can delete the Inbox Rule in the web interface at " + 
+                    "https://outlook.office.com/mail/$($mailbox.PrimarySmtpAddress)/options/mail/rules .  " +
+                    "The name of the Inbox Rule is `"$($nameOfInboxRule)`".  " +
+                    "Deleting the Inbox Rule will cause the automatic forwarding of messages to stop, but will " + 
+                    "have no effect on your ability to access the mailbox."
+
+                    ""
+                )
+        }
+
+        $messageBodyLines += 
+            @( 
+                ""
+                "Sincerely,"
+                "Neil Jackson"
+                "neil@autoscaninc.com"
+                "425-218-6726 (cell)"
+                "206-282-1616 ext. 102 (office)"
+                ""
+                "Autoscan, Inc."
+                "4040 23RD AVE W"
+                "SEATTLE WA 98199-1209"
+                "206-282-1616"
+            )
+        $messageBody = $messageBodyLines -Join "`n"
         $xx = @{
             emailAccount = $emailAccountForSendingAdvisoryMessages
             from         = $emailAccountForSendingAdvisoryMessages
             to           = $(if($sendAdvisoryMessageToDummyAddressInsteadOfRealRecipientAddress){$dummyAddressForAdvisoryMessages} else {$recipientAddress})
             subject      = $(if($sendAdvisoryMessageToDummyAddressInsteadOfRealRecipientAddress){"(TO: $recipientAddress) " } else {""} ) + "$($azureAdUserToBeAdvised.DisplayName) now has full access to the $($mailbox.PrimarySmtpAddress) mailbox"
-            body         = @( 
-                                "Dear $($azureAdUserToBeAdvised.DisplayName), " 
-                                ""
-                                "You now have full access to the $($mailbox.PrimarySmtpAddress) mailbox."
-                                ""
-                                "You can access this mailbox's webmail interface at https://outlook.office.com/$($mailbox.PrimarySmtpAddress) ."
-                                ""
-                                "If so desired, you can add this mailbox to the left sidebar of "    + `
-                                "Outlook on your computer by doing the following: Within Outlook, "  + `
-                                "go to File -> Account Settings -> Account Settings -> Change -> "   + `
-                                " More Settings -> Advanced -> Add .  Then, type " + `
-                                "'$($mailbox.PrimarySmtpAddress)' as the address of the mailbox that you want to add."
-                                ""
-                                ""
-                                "Sincerely,"
-                                "Neil Jackson"
-                                "neil@autoscaninc.com"
-                                "425-218-6726 (cell)"
-                                "206-282-1616 ext. 102 (office)"
-                                ""
-                                "Autoscan, Inc."
-                                "4040 23RD AVE W"
-                                "SEATTLE WA 98199-1209"
-                                "206-282-1616"
-                            ) -Join "`n"
+            body         = $messageBody
         } ; sendMail @xx
     }
 
@@ -224,4 +269,51 @@ function Format-SortedList
             Write-Host ("{0,$longestName} : {1,$longestValue}" -f $_.Name, $InputObject."$($_.Name)".ToString())
         }
     }
+}
+
+
+
+#see https://docs.microsoft.com/en-us/answers/questions/3572/change-aad-joined-windows-10-device-ownership-with.html
+function setAzureAdDeviceOwner ( $nameOfDevice, $nameOfUser ){
+    
+    $azureAdDevice=@(Get-AzureADDevice -All 1 | where-object {
+            $_.DisplayName -eq $nameOfDevice  # -and $_.DeviceTrustType -eq "AzureAd" 
+    })[0]
+
+    $azureAdUser = Get-AzureADUser -ObjectID $nameOfUser
+
+    $existingOwner = Get-AzureADDeviceRegisteredOwner -ObjectId $azureAdDevice.ObjectId
+
+    Write-Output "initially, registered owner of $($azureAdDevice.DisplayName): $($existingOwner.UserPrincipalName)"
+
+    if( $existingOwner -and ($existingOwner.Length -eq 1 ) -and ($existingOwner.ObjectID -eq $azureAdUser.ObjectID) ){
+        Write-Output "owner is already as desired.  $($existingOwner.UserPrincipalName) owns $($azureAdDevice.DisplayName)"
+    } else {
+        Write-Output "owner is not as desired, so we will change"
+
+        if ($existingOwner){
+            Write-Output "removing the exsting owner(s)"
+            foreach ($x in $existingOwner){
+                Write-Output "removing the exsting owner $($x.UserPrincipalName)"
+                Remove-AzureADDeviceRegisteredOwner -ObjectId $azureAdDevice.ObjectId -OwnerId $x.ObjectId
+            }
+        }
+
+        $s = @{
+            ObjectId=$azureAdDevice.ObjectId
+            RefObjectId=$azureAdUser.ObjectId
+        }; Add-AzureADDeviceRegisteredOwner @s 
+    }
+
+
+
+    Write-Output (
+        "Finally, registered owner of $($azureAdDevice.DisplayName): " +
+        (
+            Get-AzureADDeviceRegisteredOwner -ObjectId $azureAdDevice.ObjectId
+        ).UserPrincipalName
+    )
+
+
+
 }
