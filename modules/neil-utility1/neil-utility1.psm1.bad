@@ -1,0 +1,17 @@
+#!powershell
+$ModuleVersion="0.1"
+
+
+Write-Host "`$PSCommandPath: $PSCommandPath"
+Write-Host "`$(Resolve-Path `$PSCommandPath): $(Resolve-Path $PSCommandPath)"
+
+$pathsOfSubmodulesToInclude = ((Resolve-Path (Join-Path $psscriptroot "*.psm1")).Path | Where-Object {$_ -ne (Resolve-Path $PSCommandPath)})
+
+foreach ($pathOfSubmoduleToInclude in $pathsOfSubmodulesToInclude){
+    Write-Host "`$pathOfSubmoduleToInclude: $pathOfSubmoduleToInclude"
+    # Import-Module -Scope Global $pathOfSubmoduleToInclude
+    # Import-Module -Scope Global $pathOfSubmoduleToInclude
+    
+    # . "$pathOfSubmoduleToInclude"
+}
+

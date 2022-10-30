@@ -22,12 +22,7 @@ Param(
 # $pathOfSourceFolder=(Join-Path $PSScriptRoot "message_files")
 # $pathOfDestinationFolder=(Join-Path $PSScriptRoot "attachments")
 
-#make the destination folder if it does not already exist
-if( $pathOfSourceFolder ){
-    if (! (test-path -Path $pathOfDestinationFolder -PathType Container) ){
-        New-Item -ItemType directory -Path $pathOfDestinationFolder 
-    }
-}
+
 
 $pathsOfMessageFilesToProcess = @()
 
@@ -60,8 +55,12 @@ foreach ($pathOfMessageFile in $pathsOfMessageFilesToProcess){
         } else {
             $filenameOfDestinationFile = Split-Path -Path $attachedFile.Filename -Leaf
         }
+
         $pathOfDestinationFile = (Join-Path $pathOfDestinationFolder $filenameOfDestinationFile)
         Move-Item -Path $pathOfTempFile -Destination $pathOfDestinationFile
+
+        #make the destination folder if it does not already exist
+        New-Item -ItemType directory -Path (Split-Path -Path $pathOfDestinationFile -Parent) -ErrorAction SilentlyContinue
 
         Write-Host ('$attachedFile.Filename: ' + $attachedFile.Filename )
         # Write-Host ('$pathOfTempFile: ' + $pathOfTempFile )
