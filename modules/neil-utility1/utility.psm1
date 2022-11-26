@@ -317,3 +317,37 @@ function setAzureAdDeviceOwner ( $nameOfDevice, $nameOfUser ){
 
 
 }
+
+
+function blipNetworkAdapter(){
+    # blips any currently-enabled and connected network adapters
+
+    foreach (
+        $netAdapter in 
+        (
+            Get-NetAdapter 
+        )
+    ){
+        Write-Host "now processing netadpater: $($netAdapter.Name)"
+
+        if ( ($netAdapter.AdminStatus -eq "Up") -and ($netAdapter.ifOperStatus -eq "Up") ){
+            Write-Host "netadapter $($netAdapter.Name) is enabled and connected, so we will poke at it."
+
+            $netConnectionProfile = $null
+            $netConnectionProfile = Get-NetConnectionProfile -InterfaceAlias $netAdapter.Name -ErrorAction SilentlyContinue
+            if($netConnectionProfile ){
+                Write-Host( "netConnectionProfile: $($netConnectionProfile | Out-String )")
+            }
+
+            Disable-NetAdapter -Confirm:0 -InputObject $netAdapter 
+            Start-Sleep 1
+            Enable-NetAdapter -Confirm:0 -InputObject $netAdapter
+
+        } else {
+            Write-Host "netadapter $($netAdapter.Name) is not both enabled and connected, so we will not touch it."
+        }
+
+
+
+    }
+}
