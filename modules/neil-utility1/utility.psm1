@@ -351,3 +351,60 @@ function blipNetworkAdapter(){
 
     }
 }
+
+
+function convertRedirectEntryToEmailAddress($redirectEntry){
+    # redirectEntry is expected to be a string like the members
+    # of an InboxRule's RedirectTo property.
+
+    # we expect redirectEntry to resemble one of the following examples:
+    #   example 1: $redirectEntry == '"John Doe" [SMTP:jdoe@acme.com]'
+    #   example 2: $redirectEntry == '"John Doe" [EX:/o=ExchangeLabs/ou=Exchange Administrative Group (FYDIBOHF23SPDLT)/cn=Recipients/cn=39e06be27d4a4e3e813d7ea40b95fa3f-jdoe]'
+    #   example 3: $redirectEntry == '/o=ExchangeLabs/ou=Exchange Administrative Group (FYDIBOHF23SPDLT)/cn=Recipients/cn=39e06be27d4a4e3e813d7ea40b95fa3f-jdoe'
+    #   example 4: $redirectEntry == 'jdoe@acme.com'
+
+
+    $pattern='^(?:"(?<displayName>[^"]*)"\s*\[(?<protocol>[^:]*):(?<address>.*)\]|(?<address>.*))$'
+    #when we apply $pattern to redirectEntry, the matching groups will pull out
+    # the part between quotes (i.e. the Display name), the protocol name, and
+    # the address, respectively. we want to extract, from redirectEntry, three
+    # strings: displayName, protocol, and address . We actually don't care about
+    # displayName or protocol. Then, we operate on the address with
+    # {(Get-Recipient -Identity $args[0]).PrimarySmtpAddress} If this gives a result,
+    # we return it.  Else (i.e. in case of Exception or null result), we return
+    # address.
+    
+    # in the case of example 1, the matching groups will be:
+    #   - $1: John Doe
+    #   - $2: SMTP
+    #   - $3: jdoe@acme.com    
+    
+    # in the case of example 2, the matching groups will be:
+    #   - $1: John Doe
+    #   - $2: EX
+    #   - $3: /o=ExchangeLabs/ou=Exchange Administrative Group (FYDIBOHF23SPDLT)/cn=Recipients/cn=39e06be27d4a4e3e813d7ea40b95fa3f-jdoe  
+    
+    # in case of example 3 or 4, the match will fail, so we take address to be the entire $redirectEntry
+    
+    #in either case, we can attempt to "convert the address to SMTP by attempting to do (Get-Recipient $3).primarySMTPAddress
+    # if this throws a "couldn't find" error, then we return $3 as is.
+    $matches = $null
+    $result = $redirectEntry -match $pattern
+    # we have designed our pattern so that it will match any string.
+
+
+    $resolvedRecipientSMTPAddress = (Get-Recipient -Identity $matches['address']).PrimarySmtpAddress  2>$null
+    $resolvedMailboxSMTPAddress = (Get-Mailbox -Identity $matches['address']).PrimarySmtpAddress  2>$null
+    if($resolvedRecipientSMTPAddress){
+        $resolvedRecipientSMTPAddress
+    } elseif( $resolvedMailboxSMTPAddress) {
+        $resolvedMailboxSMTPAddress
+    } elseif($matches['address']) {
+        $matches['address']
+    } else {
+        $redirectEntry
+    }
+
+    $returnValue
+}
+

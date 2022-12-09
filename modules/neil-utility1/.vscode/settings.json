@@ -1,0 +1,77 @@
+{
+
+
+    "terminal.integrated.profiles.windows": {
+        "Command Prompt": {
+            "path": [
+                "${env:windir}\\Sysnative\\cmd.exe",
+                "${env:windir}\\System32\\cmd.exe"
+            ],
+            "args": [],
+            "icon": "terminal-cmd"
+        },
+        "cygbash": {
+            "path": [
+                "C:\\cygwin64\\bin\\bash.exe"
+            ],
+            "args": [],
+            "icon": "terminal-cmd",
+            
+        },
+        "special_screen": {
+            "path": [
+                "C:\\cygwin64\\bin\\screen.exe"
+            ],
+            "args": ["-xRR",  "-S", "fe7717decc3446abbae7d50facbae1db", "powershell"],
+            "icon": "terminal-cmd",
+            
+        }
+    },
+
+	// https://stackoverflow.com/questions/69047142/vscode-is-suddenly-defaulting-to-powershell-for-integrated-terminal-and-tasks?noredirect=1
+	"terminal.integrated.defaultProfile.windows": "Command Prompt",
+	// "terminal.integrated.defaultProfile.windows": "Git Bash",
+	// "terminal.integrated.automationShell.windows": "cmd.exe",
+    "terminal.integrated.windowsEnableConpty": true,
+    
+    "neil.preferredBash":"C:\\cygwin64\\bin\\bash.exe",
+    // "neil.preferredBash":"C:\\Program Files\\Git\\usr\\bin\\bash.exe",
+
+    "neil.nameOfSpecialScreenSession": "fe7717decc3446abbae7d50facbae1db",
+    "editor.inlineSuggest.enabled": false,
+    "editor.snippetSuggestions": "none",
+    "editor.quickSuggestions": {
+        "comments": "off",
+        "strings": "off",
+        "other": "off"
+    },
+    "editor.suggestOnTriggerCharacters": false,
+    // "terminal.integrated.localEchoLatencyThreshold": -1,
+    // "editor.wordBasedSuggestions": false,
+    // "editor.quickSuggestionsDelay": 1000000
+
+    // force us to use windows powershell (not to be confused with powershell core)
+    "powershell.powerShellAdditionalExePaths": {
+        "yargBlarg": "C:/Windows/System32/WindowsPowerShell/v1.0/powershell.exe",
+    },
+    "powershell.powerShellDefaultVersion": "yargBlarg",
+    "selectby.regexes": {
+        // "jupyterishCell": {
+        //     // selects the content of the current "cell" (i.e. region of the document delimited by lines containing "# %%" (with arbitrary whitespace anywhere on the line)
+        //     "flags": "",
+        //     "backward": "(^|$|(\\r?\\n))[ \\t]*#[ \\t]*%%[ \\t]*(^|$|\\r?\\n)",
+        //     "forward": "(^|$|(\\r?\\n))[ \\t]*#[ \\t]*%%[ \\t]*(^|$|\\r?\\n)",
+        //     "backwardInclude": false,
+        //     "forwardInclude": false
+        //   },
+        "regex1": {
+            // selects the content of the current "cell" (i.e. region of the document delimited by lines containing "# %%" (with arbitrary whitespace anywhere on the line)
+            "flags": "",
+            "backward": "(^|$|(\\r?\\n))[ \\t]*#[ \\t]*%%[ \\t]*(^|$|\\r?\\n)",
+            "forward": "(^|$|(\\r?\\n))[ \\t]*#[ \\t]*%%[ \\t]*(^|$|\\r?\\n)",
+            "backwardInclude": false,
+            "forwardInclude": false
+          }
+    },
+    "text-tables.mode": "org"
+}

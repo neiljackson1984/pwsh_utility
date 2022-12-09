@@ -1,0 +1,137 @@
+{
+    // See https://go.microsoft.com/fwlink/?LinkId=733558
+    // for the documentation about the tasks.json format
+    "version": "2.0.0",
+    "tasks": [
+        
+        // the following "fx_task" tasks are intended to be triggered by the
+        // corresponding f key. In order for this to work, you must define
+        // keybindings like the following, which you should place in vs code's
+        // keybindings.json file.: 
+        //     { "key": "f4"  ,  "command":  "workbench.action.tasks.runTask"     ,    "args": "f4_task"    }
+
+        { "label": "f4_task",            "dependsOn": ["execute_current_file"]},
+        { "label": "f15_task",           "dependsOn": ["run_cell_in_terminal"]}, 
+        { "label": "f17_task",           "dependsOn": ["run_selected_text_in_terminal"]}, 
+
+
+
+        {   "label": "execute_current_file",
+            "type":"shell",
+            "command": "env \"${file}\"",
+            "options": {
+                // "env": {
+                //     "BW_SESSION":"${input:bw_session_input}"
+                // } ,
+            },
+            "presentation": {
+                "echo": true,
+                "reveal": "always",
+                "focus": false,
+                "panel": "shared",
+                "showReuseMessage": true,
+                "clear": false,
+            }
+        },
+
+        {   "label": "dotSourceCurrentFileToSpecialScreenSessionAndMonitorScreenSession",
+            "dependsOn": ["dotSourceCurrentFileToSpecialScreenSession", "monitorTheSpecialScreenSession"],
+            "dependsOrder": "parallel",
+        },
+
+
+        {   "label": "dotSourceCurrentFileToSpecialScreenSession",
+            "dependsOn":  ["createTheSpecialScreenSessionIfItDoesNotAlreadyExist"],
+            "dependsOrder": "sequence",
+            "type":"shell",
+            "options":{"shell": {"executable": "${config:neil.preferredBash}", "args": ["-c"]}},
+            "command": "t=\"$(mktemp)\"; echo . \"'\"'${file}'\"'\" > \"$t\"; screen -S ${config:neil.nameOfSpecialScreenSession} -X eval \"readbuf '$(cygpath --mixed $t)'\" \"paste .\"; rm \"$t\";",
+            // "command": "t=\"$(mktemp)\"; echo echo . \"'\"'${file}'\"'\" > \"$t\"; screen -S ${config:neil.nameOfSpecialScreenSession} -X eval \"readbuf '$(cygpath --mixed $t)'\" \"paste .\"; rm \"$t\";",
+            "presentation": {
+                "reveal": "silent",
+                "panel": "dedicated",
+                "close": true
+            }
+        },
+
+        {   "label": "monitorTheSpecialScreenSession",
+            "dependsOn": ["createTheSpecialScreenSessionIfItDoesNotAlreadyExist"],
+            "dependsOrder": "sequence",
+            "type": "shell",
+            "options":{"shell": {"executable": "${config:neil.preferredBash}", "args": ["-c"]}},
+            // "command": "screen -dmS ${config:neil.nameOfSpecialScreenSession} powershell; bash --rcfile <(cat ~/.bashrc; echo \"\"; echo screen -xRR -S ${config:neil.nameOfSpecialScreenSession}; echo \"\") -i ",
+            // "command": "screen -xRR -S ${config:neil.nameOfSpecialScreenSession}",
+            // "command": "'${config:neil.preferredBash}' --rcfile <(( [ -f ~/.bashrc ] && cat ~/.bashrc); echo \"\"; echo screen -xRR -S ${config:neil.nameOfSpecialScreenSession}; echo \"\") -i",
+            // "command": "${config:neil.preferredBash}",
+            // "args": [ 
+            //     "-c",
+            //     "screen -xRR -S ${config:neil.nameOfSpecialScreenSession}"
+            // ],
+            // "command": "trap \"screen -wipe neilvscodepreview\" EXIT SIGHUP SIGTERM ; screen -wipe neilvscodepreview; screen -S neilvscodepreview -c $( t=\"$(mktemp)\"; ( [ -f \"$HOME/.screenrc\" ] && cat \"$HOME/.screenrc\";  echo -e \"\\nautodetach off\\n\") > \"$t\"; echo \"$t\" ) screen -m -xRR ${config:neil.nameOfSpecialScreenSession}",
+            "command": "trap \"\" EXIT SIGHUP SIGTERM ; screen -S neilvscodepreview -c $( t=\"$(mktemp)\"; ( [ -f \"$HOME/.screenrc\" ] && cat \"$HOME/.screenrc\";  echo -e \"\\nautodetach off\\n\") > \"$t\"; echo \"$t\" ) screen -m -xRR ${config:neil.nameOfSpecialScreenSession}",
+            // I can't figure out how to (and may not be able to) set up a
+            // handler to automatically wipe dead screens when I kill the vscode
+            // integrated terminal.  
+            // to avoid the accumulation of dead screen sessions, I will at
+            // least do a wipe of the neilvscodepreview screen session before
+            // creating a new vscodepreview session.
+
+
+            "presentation": {
+                "reveal": "always",
+                "showReuseMessage": true,
+                "panel": "dedicated"
+            },
+
+            "isBackground":true,
+        },
+
+        {   "label": "createTheSpecialScreenSessionIfItDoesNotAlreadyExist",
+            "type": "shell",
+            "options":{"shell": {"executable": "${config:neil.preferredBash}", "args": ["-c"]}},
+            // "command": "screen -xRR -S ${config:neil.nameOfSpecialScreenSession} -X detach powershell"
+            "command": "screen.exe -S ${config:neil.nameOfSpecialScreenSession} -Q select . || screen -dmS ${config:neil.nameOfSpecialScreenSession} powershell",
+            // "command": "screen.exe -S ${config:neil.nameOfSpecialScreenSession} -Q select . || screen -xRR ${config:neil.nameOfSpecialScreenSession} powershell"
+            "presentation":{
+                "reveal": "silent",
+                "panel": "dedicated",
+                "close": true
+            },
+        },
+
+
+        
+        { "label": "run_selected_text_in_terminal",           "command": "${command:workbench.action.terminal.runSelectedText}"}, 
+        { "label": "run_selected_text_in_repl",               "command": "${command:editor.debug.action.selectionToRepl}" },
+        
+        { "label": "run_cell_in_repl",         "dependsOn": ["_selectJupyterishCell", "run_selected_text_in_repl"],     "dependsOrder": "sequence"   },
+        { "label": "run_cell_in_terminal",     "dependsOn": ["_selectJupyterishCell", "run_selected_text_in_terminal"], "dependsOrder": "sequence"   },
+        
+        // { "label": "_selectJupyterishCell",   "command": "${command:selectby.regex}" ,
+            
+        //     // "args": [{
+        //     //     "flags": "",
+        //     //     "backward": "(^|$|(\\r?\\n))[ \\t]*#[ \\t]*%%[ \\t]*(^|$|\\r?\\n)",
+        //     //     "forward": "(^|$|(\\r?\\n))[ \\t]*#[ \\t]*%%[ \\t]*(^|$|\\r?\\n)",
+        //     //     "backwardInclude": false,
+        //     //     "forwardInclude": false
+        //     // }]
+        //     // I would have expected the above to work, based on the
+        //     // documentation for the selectby extension, which states that the
+        //     // selectby.regex command can take, as an argument, either an array
+        //     // of strings or an object.  But it seems the tasks linter is
+        //     // isnisting on an array of string.  Therefore, I will have to include the 
+        //     // regex specification in settings, and just refer to it here by name.
+        //     "args": ["jupyterishCell"]
+        //     // I am encountering an error saying that the command selectby.regex is not available.  So, I suspect something is wrong with this command.
+        // }, 
+        { "label": "_selectJupyterishCell",   "command": "${command:selectby.regex1}" ,}, 
+
+        
+
+        
+    ]
+        
+
+}
+

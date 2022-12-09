@@ -1,4 +1,0 @@
-#!powershell
-
-
-Import-Module -Scope Global (Resolve-Path (Join-Path $psscriptroot "*.psm1"))

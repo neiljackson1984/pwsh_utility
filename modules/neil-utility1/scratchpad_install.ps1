@@ -70,7 +70,7 @@ New-ModuleManifest
 
 . & "C:\work\pwsh_utility\modules\neil-utility1\neil-utility1.psm1"
 
-Test-ModuleManifest "C:\work\pwsh_utility\modules\neil-utility1\neil-utility1.psd1"
+(Test-ModuleManifest "C:\work\pwsh_utility\modules\neil-utility1\neil-utility1.psd1").ExportedCommands | fl
 
 Resolve-Path "." | get-member
 
