@@ -408,3 +408,36 @@ function convertRedirectEntryToEmailAddress($redirectEntry){
     $returnValue
 }
 
+function skuIdToSkuPartNumber($skuId){
+    ( Get-AzureADSubscribedSku | where-object { $_.SkuId -eq $skuId }).SkuPartNumber
+}
+ 
+
+function deduplicate($list){
+    # returns a new list that is a copy of the input list, but with only the
+    # first occurence of each member retained.
+    
+    $returnValue = @()
+
+    foreach ($item in $list){
+        if(-not ($returnValue -contains $item)){
+            $returnValue += $item
+        }
+    }
+
+    $returnValue
+}
+
+function addEntryToPSModulePathPersistently($pathEntry){
+    $existingPathEntries = @(([Environment]::GetEnvironmentVariable('PSModulePath', 'Machine')) -Split ([IO.Path]::PathSeparator) | Where-Object {$_})
+    $desiredPathEntries = deduplicate($existingPathEntries + $pathEntry)
+
+
+    [Environment]::SetEnvironmentVariable(
+        'PSModulePath', 
+        ([String]::Join([IO.Path]::PathSeparator, $desiredPathEntries)),
+        'Machine'
+    )
+
+}
+

@@ -83,3 +83,21 @@ pwsh -c "enable-ipv6"
 powershell -c "disable-ipv6"
 powershell -c "enable-ipv6"
 
+(Get-Module 'ExchangeOnlineManagement').Path 
+Import-Module 'ExchangeOnlineManagement' 
+$env:psModulePath -split ";"
+
+(Get-InstalledModule 'ExchangeOnlineManagement').InstalledLocation
+(Get-InstalledModule 'AzureADPreview').InstalledLocation
+(Get-InstalledModule 'AzureADPreview') | fl
+#>>> C:\Program Files\WindowsPowerShell\Modules\ExchangeOnlineManagement\3.0.0
+
+
+[Environment]::GetEnvironmentVariable('PSModulePath', 'Machine') -split [IO.Path]::PathSeparator
+[Environment]::GetEnvironmentVariable('PSModulePath', 'User') -split [IO.Path]::PathSeparator
+
+(join-path $env:ProgramFiles "WindowsPowerShell/Modules")
+powershell Install-Module -Name Microsoft.Graph 
+
+import-module ./utility.psm1
+addEntryToPSModulePathPersistently "C:\work\pwsh_utility\modules"
