@@ -1,5 +1,119 @@
 
+Import-Module (join-path $psScriptRoot "utility.psm1")
 
+# 2022-12-18 todo: store the certificate (and private key) in bitwarden rahter than what we are curently doing (which is storing 
+# the certificate and private key on the local machine's  certificate store and storing the certificate's thumbprint (i.e. hash)
+# in the configuration that we store in bitwarden.
+
+# 2022-12-18 todo: allow us to specify the tenant somehow (perhaps by one of the domain names -- those a re fairly unique within azure active directory, I think)
+# when we are creating a fresh configuration and creating a new bitwarden entry.
+# this would be useful for initial setup in a declarative, understandable, unambiguous way.
+
+
+#this is a private function and should not be exported.
+function getConfigurationFromBitwarden {
+    [OutputType([HashTable])]
+    [CmdletBinding()]
+    Param (
+        [Parameter(HelpMessage=  "The bitwarden item id of the bitwarden item containing the configuration data.")]
+        # [String]$pathOfTheConfigurationFile = "config.json" # (Join-Path $PSScriptRoot "config.json")
+        [String]$bitwardenItemId 
+    )
+
+    [HashTable] $bitwardenItem = getBitwardenItem -bitwardenItemId $bitwardenItemIdOfTheConfiguration
+
+    $configuration = @{}
+    
+    foreach($field in @($bitwardenItem['fields'])){
+        $configuration[$field['name']] = $field['value']
+    }
+
+    return $configuration
+}
+
+#this is a private function and should not be exported.
+function putConfigurationToBitwarden {
+    [OutputType([Void])]
+    [CmdletBinding()]
+    Param (
+        [Parameter(HelpMessage=  "The configuration.")]
+        [HashTable] $configuration,
+
+        [Parameter(HelpMessage=  "The bitwarden item id of the bitwarden item into which we will inject the configuration data.")]
+        # [String]$pathOfTheConfigurationFile = "config.json" # (Join-Path $PSScriptRoot "config.json")
+        [String]$bitwardenItemId 
+    )
+    
+    # [System.Management.Automation.OrderedHashtable] $bitwardenItem = ( bw --nointeraction --raw get item $bitwardenItemId  | ConvertFrom-Json )
+    # $bitwardenItemId = "12d90ae7-d294-4a3e-b100-af70002c83e6"
+
+    [HashTable] $bitwardenItem = getBitwardenItem -bitwardenItemId $bitwardenItemId
+    foreach($key in $configuration.keys){
+        if(-not $bitwardenItem['fields']){$bitwardenItem['fields'] = @()}
+        
+        $newFields = @()
+        $ourField = $null
+        for($i=0; $i -lt $bitwardenItem['fields'].Length; $i++){
+            if( $bitwardenItem['fields'][$i]['name'] -eq $key ){
+                if($ourField){
+                    #don't do anything, which will effectively omit this field from the newFields list.
+                } else {
+                    $ourField = $bitwardenItem['fields'][$i]
+                    $newFields += $ourField
+                }
+            } else {
+                $newFields += $bitwardenItem['fields'][$i]
+            }
+        }
+        if(-not $ourField){
+            $ourField = ( bw --nointeraction --raw get template item.field | ConvertFrom-Json -AsHashtable)
+            $ourField['name'] = $key
+            $newFields += $ourField
+        }
+        $bitwardenItem['fields'] = $newFields
+
+        # all of the above brain damage is to preserve the existing order of the
+        # fields as much as possible, AND ensure that there is only a single
+        # field having the name $key.
+        
+        $ourField['value']=$configuration[$key]
+
+    }
+    unlockTheBitwardenVault 1> $null
+    ([System.Convert]::ToBase64String( ([system.Text.Encoding]::UTF8).GetBytes(($bitwardenItem | ConvertTo-Json)) ) | bw --nointeraction --raw edit item $bitwardenItem['id'] ) 1> $null
+}
+
+function putConfigurationToNewBitwardenItem {
+    [OutputType([String])]
+    #returns the bitwarden item id of the newly created bitwarden item.
+    [CmdletBinding()]
+    Param (
+        [Parameter(HelpMessage=  "The configuration.")]
+        [HashTable] $configuration,
+
+        [Parameter(HelpMessage=  "The name of the bitwarden item")]
+        [String] $nameHint = ""
+    )
+    # [System.Management.Automation.OrderedHashtable] $bitwardenItem = ( bw --nointeraction --raw get template item | ConvertFrom-Json )
+    [HashTable] $bitwardenItem = ( bw --nointeraction --raw get template item | ConvertFrom-Json -AsHashtable)
+    $bitwardenItem['name'] = if($nameHint){$nameHint} else {"ahoy_0a378ecef67f4157b50fae3d7cc55419"}
+    $bitwardenItem['notes'] = "created programmatically $(Get-Date -Format "yyyy-MM-dd_HH-mm-ss")`nfoo_ef7ba3fce1bc482c8fb5304da2e2a89e" # this magic string is mainly for testing, just to help me find and delete all the new bitwarden items that I created during testing .
+    $bitwardenItem['login'] = ( bw --nointeraction --raw get template item.login | ConvertFrom-Json -AsHashtable)
+    $bitwardenItem['login']['username'] = ""
+    $bitwardenItem['login']['password'] = ""
+    $bitwardenItem['login']['totp'] = ""
+
+    $result = unlockTheBitwardenVault
+    $result = [System.Convert]::ToBase64String( ([system.Text.Encoding]::UTF8).GetBytes(($bitwardenItem | ConvertTo-Json)) )  | bw --nointeraction --raw create item 
+    $newlyCreatedBitwardenItem = ( $result | ConvertFrom-Json -AsHashtable)
+    $idOfNewlyCreatedBitwardenItem = $newlyCreatedBitwardenItem['id']
+
+    Write-Host "created new bitwarden item having id $($idOfNewlyCreatedBitwardenItem).  You ought to go edit this item in bitwarden to set the name to be something meaningful."
+
+    $result = putConfigurationToBitwarden -configuration $configuration -bitwardenItemId $idOfNewlyCreatedBitwardenItem 
+
+    return $idOfNewlyCreatedBitwardenItem
+}
 
 function connectToOffice365 {
     #To get pre-requisites:
@@ -60,8 +174,10 @@ function connectToOffice365 {
 
     [CmdletBinding()]
     Param (
-        [Parameter(HelpMessage=  "The path of the configuration file.")]
-        [String]$pathOfTheConfigurationFile = "config.json" # (Join-Path $PSScriptRoot "config.json")
+        [Parameter(HelpMessage=  "The bitwarden item id of the bitwarden item containing the configuration data.  passing a falsey bitwardenItemIdOfTheConfiguration along with a truthy makeNewConfiguration will cause us to create a new configuration create a new bitwarden item to store it in. ")]
+        # [String]$pathOfTheConfigurationFile = "config.json" # (Join-Path $PSScriptRoot "config.json")
+        [String] $bitwardenItemIdOfTheConfiguration = "",
+        [Boolean] $makeNewConfiguration = $False
     )
 
     # Import-Module -Name 'AzureAD'  -UseWindowsPowerShell -ErrorAction SilentlyContinue
@@ -381,14 +497,15 @@ function connectToOffice365 {
     }
 
     #attempt to read configuration from the configuration file
-    try {
-        $configuration = (Get-Content -Raw $pathOfTheConfigurationFile | ConvertFrom-JSON) 2> $null
-    } catch {
-        Write-Output "Failed to read configuration parameters from the configuration file."
-        Remove-Variable configuration -ErrorAction SilentlyContinue
-    }
-
-    if(! $configuration){
+    # try {
+    #     $configuration = (Get-Content -Raw $pathOfTheConfigurationFile | ConvertFrom-JSON) 2> $null
+    # } catch {
+    #     Write-Output "Failed to read configuration parameters from the configuration file."
+    #     Remove-Variable configuration -ErrorAction SilentlyContinue
+    # }
+ 
+    # if(! $configuration){
+    if($makeNewConfiguration){
         Write-Output "Constructing fresh configuration."
             
         .{Function GrantAllThePermissionsWeWant() {
@@ -726,13 +843,37 @@ function connectToOffice365 {
             applicationAppId = $mgApplication.AppId
 
             certificateThumbprint = $certificate.Thumbprint
-        } | ConvertTo-JSON | Out-File $pathOfTheConfigurationFile
+        } 
+        
+        # $configuration | ConvertTo-JSON | Out-File $pathOfTheConfigurationFile
+        if($bitwardenItemIdOfTheConfiguration){
+            putConfigurationToBitwarden -configuration $configuration -bitwardenItemId $bitwardenItemIdOfTheConfiguration
+        } else {
+            
+            $s = @{
+                configuration = $configuration 
+                nameHint = "$(((Get-MgOrganization).VerifiedDomains | where-object {$_.IsDefault -eq $true}).Name) powershell management of office365"
+            }; $bitwardenItemIdOfTheConfiguration = putConfigurationToNewBitwardenItem @s 
+        }
         
         # Disconnect-AzureAD
-        Disconnect-MgGraph
+        # Disconnect-MgGraph
         
-        $configuration = Get-Content -Raw $pathOfTheConfigurationFile | ConvertFrom-JSON
+        # $configuration = Get-Content -Raw $pathOfTheConfigurationFile | ConvertFrom-JSON
     }
+
+    try {
+        $configuration = (getConfigurationFromBitwarden -bitwardenItemId $bitwardenItemIdOfTheConfiguration 2> $null)
+    } catch {
+        Write-Output "Failed to get configuration from bitwarden, with error: $($Error[0])"
+        Remove-Variable configuration -ErrorAction SilentlyContinue
+    }
+
+    if(! $configuration){
+        Write-Host "We have failed to obtain a valid configuration from bitwarden and therefore must return."
+        return
+    }
+
 
     #at this point, we expect to have a valid $configuration and can proceed with
     #making the connection:
@@ -978,25 +1119,25 @@ function connectToOffice365 {
     try{ ensureThatWeAreConnectedToExchangeOnline } 
     catch {
         Write-Host ("encountered error when attempting to ensure that we are " +
-            "connected to Exchange Online: $($Error[0])")
+            "connected to Exchange Online: $($_)")
     }
 
     try{ ensureThatWeAreConnectedToMgGraph } 
     catch {
         Write-Host ("encountered error when attempting to ensure that we are " +
-            "connected to Microsoft Graph: $($Error[0])")
+            "connected to Microsoft Graph: $($_)")
     }
 
     try{ ensureThatWeAreConnectedToSharepointOnline } 
     catch {
         Write-Host ("encountered error when attempting to ensure that we are " +
-            "connected to Sharepoint Online: $($Error[0])")
+            "connected to Sharepoint Online: $($_)")
     }
 
     try{ ensureThatWeAreConnectedToIPSSession } 
     catch {
         Write-Host ("encountered error when attempting to ensure that we are " +
-            "connected to IPSSession: $($Error[0])")
+            "connected to IPSSession: $($_)")
     }
 
 

@@ -7,6 +7,21 @@ function unlockTheBitwardenVault(){
         $env:BW_SESSION =  $(pwsh -Command "bw unlock --raw || bw login --raw") 
     }
 }
+
+function getBitwardenItem {
+    [OutputType([HashTable])] # I really want an Optional[HashTable] -- I will return null in case of failure.
+    
+    [CmdletBinding()]
+    Param (
+        [Parameter(HelpMessage=  "The bitwarden item id of the bitwarden item to get")]
+        [String]$bitwardenItemId
+    )
+    
+    unlockTheBitwardenVault
+    [HashTable] $bitwardenItem = ( bw --nointeraction --raw get item $bitwardenItemId  | ConvertFrom-Json -AsHashtable)
+    #todo: error handling
+    return $bitwardenItem
+}
 function sendMail($emailAccount, $from, $to = @(), $cc = @(), $bcc = @(), $subject, $body){
     # unlock the bitwarden vault:
     # unlockTheBitwardenVault
