@@ -5,10 +5,16 @@ Import-Module (join-path $psScriptRoot "utility.psm1")
 # the certificate and private key on the local machine's  certificate store and storing the certificate's thumbprint (i.e. hash)
 # in the configuration that we store in bitwarden.
 
-# 2022-12-18 todo: allow us to specify the tenant somehow (perhaps by one of the domain names -- those a re fairly unique within azure active directory, I think)
-# when we are creating a fresh configuration and creating a new bitwarden entry.
-# this would be useful for initial setup in a declarative, understandable, unambiguous way.
+# 2022-12-18 todo: allow us to specify the tenant somehow (perhaps by one of the
+# domain names -- those are fairly unique within azure active directory, I
+# think) when we are creating a fresh configuration and creating a new bitwarden
+# entry. this would be useful for initial setup in a declarative,
+# understandable, unambiguous way.
 
+# todo: handle nonexisting or more-than-one-existing bitwarden item (because we
+# can use the name as item id if its unique, but of course the name might not be
+# unique (what happens if an item has a name that is the itemId of another item
+# - what happens when you do a get for that itemId?) ) cases more intelligently.
 
 #this is a private function and should not be exported.
 function getConfigurationFromBitwarden {
@@ -651,7 +657,7 @@ function connectToOffice365 {
 
         # Create the self signed cert
         
-        # construct (or load existing from file) a $certificate, and ensure that the $certificate is installed in the $certificateStorageLocation for later use.
+        # construct  a $certificate, and ensure that the $certificate is installed in the $certificateStorageLocation for later use.
         $certificate = $null
         
         # $pathOfPfxFile = (Join-Path $PSScriptRoot "certificate.pfx")
@@ -865,7 +871,7 @@ function connectToOffice365 {
     try {
         $configuration = (getConfigurationFromBitwarden -bitwardenItemId $bitwardenItemIdOfTheConfiguration 2> $null)
     } catch {
-        Write-Output "Failed to get configuration from bitwarden, with error: $($Error[0])"
+        Write-Output "Failed to get configuration from bitwarden, with error: $($_)"
         Remove-Variable configuration -ErrorAction SilentlyContinue
     }
 
