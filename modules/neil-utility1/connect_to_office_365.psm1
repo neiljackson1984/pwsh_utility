@@ -16,111 +16,6 @@ Import-Module (join-path $psScriptRoot "utility.psm1")
 # unique (what happens if an item has a name that is the itemId of another item
 # - what happens when you do a get for that itemId?) ) cases more intelligently.
 
-#this is a private function and should not be exported.
-function getConfigurationFromBitwarden {
-    [OutputType([HashTable])]
-    [CmdletBinding()]
-    Param (
-        [Parameter(HelpMessage=  "The bitwarden item id of the bitwarden item containing the configuration data.")]
-        # [String]$pathOfTheConfigurationFile = "config.json" # (Join-Path $PSScriptRoot "config.json")
-        [String]$bitwardenItemId 
-    )
-
-    [HashTable] $bitwardenItem = getBitwardenItem -bitwardenItemId $bitwardenItemIdOfTheConfiguration
-
-    $configuration = @{}
-    
-    foreach($field in @($bitwardenItem['fields'])){
-        $configuration[$field['name']] = $field['value']
-    }
-
-    return $configuration
-}
-
-#this is a private function and should not be exported.
-function putConfigurationToBitwarden {
-    [OutputType([Void])]
-    [CmdletBinding()]
-    Param (
-        [Parameter(HelpMessage=  "The configuration.")]
-        [HashTable] $configuration,
-
-        [Parameter(HelpMessage=  "The bitwarden item id of the bitwarden item into which we will inject the configuration data.")]
-        # [String]$pathOfTheConfigurationFile = "config.json" # (Join-Path $PSScriptRoot "config.json")
-        [String]$bitwardenItemId 
-    )
-    
-    # [System.Management.Automation.OrderedHashtable] $bitwardenItem = ( bw --nointeraction --raw get item $bitwardenItemId  | ConvertFrom-Json )
-    # $bitwardenItemId = "12d90ae7-d294-4a3e-b100-af70002c83e6"
-
-    [HashTable] $bitwardenItem = getBitwardenItem -bitwardenItemId $bitwardenItemId
-    foreach($key in $configuration.keys){
-        if(-not $bitwardenItem['fields']){$bitwardenItem['fields'] = @()}
-        
-        $newFields = @()
-        $ourField = $null
-        for($i=0; $i -lt $bitwardenItem['fields'].Length; $i++){
-            if( $bitwardenItem['fields'][$i]['name'] -eq $key ){
-                if($ourField){
-                    #don't do anything, which will effectively omit this field from the newFields list.
-                } else {
-                    $ourField = $bitwardenItem['fields'][$i]
-                    $newFields += $ourField
-                }
-            } else {
-                $newFields += $bitwardenItem['fields'][$i]
-            }
-        }
-        if(-not $ourField){
-            $ourField = ( bw --nointeraction --raw get template item.field | ConvertFrom-Json -AsHashtable)
-            $ourField['name'] = $key
-            $newFields += $ourField
-        }
-        $bitwardenItem['fields'] = $newFields
-
-        # all of the above brain damage is to preserve the existing order of the
-        # fields as much as possible, AND ensure that there is only a single
-        # field having the name $key.
-        
-        $ourField['value']=$configuration[$key]
-
-    }
-    unlockTheBitwardenVault 1> $null
-    ([System.Convert]::ToBase64String( ([system.Text.Encoding]::UTF8).GetBytes(($bitwardenItem | ConvertTo-Json)) ) | bw --nointeraction --raw edit item $bitwardenItem['id'] ) 1> $null
-}
-
-function putConfigurationToNewBitwardenItem {
-    [OutputType([String])]
-    #returns the bitwarden item id of the newly created bitwarden item.
-    [CmdletBinding()]
-    Param (
-        [Parameter(HelpMessage=  "The configuration.")]
-        [HashTable] $configuration,
-
-        [Parameter(HelpMessage=  "The name of the bitwarden item")]
-        [String] $nameHint = ""
-    )
-    # [System.Management.Automation.OrderedHashtable] $bitwardenItem = ( bw --nointeraction --raw get template item | ConvertFrom-Json )
-    [HashTable] $bitwardenItem = ( bw --nointeraction --raw get template item | ConvertFrom-Json -AsHashtable)
-    $bitwardenItem['name'] = if($nameHint){$nameHint} else {"ahoy_0a378ecef67f4157b50fae3d7cc55419"}
-    $bitwardenItem['notes'] = "created programmatically $(Get-Date -Format "yyyy-MM-dd_HH-mm-ss")`nfoo_ef7ba3fce1bc482c8fb5304da2e2a89e" # this magic string is mainly for testing, just to help me find and delete all the new bitwarden items that I created during testing .
-    $bitwardenItem['login'] = ( bw --nointeraction --raw get template item.login | ConvertFrom-Json -AsHashtable)
-    $bitwardenItem['login']['username'] = ""
-    $bitwardenItem['login']['password'] = ""
-    $bitwardenItem['login']['totp'] = ""
-
-    $result = unlockTheBitwardenVault
-    $result = [System.Convert]::ToBase64String( ([system.Text.Encoding]::UTF8).GetBytes(($bitwardenItem | ConvertTo-Json)) )  | bw --nointeraction --raw create item 
-    $newlyCreatedBitwardenItem = ( $result | ConvertFrom-Json -AsHashtable)
-    $idOfNewlyCreatedBitwardenItem = $newlyCreatedBitwardenItem['id']
-
-    Write-Host "created new bitwarden item having id $($idOfNewlyCreatedBitwardenItem).  You ought to go edit this item in bitwarden to set the name to be something meaningful."
-
-    $result = putConfigurationToBitwarden -configuration $configuration -bitwardenItemId $idOfNewlyCreatedBitwardenItem 
-
-    return $idOfNewlyCreatedBitwardenItem
-}
-
 function connectToOffice365 {
     #To get pre-requisites:
     # Install-Module -Confirm:$false -Force -Name 'AzureAD', 'ExchangeOnlineManagement', 'PnP.PowerShell'
@@ -282,7 +177,7 @@ function connectToOffice365 {
     # }
 
 
-    $certificateStorageLocation = "cert:\localmachine\my"
+
 
 
     .{ $roleSpecifications = @(
@@ -657,49 +552,49 @@ function connectToOffice365 {
 
         # Create the self signed cert
         
-        # construct  a $certificate, and ensure that the $certificate is installed in the $certificateStorageLocation for later use.
-        $certificate = $null
-        
+
         # $pathOfPfxFile = (Join-Path $PSScriptRoot "certificate.pfx")
         # $passwordOfthePfxFile = ""
         
-        if($pathOfPfxFile){
-            $securePassword =  $( 
-                if( $passwordOfthePfxFile ) {
-                    ConvertTo-SecureString -String $passwordOfthePfxFile -AsPlainText -Force
-                } else {
-                    New-Object System.Security.SecureString
-                }  
-            )
-            try {
-                $certificate = Import-PfxCertificate `
-                    -FilePath $pathOfPfxFile `
-                    -Password $securePassword `
-                    -CertStoreLocation $certificateStorageLocation
-            } catch {
-                Write-Output "Failed to import the certificate from the certificate file"
-                # Remove-Variable certificate -ErrorAction SilentlyContinue
-                $certificate = $null
-            }
-        }
+        # if($pathOfPfxFile){
+        #     $securePassword =  $( 
+        #         if( $passwordOfthePfxFile ) {
+        #             ConvertTo-SecureString -String $passwordOfthePfxFile -AsPlainText -Force
+        #         } else {
+        #             New-Object System.Security.SecureString
+        #         }  
+        #     )
+        #     try {
+        #         $certificate = Import-PfxCertificate `
+        #             -FilePath $pathOfPfxFile `
+        #             -Password $securePassword `
+        #             -CertStoreLocation $certificateStorageLocation
+        #     } catch {
+        #         Write-Output "Failed to import the certificate from the certificate file"
+        #         # Remove-Variable certificate -ErrorAction SilentlyContinue
+        #         $certificate = $null
+        #     }
+        # }
         
-        if(!$certificate){
-            Write-Output "constructing fresh certificate"
-            $currentDate = Get-Date
-            $endDate = $currentDate.AddYears(10)
-            $notAfter = $endDate.AddYears(10)
 
-            $certificate = New-SelfSignedCertificate `
-                -CertStoreLocation $certificateStorageLocation `
-                -DnsName com.foo.bar `
-                -KeyExportPolicy Exportable `
-                -Provider "Microsoft Enhanced RSA and AES Cryptographic Provider" `
-                -NotAfter $notAfter
-            # Export-PfxCertificate -cert $certificate -Password $securePassword -FilePath $pathOfPfxFile
-            # 2021-10-26: I have decided to no longer export the certificate to a file -- it should suffice, and will be more secure, to have $certificateStorageLocation be the only place where the certificate's private key is stored.
-        }
+        Write-Output "constructing fresh certificate"
+        $currentDate = Get-Date
+        $endDate = $currentDate.AddYears(10)
+        $notAfter = $endDate.AddYears(10)
+        # $certificateStorageLocation = "Cert:\CurrentUser\My"
+        $s = @{
+            # CertStoreLocation = $certificateStorageLocation 
+            DnsName = "com.foo.bar"
+            KeyExportPolicy = "Exportable" 
+            Provider = "Microsoft Enhanced RSA and AES Cryptographic Provider" 
+            NotAfter = $notAfter
+        }; $certificate = New-SelfSignedCertificate @s
+        $pfxPassword = @(1..25 | foreach-object {"abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789" -split "" | Get-Random}) -join ""
+        $base64EncodedPfx = x509Certificate2ToBase64EncodedPfx -certificate $certificate -password $pfxPassword
+        Remove-Item -Force -Path $certificate.PSPath
 
-
+        $certificate = base64EncodedPfxToX509Certificate2 $base64EncodedPfx -password $pfxPassword
+        
         $initialDomainNameOfTenant = ((Get-MgOrganization).VerifiedDomains | where-object {$_.IsInitial -eq $true}).Name
         $displayNameOfApplication = (Get-MgContext).Account.ToString() + "_powershell_management"
         
@@ -836,8 +731,17 @@ function connectToOffice365 {
         }
 
         $configuration = @{
-            # tenantId = (Get-AzureADTenantDetail).ObjectId;
-            tenantId = (Get-MgOrganization).Id
+            ## tenantId = (Get-AzureADTenantDetail).ObjectId; 
+            ## tenantId = (Get-MgOrganization).Id 
+            #
+            # we seem to be able to use initialDomainNameOfTenant in all places
+            # where the value of (Get-MgOrganization).Id (which is a guid
+            # string) could be used. Moreover, there is at least one place
+            # (namely, the Connect-ExchangeOnline command) where the guid does
+            # not work and initialDomainNameOfTenant is required. Therefore,
+            # let's not bother looking up or storing the guid string retuirned
+            # by (Get-MgOrganization).Id. and instead we will only store
+            # initialDomainNameOfTenant
 
             initialDomainNameOfTenant  = $initialDomainNameOfTenant 
             # we are only storing initialDomainNameOfTenant in the configuration file
@@ -848,28 +752,45 @@ function connectToOffice365 {
             # applicationAppId = $azureAdApplication.AppId;
             applicationAppId = $mgApplication.AppId
 
-            certificateThumbprint = $certificate.Thumbprint
+            # certificateThumbprint = $certificate.Thumbprint
+            base64EncodedPfx = $base64EncodedPfx
+
+            pfxPassword = $pfxPassword
+            # it's slightly ridiculous to password-encrypt the private key when
+            # we're already working within bitwarden, but I am choosing to do
+            # this because I am having to rely on pfx conversion routines that
+            # write the pfx data to a temporary file. The pfx password (which
+            # lives in memory only) protects the pfx data when it is written to
+            # the filesystem in a temporary file. One alternative would be to
+            # use a serialization format other than pfx, but most such
+            # reasonable choices for serialization formats other than pfx would
+            # require storing the certificate and the private key as two
+            # separate blobs.  So, one way or another, it seems like I am being
+            # forced to have to keep track of two blobs.
         } 
         
         # $configuration | ConvertTo-JSON | Out-File $pathOfTheConfigurationFile
-        if($bitwardenItemIdOfTheConfiguration){
-            putConfigurationToBitwarden -configuration $configuration -bitwardenItemId $bitwardenItemIdOfTheConfiguration
-        } else {
-            
-            $s = @{
-                configuration = $configuration 
-                nameHint = "$(((Get-MgOrganization).VerifiedDomains | where-object {$_.IsDefault -eq $true}).Name) powershell management of office365"
-            }; $bitwardenItemIdOfTheConfiguration = putConfigurationToNewBitwardenItem @s 
+
+        if(-not $bitwardenItemIdOfTheConfiguration){
+            $bitwardenItemIdOfTheConfiguration = (
+                makeNewBitwardenItem -name (
+                    "$(((Get-MgOrganization).VerifiedDomains | where-object {$_.IsDefault -eq $true}).Name) powershell management of office365"
+                )
+            )['id']
         }
-        
+
+        putFieldMapToBitwardenItem `
+            -fieldMap $configuration `
+            -bitwardenItemId $bitwardenItemIdOfTheConfiguration
+
         # Disconnect-AzureAD
-        # Disconnect-MgGraph
+        Disconnect-MgGraph
         
         # $configuration = Get-Content -Raw $pathOfTheConfigurationFile | ConvertFrom-JSON
     }
 
     try {
-        $configuration = (getConfigurationFromBitwarden -bitwardenItemId $bitwardenItemIdOfTheConfiguration 2> $null)
+        $configuration = (getFieldMapFromBitwardenItem -bitwardenItemId $bitwardenItemIdOfTheConfiguration 2> $null)
     } catch {
         Write-Output "Failed to get configuration from bitwarden, with error: $($_)"
         Remove-Variable configuration -ErrorAction SilentlyContinue
@@ -884,9 +805,9 @@ function connectToOffice365 {
     #at this point, we expect to have a valid $configuration and can proceed with
     #making the connection:
 
-    # to-do: confirm that the certificate specified in the configuration file is
-    # accessible from the certificate store.  If not, attempt to load the
-    # certificate from the pfx file, if the pfx file exists.
+    $certificate = base64EncodedPfxToX509Certificate2 $configuration['base64EncodedPfx'] -password $configuration['pfxPassword']
+
+
 
 
     function getWeAreConnectedToAzureAD {
@@ -940,10 +861,10 @@ function connectToOffice365 {
         Write-Host "about to do Connect-MgGraph"
         # Select-MgProfile -Name Beta
         $s = @{
-            ClientId                = $configuration.applicationAppId 
+            ClientId                = $configuration['applicationAppId']
             # CertificateThumbprint   = $configuration.certificateThumbprint 
-            Certificate             = Get-Item (Join-Path $certificateStorageLocation $configuration.certificateThumbprint )
-            TenantId                = $configuration.tenantId 
+            Certificate             = $certificate
+            TenantId                = $configuration['initialDomainNameOfTenant']
             ContextScope            = "Process"
             ForceRefresh            = $True
         }; $result = Connect-MgGraph @s 
@@ -982,9 +903,10 @@ function connectToOffice365 {
         param ()
         Write-Host "about to do Connect-ExchangeOnline"
         $s = @{
-            AppID                   = $configuration.applicationAppId  
-            CertificateThumbprint   = $configuration.certificateThumbprint 
-            Organization            = $configuration.initialDomainNameOfTenant
+            AppID                   = $configuration['applicationAppId'] 
+            # CertificateThumbprint   = $configuration.certificateThumbprint 
+            Certificate             = $certificate
+            Organization            = $configuration['initialDomainNameOfTenant']
             ShowBanner              = $false
         }
         Write-Host "arguments are $($s | out-string)"
@@ -1025,12 +947,66 @@ function connectToOffice365 {
         # [OutputType([Void])]
         param ()
         Write-Host "about to do Connect-PnPOnline (which I call 'Sharepoint Online')"    
+        
+        # $temporaryFile = New-TemporaryFile
+        # Set-Content  -AsByteStream -Value ([System.Convert]::FromBase64String($configuration['base64EncodedPfx'])) -LiteralPath $temporaryFile.FullName 1> $null
+        
+        # $certStoreLocation = "Cert:\CurrentUser\My"
+        # Remove-Item -Force -Path (join-path $certStoreLocation $certificate.Thumbprint)
+        # $s = @{
+        #     CertStoreLocation =  $certStoreLocation
+        #     Password = (stringToSecureString "") 
+        #     FilePath = $temporaryFile.FullName
+        #     Exportable = $True
+        # }; $x = Import-PfxCertificate @s 
+        # # $y = [System.Convert]::ToBase64String($x.RawData)
+        # # this doesn't work, of course, because $y does not contain the private key.
+
+        # # $y = [System.Convert]::ToBase64String($x.PrivateKey.ExportRSAPrivateKey())
+        # # $y = $x.PrivateKey.ExportRSAPrivateKeyPem()
+
+
+        # Write-Host "`$certificate.PSPath: $($certificate.PSPath)"
+        # Remove-Item -Force -Path $temporaryFile.FullName
+        
+
+        # note: to understand the raltionship between X509Certificate2::RawData
+        # and X509Certificate2::ExportCertificatePem(), observe that, for any
+        # valid X509Certificate2 object $x:
+        ## (
+        ##      (@(($x.ExportCertificatePem() -split "\n") | Select-Object -Skip 1 | Select-Object -SkipLast 1) -join "") -eq 
+        ##      [System.Convert]::ToBase64String($x.RawData)
+        ## )
+        ##>>>   True
+        #
+        # The first and last lines of the string returned by
+        # $x.ExportCertificatePem() are "-----BEGIN CERTIFICATE-----" and
+        # "-----END CERTIFICATE-----"
+
+        
         $s = @{
             Url = ( "https://" +  ($configuration.initialDomainNameOfTenant -Split '\.')[0] + ".sharepoint.com") 
-            ClientId = $configuration.applicationAppId  
-            Tenant = $configuration.tenantId 
-            Thumbprint = $configuration.certificateThumbprint 
+            ClientId = $configuration['applicationAppId'] 
+            Tenant = $configuration['initialDomainNameOfTenant'] 
+            # Thumbprint = $configuration.certificateThumbprint 
+            CertificateBase64Encoded = $configuration['base64EncodedPfx']
+            CertificatePassword = (stringToSecureString $configuration['pfxPassword'])
+            # the official documentation for the connect-pnponline command
+            # (https://pnp.github.io/powershell/cmdlets/Connect-PnPOnline.html)
+            # does not completely describe what the command is expecting to
+            # receive for the -CertificateBase64Encoded argument.  After much
+            # thrashing, I figured out that it is expecting the base64-encoded
+            # bytes of a pfx file (which, conveniently, is exactly what I am
+            # storing in bitwarden.).  
+            # It is conceivable, I think, that the connect-pnponline command
+            # could use, instead of the bytes of a pfx file, the bytes of a
+            # pkcs#1-encoded RSA private key.  I have not ascertained whether
+            # the connect-pnponline command actually works that way.  
+
         }; $result = Connect-PnPOnline @s 
+
+        # see https://pnp.github.io/powershell/cmdlets/Connect-PnPOnline.html
+        # see https://learn.microsoft.com/en-us/sharepoint/dev/solution-guidance/security-apponly-azuread
         Write-Host "Finished doing Connect-PnPOnline (which I call 'Sharepoint Online')"   
         return $result 
     }
@@ -1095,7 +1071,8 @@ function connectToOffice365 {
         Write-Host "about to do our own equivalent of 'Connect-IPPSSession' "
         $s = @{
             AppID                               = $configuration.applicationAppId  
-            CertificateThumbprint               = $configuration.certificateThumbprint 
+            # CertificateThumbprint               = $configuration.certificateThumbprint 
+            Certificate                         = $certificate
             Organization                        = $configuration.initialDomainNameOfTenant
             UseRPSSession                       = $true
             ShowBanner                          = $false
@@ -1137,7 +1114,7 @@ function connectToOffice365 {
     try{ ensureThatWeAreConnectedToSharepointOnline } 
     catch {
         Write-Host ("encountered error when attempting to ensure that we are " +
-            "connected to Sharepoint Online: $($_)")
+            "connected to Sharepoint Online: $($_) $($_.Exception)")
     }
 
     try{ ensureThatWeAreConnectedToIPSSession } 

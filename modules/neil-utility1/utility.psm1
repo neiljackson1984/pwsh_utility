@@ -22,6 +22,177 @@ function getBitwardenItem {
     #todo: error handling
     return $bitwardenItem
 }
+
+function makeNewBitwardenItem {
+    [OutputType([HashTable])]
+    [CmdletBinding()]
+    Param (
+        [Parameter(HelpMessage=  "The name of the bitwarden item")]
+        [String] $name = ""
+    )
+
+    [HashTable] $bitwardenItem = ( bw --nointeraction --raw get template item | ConvertFrom-Json -AsHashtable)
+    $bitwardenItem['name'] = $name
+    $bitwardenItem['notes'] = "created programmatically $(Get-Date -Format "yyyy-MM-dd_HH-mm-ss")`nfoo_ef7ba3fce1bc482c8fb5304da2e2a89e" 
+    # this magic string is mainly for testing, just to help me find and delete all the new bitwarden items that I created during testing .
+
+    $bitwardenItem['login'] = ( bw --nointeraction --raw get template item.login | ConvertFrom-Json -AsHashtable)
+    $bitwardenItem['login']['username'] = ""
+    $bitwardenItem['login']['password'] = ""
+    $bitwardenItem['login']['totp'] = ""
+
+    unlockTheBitwardenVault
+    $result = [System.Convert]::ToBase64String( ([system.Text.Encoding]::UTF8).GetBytes(($bitwardenItem | ConvertTo-Json)) )  | bw --nointeraction --raw create item 
+    $newlyCreatedBitwardenItem = ( $result | ConvertFrom-Json -AsHashtable)
+    Write-Host "created new bitwarden item having id $($newlyCreatedBitwardenItem['id'])."
+    return (getBitwardenItem -bitwardenItemId $newlyCreatedBitwardenItem['id'] )
+}
+
+
+
+function getFieldMapFromBitwardenItem {
+    [OutputType([HashTable])]
+    [CmdletBinding()]
+    Param (
+        [Parameter(HelpMessage=  "The bitwarden item id of the bitwarden item containing the configuration data.")]
+        # [String]$pathOfTheConfigurationFile = "config.json" # (Join-Path $PSScriptRoot "config.json")
+        [String]$bitwardenItemId 
+    )
+
+    [HashTable] $bitwardenItem = getBitwardenItem -bitwardenItemId $bitwardenItemId
+
+    $fieldMap = @{}
+    
+    foreach($field in @($bitwardenItem['fields'])){
+        $fieldMap[$field['name']] = $field['value']
+    }
+
+    return $fieldMap
+}
+
+function putFieldMapToBitwardenItem {
+    [OutputType([Void])]
+    [CmdletBinding()]
+    Param (
+        [Parameter(HelpMessage=  "The configuration.")]
+        [HashTable] $fieldMap,
+
+        [Parameter(HelpMessage=  "The bitwarden item id of the bitwarden item into which we will inject the configuration data.")]
+        # [String]$pathOfTheConfigurationFile = "config.json" # (Join-Path $PSScriptRoot "config.json")
+        [String]$bitwardenItemId=""
+
+        # [Boolean]$doMakeNewBitwardenItem=$False,
+
+        # [String]$nameForNewBitwardenItem=""
+    )
+    
+    # [System.Management.Automation.OrderedHashtable] $bitwardenItem = ( bw --nointeraction --raw get item $bitwardenItemId  | ConvertFrom-Json )
+    # $bitwardenItemId = "12d90ae7-d294-4a3e-b100-af70002c83e6"
+
+    [HashTable] $bitwardenItem = (
+        # if($doMakeNewBitwardenItem){ 
+        #     makeNewBitwardenItem -name $nameForNewBitwardenItem
+        # } else { 
+        #     getBitwardenItem -bitwardenItemId $bitwardenItemId 
+        # }
+        getBitwardenItem -bitwardenItemId $bitwardenItemId 
+    )
+    foreach($key in $fieldMap.keys){
+        if(-not $bitwardenItem['fields']){$bitwardenItem['fields'] = @()}
+        
+        $newFields = @()
+        $ourField = $null
+        for($i=0; $i -lt $bitwardenItem['fields'].Length; $i++){
+            if( $bitwardenItem['fields'][$i]['name'] -eq $key ){
+                if($ourField){
+                    #don't do anything, which will effectively omit this field from the newFields list.
+                } else {
+                    $ourField = $bitwardenItem['fields'][$i]
+                    $newFields += $ourField
+                }
+            } else {
+                $newFields += $bitwardenItem['fields'][$i]
+            }
+        }
+        if(-not $ourField){
+            $ourField = ( bw --nointeraction --raw get template item.field | ConvertFrom-Json -AsHashtable)
+            $ourField['name'] = $key
+            $newFields += $ourField
+        }
+        $bitwardenItem['fields'] = $newFields
+
+        # all of the above brain damage is to preserve the existing order of the
+        # fields as much as possible, AND ensure that there is only a single
+        # field having the name $key.
+        
+        $ourField['value']=$fieldMap[$key]
+
+    }
+    unlockTheBitwardenVault 1> $null
+    ([System.Convert]::ToBase64String( ([system.Text.Encoding]::UTF8).GetBytes(($bitwardenItem | ConvertTo-Json)) ) | bw --nointeraction --raw edit item $bitwardenItem['id'] ) 1> $null
+}
+
+function x509Certificate2ToBase64EncodedPfx {
+    [OutputType([String])]
+    [CmdletBinding()]
+    Param (
+        [Parameter()]
+        [System.Security.Cryptography.X509Certificates.X509Certificate2] $certificate,
+
+        [Parameter()]
+        [String] $password=""
+    )
+    $temporaryFile = New-TemporaryFile
+
+    Export-PfxCertificate -Password (stringToSecureString $password) -Cert $certificate -FilePath $temporaryFile.FullName 1> $null
+    $pfxBytes = Get-Content -AsByteStream -ReadCount 0 -LiteralPath $temporaryFile.FullName
+    Remove-Item -Force -Path $temporaryFile.FullName  1> $null
+    return [System.Convert]::ToBase64String( $pfxBytes )
+}
+
+function base64EncodedPfxToX509Certificate2 {
+    [OutputType([System.Security.Cryptography.X509Certificates.X509Certificate2])]
+    [CmdletBinding()]
+    Param (
+        [Parameter()]
+        [String] $base64EncodedPfx,
+
+        
+        [Parameter()]
+        [String] $password=""
+    )
+
+    $temporaryFile = New-TemporaryFile
+    $pfxBytes = [System.Convert]::FromBase64String($base64EncodedPfx)
+    Set-Content  -AsByteStream -Value $pfxBytes -LiteralPath $temporaryFile.FullName 1> $null
+    $certificate = Get-PfxCertificate -Password (stringToSecureString $password) -FilePath $temporaryFile.FullName
+    # it seems that Get-PfxCertificate returns a certificate that has a non-exportable private key.
+    Remove-Item -Force -Path $temporaryFile.FullName  1> $null
+
+
+    return $certificate
+}
+
+
+function stringToSecureString {
+    [OutputType([System.Security.SecureString])]
+    [CmdletBinding()]
+    Param (
+        [Parameter()]
+        [String] $in
+    )
+    return (
+        [System.Security.SecureString] $(
+            if($in -eq ""){
+                (new-object System.Security.SecureString)
+            } else {
+                ConvertTo-SecureString -String $in -AsPlainText -Force 
+            }
+        )
+    )
+}
+
+
 function sendMail($emailAccount, $from, $to = @(), $cc = @(), $bcc = @(), $subject, $body){
     # unlock the bitwarden vault:
     # unlockTheBitwardenVault
