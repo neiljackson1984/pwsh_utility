@@ -74,7 +74,7 @@ function putFieldMapToBitwardenItem {
     [OutputType([Void])]
     [CmdletBinding()]
     Param (
-        [Parameter(HelpMessage=  "The configuration.")]
+        [Parameter(HelpMessage=  "The field map.")]
         [HashTable] $fieldMap,
 
         [Parameter(HelpMessage=  "The bitwarden item id of the bitwarden item into which we will inject the configuration data.")]

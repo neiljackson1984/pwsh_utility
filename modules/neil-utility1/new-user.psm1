@@ -1,15 +1,15 @@
 
 Import-Module (join-path $psScriptRoot "utility.psm1")
-function initializeUser(
-    $userSpec,
-    $sendToDebuggingAddressInsteadOfTrueAddresses,
-    $doSendWelcomeMessage,
-    $doCreateUser = $true,
-    $companyParameters
-){
-
-    $companyParameters = $companyParametersCollection[$userSpec['company']]
-    if ($companyParameters -eq $companyParametersCollection['nakano']){
+Import-Module (join-path $psScriptRoot "connect_to_office_365.psm1")
+function initializeUser {
+    [CmdletBinding()]
+    Param(
+            [HashTable] $userSpec,
+            [Switch] $sendToDebuggingAddressInsteadOfTrueAddresses = $false,
+            [Switch] $doSendWelcomeMessage = $false
+    )
+    $companyParameters = getFieldMapFromBitwardenItem $userSpec['bitwardenItemIdOfCompanyParameters']
+    if ($companyParameters -eq $companyParametersCollection['nakanoassociates.com']){
         Write-Host "this is a Nakano job"
         
         $idOfBitwardenItemContainingSoftetherVpnServerPassword='5d918212-baf7-44d7-bf18-acf701364944'

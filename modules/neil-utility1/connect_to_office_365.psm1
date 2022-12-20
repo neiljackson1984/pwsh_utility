@@ -78,7 +78,10 @@ function connectToOffice365 {
         [Parameter(HelpMessage=  "The bitwarden item id of the bitwarden item containing the configuration data.  passing a falsey bitwardenItemIdOfTheConfiguration along with a truthy makeNewConfiguration will cause us to create a new configuration create a new bitwarden item to store it in. ")]
         # [String]$pathOfTheConfigurationFile = "config.json" # (Join-Path $PSScriptRoot "config.json")
         [String] $bitwardenItemIdOfTheConfiguration = "",
-        [Boolean] $makeNewConfiguration = $False
+        [Switch] $makeNewConfiguration = $False,
+
+        [Parameter(HelpMessage=  "This argument is only relevant when makeNewConfiguration is true.  This string will, if truthy, be passed to the Connect-MgGraph command to try to force a connection to the specified tenant -- to prevent mistakenly logging in to the wrong tenant. ")]
+        [String] $tenantIdHint = ""
     )
 
     # Import-Module -Name 'AzureAD'  -UseWindowsPowerShell -ErrorAction SilentlyContinue
@@ -546,7 +549,11 @@ function connectToOffice365 {
                 "Directory.Read.All",
                 "AppRoleAssignment.ReadWrite.All"
             )
-        }; Connect-MgGraph  @s 
+        }
+        if($tenantIdHint){
+            $s['TenantId'] = $tenantIdHint 
+        }
+        Connect-MgGraph  @s 
 
         #following along with instructions at: https://docs.microsoft.com/en-us/powershell/exchange/app-only-auth-powershell-v2?view=exchange-ps
 
@@ -772,9 +779,11 @@ function connectToOffice365 {
         # $configuration | ConvertTo-JSON | Out-File $pathOfTheConfigurationFile
 
         if(-not $bitwardenItemIdOfTheConfiguration){
+            $defaultDomainName = (((Get-MgOrganization).VerifiedDomains | where-object {$_.IsDefault -eq $true}).Name)
+            
             $bitwardenItemIdOfTheConfiguration = (
                 makeNewBitwardenItem -name (
-                    "$(((Get-MgOrganization).VerifiedDomains | where-object {$_.IsDefault -eq $true}).Name) powershell management of office365"
+                    "$($defaultDomainName.ToLower()) powershell management of office365"
                 )
             )['id']
         }
@@ -1519,4 +1528,54 @@ function connectToOffice365 {
 
     # Connect-Graph
 
+}
+
+
+
+function getBitwardenItemContainingOffice365ManagementConfiguration {
+    # 2022-12-20 at the moment, this function is only used in the setup of new
+    # configurations.  It is not used by the conectToOffice365 function in the
+    # normnal course of established operations. However, I have half a mind to
+    # give the ability of connectToOffice365 the ability to accept,as an
+    # alternative to the bitwarden item id of a configuration, a primary domain
+    # name of the tenant.  In that case, I will have connectToOffice365() use
+    # this function to (attempt to) get the configuration.
+    [OutputType([HashTable])] # really I mean a nullable hasthable.
+    [CmdletBinding()]
+    Param (
+        [Parameter(
+            Mandatory=$True
+        )]
+        [String] $primaryDomainName,
+
+        [Parameter(
+        )]
+        [Switch] $createIfNotAlreadyExists
+    )
+    Write-Host "now working on $($primaryDomainName.ToLower())"
+    $nameOfBitwardenItem = "$($primaryDomainName.ToLower()) powershell management of office365"
+    # we are relying on this function agreeing with connectToOffice365() about the name format.
+    # this is a little bit inelegant.
+    $bitwardenItem = getBitwardenItem $nameOfBitwardenItem
+    if($bitwardenItem){
+        Write-Host "Found a suitable existing bitwarden item, whose id is $($bitwardenItem['id'])."
+    } else {
+        if($createIfNotAlreadyExists){
+            Write-Host ""
+            Write-Host "======================="
+            Write-Host "We will now construct office365 management credentials for $($primaryDomainName.ToLower()).  Please respond to the authorization prompt(s) accordingly."
+            Write-Host "$($primaryDomainName.ToLower())"
+            Write-Host "======================="
+            Write-Host ""
+            connectToOffice365 -makeNewConfiguration:$true -tenantIdHint:$($primaryDomainName.ToLower()) | Write-Host
+
+            $bitwardenItem = getBitwardenItem $nameOfBitwardenItem
+            if($bitwardenItem){
+                Write-Host "After constructing a fresh configuration, we have now found a suitable bitwarden item, whose id is $($bitwardenItem['id'])."
+            } else {
+                Write-Host "After constructing a fresh configuration, we are still unable to find a suitable bitwarden item."    
+            }
+        }
+    }
+    return $bitwardenItem
 }
