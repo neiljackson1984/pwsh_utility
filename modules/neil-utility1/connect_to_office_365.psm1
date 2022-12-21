@@ -1,5 +1,85 @@
 
+#ugly hack to try to work around dll hell between Exchange Online module and MGGraph module:
+# [System.Reflection.Assembly]::LoadFrom((join-path (Get-InstalledModule "ExchangeOnlineManagement").InstalledLocation "netCore/System.IdentityModel.Tokens.Jwt.dll"))
+# [System.Reflection.Assembly]::LoadFrom("C:\Users\Admin\Documents\PowerShell\Modules\ExchangeOnlineManagement\3.1.0\netCore\System.IdentityModel.Tokens.Jwt.dll")
+
+# pwsh       -command "Install-Module Microsoft.Graph.Beta -AllowPrerelease -Confirm:0 -Force -Scope CurrentUser"
+
+# # ultra-ugly way to deal with dll hell:
+# this should be private.
+
+function forceExchangeModuleToLoadItsVersionOf_System_IdentityModel_Tokens_Jwt(){
+    [System.Reflection.Assembly]::LoadFrom((join-path (Get-InstalledModule "ExchangeOnlineManagement").InstalledLocation "netCore/System.IdentityModel.Tokens.Jwt.dll"))
+    
+    Import-Module ExchangeOnlineManagement
+    Disconnect-ExchangeOnline -confirm:0 
+    
+    [System.AppDomain]::CurrentDomain.GetAssemblies() | 
+        Where-Object Location | 
+        Where-Object {$_.FullName -match "^System.IdentityModel.Tokens.Jwt\b.*`$" } |
+        Sort-Object -Property FullName | 
+        Select-Object -Property FullName, Location, GlobalAssemblyCache, IsFullyTrusted |
+        fl
+}
+
+function doUglyHackToFixDependencyHellFor_System_IdentityModel_Tokens_Jwt(){
+    # see https://stackoverflow.com/questions/72490964/powershell-core-resolving-assembly-conflicts
+    # see https://stackoverflow.com/questions/68972925/powershell-why-am-i-able-to-load-multiple-versions-of-the-same-net-assembly-in
+
+    
+    #%%
+    # look at the versions of the assemblies in the dlls used by Exchange and Graph.  OVerwrite the higher-versioned asesmbly to the path o fthe lower-versioned assembly.
+    $pathOfDllUSedByExchange = (join-path (Get-InstalledModule "ExchangeOnlineManagement").InstalledLocation "netCore/System.IdentityModel.Tokens.Jwt.dll")
+    $pathOfDllUsedByGraph = (join-path (Get-InstalledModule "Microsoft.Graph.Authentication").InstalledLocation "Dependencies/System.IdentityModel.Tokens.Jwt.dll")
+    
+    $unsortedDllPaths = @($pathOfDllUSedByExchange, $pathOfDllUsedByGraph)
+
+    $dllPathsSortedByVersion =@(
+        $unsortedDllPaths | 
+            Sort-Object -Property {[System.Reflection.Assembly]::LoadFile($_).GetName().Version}
+    )
+
+    $dllPathsSortedByVersion | foreach-object {"$([System.Reflection.Assembly]::LoadFile($_).GetName().Version)    $($_)"}
+    $versions = $dllPathsSortedByVersion | foreach-object {[System.Reflection.Assembly]::LoadFile($_).GetName().Version}
+    if ($versions[0] -eq $versions[1]){
+        Write-Host "both versions are the same, namely version $($versions[0])"
+    } else {
+        Write-Host "moving newer-versioned file ($($dllPathsSortedByVersion[1]), version $($versions[1])) to path of older-versioned file ($($dllPathsSortedByVersion[0]), version $($versions[0]))."
+        Move-Item -Force -Confirm:$false $dllPathsSortedByVersion[0] "$($dllPathsSortedByVersion[0]).setaside"
+        Copy-Item $dllPathsSortedByVersion[1] $dllPathsSortedByVersion[0] 
+    }
+    #%%
+
+    # check to see which version of the problematic assembly is loaded:
+    [System.AppDomain]::CurrentDomain.GetAssemblies() | 
+        Where-Object Location | 
+        Where-Object {$_.FullName -match "^System.IdentityModel.Tokens.Jwt\b.*`$" } |
+        Sort-Object -Property FullName | 
+        Select-Object -Property FullName, Location, GlobalAssemblyCache, IsFullyTrusted |
+        fl
+
+    #%%
+}
+
+# 2022-12-21-1142. I was not able to make the "2.0.0-preview1" or
+# "2.0.0-preview2" versions of the Microsoft.Graph module work correctly.
+# Specifically, when attempting to set the Application KeyCredentials I would
+# get an error complaining that "the literal ... cannot be converted to
+# edm.binary" (or something to that effect) the error message makes me think
+# that the preview versions are not correctly encoding the byte array into a
+# url-safe base64 string.  My only recourse is to revert to the non-preview
+# version of Microsoft.Graph, which is problematic because of the dll  hell
+# issue.  (The preview versions also hjad a dll hell conflict with
+# ExchangeOnlineManagement module, but at least the preview versions used a
+# version of the conflicting assembly that was closer to the one Exchange was
+# using (both 6.something) that (I think) the two modules worked corectly with
+# either version of the assembly.  The non-preview verison of the
+# Microsoft.Graph module uses a 5.something version of the conflicting assembly,
+# which I suspect makes my workaround less likely to work.
+
+
 Import-Module (join-path $psScriptRoot "utility.psm1")
+# to do: make a module manifest file to declare dependencies and exports, so we don't 
 
 # 2022-12-18 todo: store the certificate (and private key) in bitwarden rahter than what we are curently doing (which is storing 
 # the certificate and private key on the local machine's  certificate store and storing the certificate's thumbprint (i.e. hash)
@@ -15,6 +95,24 @@ Import-Module (join-path $psScriptRoot "utility.psm1")
 # can use the name as item id if its unique, but of course the name might not be
 # unique (what happens if an item has a name that is the itemId of another item
 # - what happens when you do a get for that itemId?) ) cases more intelligently.
+
+#private
+function Script:getCanonicalNameOfBitwardenItemBasedOnPrimaryDomainName {
+    [OutputType([String])] # really I mean a nullable string
+    [CmdletBinding()]
+    Param (
+        [Parameter(
+            Mandatory=$True
+        )]
+        [String] $primaryDomainName
+    )
+    
+    if($primaryDomainName.Trim().ToLower()){
+        "$($primaryDomainName.Trim().ToLower()) powershell management of office365"
+    } else {
+        $null
+    }
+}
 
 function connectToOffice365 {
     #To get pre-requisites:
@@ -81,8 +179,28 @@ function connectToOffice365 {
         [Switch] $makeNewConfiguration = $False,
 
         [Parameter(HelpMessage=  "This argument is only relevant when makeNewConfiguration is true.  This string will, if truthy, be passed to the Connect-MgGraph command to try to force a connection to the specified tenant -- to prevent mistakenly logging in to the wrong tenant. ")]
-        [String] $tenantIdHint = ""
+        [String] $tenantIdHint = "",
+
+        [Parameter(HelpMessage=  "This is just a shortcut for specifying the bitwarden item id in the canonical way.  This parameter is completely ignored if bitwardenItemIdOfTheConfiguration is truthy.")]
+        [String] $primaryDomainName = ""
     )
+    
+    # todo: think through and simplify all the possibilities of parameters.  We
+    # have three parameters (namely: bitwardenItemIdOfTheConfiguration,
+    # tenantIdHint, primaryDomainName)  that, at first glance, appear to be
+    # doing almost the same thing: namely, identifying the tenant to which we
+    # want to connect (in a more-or-less direct way).  The overlap between these
+    # three parameters is way too confusing for production (but I had my reasons
+    # for using them.)
+
+    if(-not $bitwardenItemIdOfTheConfiguration -and -not $primaryDomainName -and -not $makeNewConfiguration){
+        Write-Host "you must specify at least one of bitwardenItemIdOfTheConfiguration, primaryDomainName, makeNewConfiguration.  doing nothing."
+        return $null
+    }
+
+    if((-not $bitwardenItemIdOfTheConfiguration) -and ($primaryDomainName)){            
+        $bitwardenItemIdOfTheConfiguration = getCanonicalNameOfBitwardenItemBasedOnPrimaryDomainName $primaryDomainName
+    }
 
     # Import-Module -Name 'AzureAD'  -UseWindowsPowerShell -ErrorAction SilentlyContinue
     # Import-Module -Name 'AzureADPreview'   -UseWindowsPowerShell 
@@ -540,7 +658,6 @@ function connectToOffice365 {
         # Connect-AzureAD
         $s = @{
             ContextScope = "Process"
-            ForceRefresh = $True
             Scopes = @(
                 "Application.Read.All", 
                 "Application.ReadWrite.All", 
@@ -628,9 +745,15 @@ function connectToOffice365 {
                     # }
                     # I do not know how much of this stuff is strictly necessary
                 }
+                # KeyCredentials = ([Microsoft.Graph.PowerShell.Models.IMicrosoftGraphKeyCredential[]]      @(
+                #     ([Microsoft.Graph.PowerShell.Models.IMicrosoftGraphKeyCredential]   @{
+                #         Type = "AsymmetricX509Cert"
+                #         Usage = "Verify"
+                #         Key = $certificate.GetRawCertData()
+                #     }))
+                # )
             }; $mgApplication = New-MgApplication @s         
-        }
-        else {
+        } else {
             # Write-Output -InputObject ('App Registration {0} already exists' -f $displayNameOfApplication)
             Write-Output "mgApplication $($mgApplication.DisplayName) (id = $($mgApplication.Id))"
         }
@@ -697,10 +820,14 @@ function connectToOffice365 {
         #     }
 
         $keyCredential = $mgApplication.KeyCredentials | where { 
-                [System.Convert]::ToBase64String($_.CustomKeyIdentifier) -eq [System.Convert]::ToBase64String([System.Convert]::FromBase64String($certificate.Thumbprint))
+                [System.Convert]::ToBase64String($_.CustomKeyIdentifier) -eq 
+                [System.Convert]::ToBase64String([System.Convert]::FromBase64String($certificate.Thumbprint))
             }
 
-        if(!$keyCredential){
+        if($keyCredential){
+            Write-Host "The desired keyCredential already exists among the app's keyCredentials, so we will not bother to add it: $keyCredential"
+        } else {
+            Write-Host "The desired keyCredential does not already exist, so we will attempt to add it."
             # $s = @{
             #     ObjectId = $azureAdApplication.ObjectId 
             #     StartDate = $currentDate 
@@ -709,8 +836,9 @@ function connectToOffice365 {
             #     Usage = Verify 
             #     Value = [System.Convert]::ToBase64String($certificate.GetRawCertData())
             # }; $keyCredential = New-AzureADApplicationKeyCredential @s
+            #%%
             $s = @{
-                ApplicationId = $mgApplication.Id
+                ApplicationId = ($mgApplication.Id)
                 KeyCredentials = @(
                     @{
                         Type = "AsymmetricX509Cert"
@@ -718,9 +846,14 @@ function connectToOffice365 {
                         Key = $certificate.GetRawCertData()
                     }
                 )
-            }; Update-MgApplication @s
-        } else {
-            Write-Output -InputObject ('keyCredential {0} already exists' -f $keyCredential)
+                PassThru = $True 
+                #
+                # setting PassThru=$True causes Update-MgApplication to return
+                # $null or $True according to the failure or success of the
+                # operation. otherwise, Update-MgApplication always returns
+                # $null regardless.
+            }; $result = Update-MgApplication  @s
+            #%%
         }
         
         #grant all the required approles (as defined by $roleSpecifications) to our app's service principal
@@ -739,7 +872,8 @@ function connectToOffice365 {
 
         $configuration = @{
             ## tenantId = (Get-AzureADTenantDetail).ObjectId; 
-            ## tenantId = (Get-MgOrganization).Id 
+            
+            tenantId = (Get-MgOrganization).Id 
             #
             # we seem to be able to use initialDomainNameOfTenant in all places
             # where the value of (Get-MgOrganization).Id (which is a guid
@@ -750,11 +884,26 @@ function connectToOffice365 {
             # by (Get-MgOrganization).Id. and instead we will only store
             # initialDomainNameOfTenant
 
+            primaryDomainName = (((Get-MgOrganization).VerifiedDomains | where-object {$_.IsDefault -eq $true}).Name)
+
             initialDomainNameOfTenant  = $initialDomainNameOfTenant 
             # we are only storing initialDomainNameOfTenant in the configuration file
             # to aid in the work-around of the dll hell caused by the
             # ExchangeOnlineManagementModule and the MgGraph module wanting to use
             # different versions of the System.IdentityModel.Tokens.Jwt assembly.
+
+            # I really should only need one of tenantId, primaryDomainName,
+            # initialDomainNameOfTenant However, to aid in debugging (and
+            # avoiding the laborious process of recreating the configurations if
+            # and when I decide to change which of these three properties I
+            # standardize on), I will record all three properties. Todo: figure
+            # out how to standadize on just one of these three properties. I
+            # suspect that initialDomainNameOfTenant or tenantId are the most
+            # stable (because I know that a tenant can change its
+            # primaryDomainName at will, and possibly multiple tenants can have
+            # the same primarydomainName. Therefore, initialDomainNameOfTenant
+            # or tenantId would be the best candidates for the single standard
+            # way to specify tenant identity.
 
             # applicationAppId = $azureAdApplication.AppId;
             applicationAppId = $mgApplication.AppId
@@ -778,12 +927,10 @@ function connectToOffice365 {
         
         # $configuration | ConvertTo-JSON | Out-File $pathOfTheConfigurationFile
 
-        if(-not $bitwardenItemIdOfTheConfiguration){
-            $defaultDomainName = (((Get-MgOrganization).VerifiedDomains | where-object {$_.IsDefault -eq $true}).Name)
-            
+        if(-not $bitwardenItemIdOfTheConfiguration){            
             $bitwardenItemIdOfTheConfiguration = (
                 makeNewBitwardenItem -name (
-                    "$($defaultDomainName.ToLower()) powershell management of office365"
+                    getCanonicalNameOfBitwardenItemBasedOnPrimaryDomainName (((Get-MgOrganization).VerifiedDomains | where-object {$_.IsDefault -eq $true}).Name)
                 )
             )['id']
         }
@@ -797,6 +944,8 @@ function connectToOffice365 {
         
         # $configuration = Get-Content -Raw $pathOfTheConfigurationFile | ConvertFrom-JSON
     }
+
+
 
     try {
         $configuration = (getFieldMapFromBitwardenItem -bitwardenItemId $bitwardenItemIdOfTheConfiguration 2> $null)
@@ -843,10 +992,12 @@ function connectToOffice365 {
         [OutputType([Boolean])]
         param ()
 
+        try{
+            $mgOrganization = (Get-MgOrganization -ErrorAction SilentlyContinue) 
+        } catch {
+            $mgOrganization = $null
+        }
 
-        [Boolean] (Get-MgOrganization -ErrorAction SilentlyContinue) 
-        # we really ought to be testing not only that we are connected, but also
-        # that we are connected in a way that matches the configuration file.
 
         # Unlike with the old AzureAD powershell, with Graph, it might be
         # problematic to use a succesfull invoking of Get-MgOrganization to infer
@@ -859,23 +1010,40 @@ function connectToOffice365 {
         # session? Answer: I think  "-ContextScope Process" (and maybe also
         # "-ForceRefresh") are the arguments that will have the desired effect.
         
+        if(
+            $mgOrganization -and 
+            (
+                ($mgOrganization.VerifiedDomains | where-object {$_.IsInitial -eq $true}).Name.Trim().ToLower() -eq
+                $configuration['initialDomainNameOfTenant'].Trim().ToLower()
+            )
+        ){
+            return $true
+        } else {
+            return $false
+        }
 
         #  ($null -ne [Microsoft.Graph.PowerShell.Authentication.GraphSession]::Instance)
         # the above might be another way to test for the existence of connectivity.
     }
 
     function connectToMgGraph {
-        # [OutputType([Void])]
+        [OutputType([Void])]
         param ()
         Write-Host "about to do Connect-MgGraph"
         # Select-MgProfile -Name Beta
+        Disconnect-MgGraph -ErrorAction SilentlyContinue 2>$null
         $s = @{
             ClientId                = $configuration['applicationAppId']
             # CertificateThumbprint   = $configuration.certificateThumbprint 
             Certificate             = $certificate
-            TenantId                = $configuration['initialDomainNameOfTenant']
+
+            # TenantId                = $configuration['initialDomainNameOfTenant']
+            # at least as of version 1.19 of the Microsoft.Graph module,
+            # passing initialDomainNameOfTenant as the tenantId (in some cases, at least)
+            # causes the error: "Connect-MgGraph: You specified a different tenant - once in WithAuthority() and once using WithTenant()."
+            # pass the guid version of the tenant id seems to avoid this problem.
+            TenantId                = $configuration['tenantId']
             ContextScope            = "Process"
-            ForceRefresh            = $True
         }; $result = Connect-MgGraph @s 
         Write-Host "Finished doing Connect-MgGraph"
         return $result
@@ -901,9 +1069,18 @@ function connectToOffice365 {
     function getWeAreConnectedToExchangeOnline {
         [OutputType([Boolean])]
         param ()
-        [Boolean] (Get-ConnectionInformation)
-        # we really ought to be testing not only that we are connected, but also
-        # that we are connected in a way that matches the configuration file.
+        $connectionInformation = (Get-ConnectionInformation -ErrorAction SilentlyContinue)
+        if(
+            $connectionInformation -and 
+            (
+                ($connectionInformation.Organization).Trim().ToLower() -eq
+                $configuration['initialDomainNameOfTenant'].Trim().ToLower()
+            )
+        ){
+            return $true
+        } else {
+            return $false
+        }
 
     }
 
@@ -911,6 +1088,7 @@ function connectToOffice365 {
         # [OutputType([Void])]
         param ()
         Write-Host "about to do Connect-ExchangeOnline"
+        Disconnect-ExchangeOnline -Confirm:$false
         $s = @{
             AppID                   = $configuration['applicationAppId'] 
             # CertificateThumbprint   = $configuration.certificateThumbprint 
@@ -943,14 +1121,28 @@ function connectToOffice365 {
         [OutputType([Boolean])]
         param ()
         try {
-            $result = Get-PnpConnection -ErrorAction SilentlyContinue 2> $null
+            $pnpConnection = Get-PnpConnection -ErrorAction SilentlyContinue 2> $null
         } catch {
             return $False
         } 
-        return ( [Boolean] $result )
-        # we really ought to be testing not only that we are connected, but also
-        # that we are connected in a way that matches the configuration file.
+        # return ( [Boolean] $pnpConnection )
+        if(
+            $pnpConnection -and 
+            (
+                ($pnpConnection.Tenant).Trim().ToLower() -eq
+                $configuration['initialDomainNameOfTenant'].Trim().ToLower()
+            )
+        ){
+            return $true
+        } else {
+            return $false
+        }
+
+
+
     }
+
+
 
     function connectToSharepointOnline {
         # [OutputType([Void])]
@@ -992,6 +1184,11 @@ function connectToOffice365 {
         # $x.ExportCertificatePem() are "-----BEGIN CERTIFICATE-----" and
         # "-----END CERTIFICATE-----"
 
+        if( 
+            $( try{ Get-PnpConnection -ErrorAction SilentlyContinue} catch {$null} )
+        ){
+            Disconnect-PnPOnline -ErrorAction SilentlyContinue 2> $null
+        }
         
         $s = @{
             Url = ( "https://" +  ($configuration.initialDomainNameOfTenant -Split '\.')[0] + ".sharepoint.com") 
@@ -1033,7 +1230,11 @@ function connectToOffice365 {
 
 
 
-
+    #IPS session is not entirely an independent thiung from Exchange session
+    # (e.g. calling Disconnect-ExchangeOnline will also disconnect any active
+    # IPS session).  It is not quite correct to treat IPS session as another
+    # top-=level item, we ought to make it a substituent of the Exchange
+    # connection somehow, but oh well. 
     function getWeAreConnectedToIPSSession {
         [OutputType([Boolean])]
         param ()
@@ -1043,7 +1244,6 @@ function connectToOffice365 {
             return $False
         } 
         return ( [Boolean] $result )   
-        #todo: implement me.  
         # we really ought to be testing not only that we are connected, but also
         # that we are connected in a way that matches the configuration file.
 
@@ -1108,17 +1308,20 @@ function connectToOffice365 {
     }
 
 
+    
     try{ ensureThatWeAreConnectedToExchangeOnline } 
     catch {
         Write-Host ("encountered error when attempting to ensure that we are " +
             "connected to Exchange Online: $($_)")
     }
 
+    
     try{ ensureThatWeAreConnectedToMgGraph } 
     catch {
         Write-Host ("encountered error when attempting to ensure that we are " +
             "connected to Microsoft Graph: $($_)")
     }
+
 
     try{ ensureThatWeAreConnectedToSharepointOnline } 
     catch {
@@ -1553,7 +1756,7 @@ function getBitwardenItemContainingOffice365ManagementConfiguration {
         [Switch] $createIfNotAlreadyExists
     )
     Write-Host "now working on $($primaryDomainName.ToLower())"
-    $nameOfBitwardenItem = "$($primaryDomainName.ToLower()) powershell management of office365"
+    $nameOfBitwardenItem = getCanonicalNameOfBitwardenItemBasedOnPrimaryDomainName $primaryDomainName
     # we are relying on this function agreeing with connectToOffice365() about the name format.
     # this is a little bit inelegant.
     $bitwardenItem = getBitwardenItem $nameOfBitwardenItem
