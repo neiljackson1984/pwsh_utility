@@ -8,11 +8,84 @@
 # # ultra-ugly way to deal with dll hell:
 # this should be private.
 
+
+
 function forceExchangeModuleToLoadItsVersionOf_System_IdentityModel_Tokens_Jwt(){
-    [System.Reflection.Assembly]::LoadFrom((join-path (Get-InstalledModule "ExchangeOnlineManagement").InstalledLocation "netCore/System.IdentityModel.Tokens.Jwt.dll"))
+    # [System.Reflection.Assembly]::LoadFrom((join-path (Get-InstalledModule "ExchangeOnlineManagement").InstalledLocation "netCore/System.IdentityModel.Tokens.Jwt.dll"))
+    # I am well aware that this is extremely heavy-handed, and actually wrong if we happen to be in windows powershell rather than powershell core.
+
+    # It seems that the Microsoft.Graph module is actually perfectly content,
+    # and fully functional, if all of the assemblies included with the Exchange
+    # module (including System.IdentityModel.Tokens.Jwt version 6.21.0.0) happen
+    # to already be loaded.  I think I was noticing problems (the
+    # Microsoft.Identity logging error) when I ran Microsoft.Graph after only
+    # having explicitly loaded System.IdentityModel.Tokens.Jwt version 6.21.0.0,
+    # and not the Exhange Module's other assemblies.
+    # System.IdentityModel.Tokens.Jwt version 6.21.0.0 was loaded, but the graph
+    # module was then trying to load the older versions of some other assemblies
+    # (like the one responsilbe for Microsoft.Identity logging) that probably
+    # themselves expected to work with the older version of the
+    # System.IdentityModel.Tokens.Jwt assembly.
+
+    $pathOfRootFolderOfExchangeModule = (Get-InstalledModule "ExchangeOnlineManagement").InstalledLocation 
+
+    # $pathOfExchange_System_IdentityModel_Tokens_Jwt_dll_file = (join-path $pathOfRootFolderOfExchangeModule "netCore/System.IdentityModel.Tokens.Jwt.dll")
+    $pathsOfRootAssembliesToForce = @(
+        (join-path $pathOfRootFolderOfExchangeModule "netCore/System.IdentityModel.Tokens.Jwt.dll")
+        (join-path $pathOfRootFolderOfExchangeModule "netCore/Microsoft.Identity.Client.dll")
+        (join-path $pathOfRootFolderOfExchangeModule "netCore/Microsoft.Exchange.Management.ExoPowershellGalleryModule.dll")
+
+    )
+
+
+    foreach ($pathOfRootAssemblyToForce in $pathsOfRootAssembliesToForce){
+        $assembliesToLoad = @(
+                $s = @{
+                    rootAssembly = (
+                        [System.Reflection.Assembly]::LoadFile(
+                            $pathOfRootAssemblyToForce
+                        )
+                    )
+
+                    filter = { Test-SubPath -ChildPath $_.Location -ParentPath  $pathOfRootFolderOfExchangeModule}
+
+                    pathHints = @(
+                        Split-Path $pathOfRootAssemblyToForce -Parent
+                    )
+
+                }; getReferencedAssembliesRecursivelyForReflection @s 
+            )
+
+        $pathsOfDllFilesToLoad = @(
+            # (join-path $pathOfRootFolderOfExchangeModule "netCore/System.IdentityModel.Tokens.Jwt.dll")
+        
+            # (Get-ChildItem `
+            #     -Path (join-path $pathOfRootFolderOfExchangeModule "netCore") `
+            #     -Recurse `
+            #     -Include "*.dll" 
+            # ) | foreach-object {$_.FullName}
+
+            $assembliesToLoad | foreach-object {$_.Location}
+        )
+
+        Write-Host "We will now attempt to load the following $($pathsOfDllFilesToLoad.Length) dll files: "
+        $pathsOfDllFilesToLoad | Write-Host
+
+        foreach(
+            $pathOfDllFile in $pathsOfDllFilesToLoad
+        ){
+            try { 
+                $private:ErrorActionPreference = "Stop"
+                [System.Reflection.Assembly]::LoadFrom($pathOfDllFile) 1> $null
+            } catch {
+                Write-Host "Catching an error: $_"
+            }
+        }
+    }
+
     
-    Import-Module ExchangeOnlineManagement
-    Disconnect-ExchangeOnline -confirm:0 
+    # Import-Module ExchangeOnlineManagement
+    # Disconnect-ExchangeOnline -confirm:0 
     
     [System.AppDomain]::CurrentDomain.GetAssemblies() | 
         Where-Object Location | 
@@ -22,21 +95,56 @@ function forceExchangeModuleToLoadItsVersionOf_System_IdentityModel_Tokens_Jwt()
         fl
 }
 
+
+function forceGraphModuleToLoadItsVersionOf_System_IdentityModel_Tokens_Jwt(){
+    # [System.Reflection.Assembly]::LoadFrom((join-path (Get-InstalledModule "Microsoft.Graph.Authentication").InstalledLocation "Dependencies/System.IdentityModel.Tokens.Jwt.dll"))
+    
+    # Import-Module ExchangeOnlineManagement
+    # Disconnect-ExchangeOnline -confirm:0 
+    
+    foreach(
+        $pathOfDllFile in 
+        @(
+            (join-path (Get-InstalledModule "Microsoft.Graph.Authentication").InstalledLocation "Dependencies/System.IdentityModel.Tokens.Jwt.dll")
+        )
+    ){
+        try { 
+            $private:ErrorActionPreference = "Stop"
+            [System.Reflection.Assembly]::LoadFrom($pathOfDllFile)
+        } catch {
+            Write-Host "Catching an error: $_"
+        }
+    }
+
+
+    [System.AppDomain]::CurrentDomain.GetAssemblies() | 
+        Where-Object Location | 
+        Where-Object {$_.FullName -match "^System.IdentityModel.Tokens.Jwt\b.*`$" } |
+        Sort-Object -Property FullName | 
+        Select-Object -Property FullName, Location, GlobalAssemblyCache, IsFullyTrusted |
+        fl
+}
+
+
 function doUglyHackToFixDependencyHellFor_System_IdentityModel_Tokens_Jwt(){
     # see https://stackoverflow.com/questions/72490964/powershell-core-resolving-assembly-conflicts
     # see https://stackoverflow.com/questions/68972925/powershell-why-am-i-able-to-load-multiple-versions-of-the-same-net-assembly-in
 
     
     #%%
-    # look at the versions of the assemblies in the dlls used by Exchange and Graph.  OVerwrite the higher-versioned asesmbly to the path o fthe lower-versioned assembly.
-    $pathOfDllUSedByExchange = (join-path (Get-InstalledModule "ExchangeOnlineManagement").InstalledLocation "netCore/System.IdentityModel.Tokens.Jwt.dll")
-    $pathOfDllUsedByGraph = (join-path (Get-InstalledModule "Microsoft.Graph.Authentication").InstalledLocation "Dependencies/System.IdentityModel.Tokens.Jwt.dll")
-    
-    $unsortedDllPaths = @($pathOfDllUSedByExchange, $pathOfDllUsedByGraph)
+    # look at the versions of the assemblies in the dlls used by Exchange and
+    # Graph.  OVerwrite the higher-versioned asesmbly to the path o fthe
+    # lower-versioned assembly.
 
     $dllPathsSortedByVersion =@(
-        $unsortedDllPaths | 
-            Sort-Object -Property {[System.Reflection.Assembly]::LoadFile($_).GetName().Version}
+        @(
+            #pathOfDllUSedByExchange:
+            (join-path (Get-InstalledModule "ExchangeOnlineManagement").InstalledLocation "netCore/System.IdentityModel.Tokens.Jwt.dll"),
+
+            #pathOfDllUsedByGraph:
+            (join-path (Get-InstalledModule "Microsoft.Graph.Authentication").InstalledLocation "Dependencies/System.IdentityModel.Tokens.Jwt.dll")
+
+        ) | Sort-Object -Property {[System.Reflection.Assembly]::LoadFile($_).GetName().Version}
     )
 
     $dllPathsSortedByVersion | foreach-object {"$([System.Reflection.Assembly]::LoadFile($_).GetName().Version)    $($_)"}
@@ -108,7 +216,7 @@ function Script:getCanonicalNameOfBitwardenItemBasedOnPrimaryDomainName {
     )
     
     if($primaryDomainName.Trim().ToLower()){
-        "$($primaryDomainName.Trim().ToLower()) powershell management of office365"
+        "$($primaryDomainName.Trim().ToLower()) microsoftGraphManagement"
     } else {
         $null
     }
@@ -283,13 +391,13 @@ function connectToOffice365 {
     # gets the first crack at loading that assembly.
 
     # this strategy does not work.
-    # to facilitate a partial-workaround, I will save the initialDomainNameOfTenant in the configuration file so that 
+    # to facilitate a partial-workaround, I will save the initialDomainName in the configuration file so that 
     # we can, in teh normal course of operation, call the Connect-ExchangeOnline cmdlet before we call Connect-MgGraph.
     # try{
     #     $s = @{
     #         AppID                   = "234523452345"
     #         CertificateThumbprint   = "asdfgasdfasdfasdfasdf"
-    #         # Organization            = $initialDomainNameOfTenant 
+    #         # Organization            = $initialDomainName 
     #         Organization            = "whateverc1a6dee0ed884239baaec483d6b31550.onmicrosoft.com"
     #         ShowBanner              = $false
     #     };    Connect-ExchangeOnline @s
@@ -670,7 +778,13 @@ function connectToOffice365 {
         if($tenantIdHint){
             $s['TenantId'] = $tenantIdHint 
         }
-        Connect-MgGraph  @s 
+        try{ 
+            Connect-MgGraph  @s  -ErrorAction "Stop" 
+        } catch {
+            Throw "failed to connect to MGGraph, therefore we will return.  The error is: $_"
+            Write-Host "ahoy"
+        }
+
 
         #following along with instructions at: https://docs.microsoft.com/en-us/powershell/exchange/app-only-auth-powershell-v2?view=exchange-ps
 
@@ -719,7 +833,7 @@ function connectToOffice365 {
 
         $certificate = base64EncodedPfxToX509Certificate2 $base64EncodedPfx -password $pfxPassword
         
-        $initialDomainNameOfTenant = ((Get-MgOrganization).VerifiedDomains | where-object {$_.IsInitial -eq $true}).Name
+        $initialDomainName = ((Get-MgOrganization).VerifiedDomains | where-object {$_.IsInitial -eq $true}).Name
         $displayNameOfApplication = (Get-MgContext).Account.ToString() + "_powershell_management"
         
         # Get the Azure Active Directory Application, creating it if it does not already exist.
@@ -728,7 +842,7 @@ function connectToOffice365 {
         if (! $mgApplication) {
             $s = @{
                 DisplayName                 = $displayNameOfApplication 
-                IdentifierUris              = ('https://{0}/{1}' -f $initialDomainNameOfTenant , $displayNameOfApplication) 
+                IdentifierUris              = ('https://{0}/{1}' -f $initialDomainName , $displayNameOfApplication) 
                 Web = @{
                     HomePageUrl = "https://localhost"
                     LogoutUrl = "https://localhost"
@@ -875,38 +989,39 @@ function connectToOffice365 {
             
             tenantId = (Get-MgOrganization).Id 
             #
-            # we seem to be able to use initialDomainNameOfTenant in all places
+            # we seem to be able to use initialDomainName in all places
             # where the value of (Get-MgOrganization).Id (which is a guid
             # string) could be used. Moreover, there is at least one place
             # (namely, the Connect-ExchangeOnline command) where the guid does
-            # not work and initialDomainNameOfTenant is required. Therefore,
+            # not work and initialDomainName is required. Therefore,
             # let's not bother looking up or storing the guid string retuirned
             # by (Get-MgOrganization).Id. and instead we will only store
-            # initialDomainNameOfTenant
+            # initialDomainName
 
             primaryDomainName = (((Get-MgOrganization).VerifiedDomains | where-object {$_.IsDefault -eq $true}).Name)
 
-            initialDomainNameOfTenant  = $initialDomainNameOfTenant 
-            # we are only storing initialDomainNameOfTenant in the configuration file
+            # initialDomainNameOfTenant  = $initialDomainName 
+            initialDomainName  = $initialDomainName 
+            # we are only storing initialDomainName in the configuration file
             # to aid in the work-around of the dll hell caused by the
             # ExchangeOnlineManagementModule and the MgGraph module wanting to use
             # different versions of the System.IdentityModel.Tokens.Jwt assembly.
 
             # I really should only need one of tenantId, primaryDomainName,
-            # initialDomainNameOfTenant However, to aid in debugging (and
+            # initialDomainName However, to aid in debugging (and
             # avoiding the laborious process of recreating the configurations if
             # and when I decide to change which of these three properties I
             # standardize on), I will record all three properties. Todo: figure
             # out how to standadize on just one of these three properties. I
-            # suspect that initialDomainNameOfTenant or tenantId are the most
+            # suspect that initialDomainName or tenantId are the most
             # stable (because I know that a tenant can change its
             # primaryDomainName at will, and possibly multiple tenants can have
-            # the same primarydomainName. Therefore, initialDomainNameOfTenant
+            # the same primarydomainName. Therefore, initialDomainName
             # or tenantId would be the best candidates for the single standard
             # way to specify tenant identity.
 
-            # applicationAppId = $azureAdApplication.AppId;
-            applicationAppId = $mgApplication.AppId
+            # appId = $azureAdApplication.AppId;
+            appId = $mgApplication.AppId
 
             # certificateThumbprint = $certificate.Thumbprint
             base64EncodedPfx = $base64EncodedPfx
@@ -1014,7 +1129,7 @@ function connectToOffice365 {
             $mgOrganization -and 
             (
                 ($mgOrganization.VerifiedDomains | where-object {$_.IsInitial -eq $true}).Name.Trim().ToLower() -eq
-                $configuration['initialDomainNameOfTenant'].Trim().ToLower()
+                $configuration['initialDomainName'].Trim().ToLower()
             )
         ){
             return $true
@@ -1033,20 +1148,19 @@ function connectToOffice365 {
         # Select-MgProfile -Name Beta
         Disconnect-MgGraph -ErrorAction SilentlyContinue 2>$null
         $s = @{
-            ClientId                = $configuration['applicationAppId']
-            # CertificateThumbprint   = $configuration.certificateThumbprint 
+            ClientId                = $configuration['appId']
+            # CertificateThumbprint   = $configuration['certificateThumbprint'] 
             Certificate             = $certificate
 
-            # TenantId                = $configuration['initialDomainNameOfTenant']
+            # TenantId                = $configuration['initialDomainName']
             # at least as of version 1.19 of the Microsoft.Graph module,
-            # passing initialDomainNameOfTenant as the tenantId (in some cases, at least)
+            # passing initialDomainName as the tenantId (in some cases, at least)
             # causes the error: "Connect-MgGraph: You specified a different tenant - once in WithAuthority() and once using WithTenant()."
             # pass the guid version of the tenant id seems to avoid this problem.
             TenantId                = $configuration['tenantId']
             ContextScope            = "Process"
-        }; $result = Connect-MgGraph @s 
+        }; Connect-MgGraph @s 1> $null
         Write-Host "Finished doing Connect-MgGraph"
-        return $result
     }
 
     function ensureThatWeAreConnectedToMgGraph {
@@ -1069,12 +1183,18 @@ function connectToOffice365 {
     function getWeAreConnectedToExchangeOnline {
         [OutputType([Boolean])]
         param ()
-        $connectionInformation = (Get-ConnectionInformation -ErrorAction SilentlyContinue)
+        $connectionInformation = $(
+            try{
+                Get-ConnectionInformation -ErrorAction "Stop"
+            } catch {
+                $null
+            }
+        )
         if(
             $connectionInformation -and 
             (
                 ($connectionInformation.Organization).Trim().ToLower() -eq
-                $configuration['initialDomainNameOfTenant'].Trim().ToLower()
+                $configuration['initialDomainName'].Trim().ToLower()
             )
         ){
             return $true
@@ -1088,18 +1208,23 @@ function connectToOffice365 {
         # [OutputType([Void])]
         param ()
         Write-Host "about to do Connect-ExchangeOnline"
-        Disconnect-ExchangeOnline -Confirm:$false
+        
+        try {
+            Disconnect-ExchangeOnline -Confirm:$false -ErrorAction Stop
+        } catch {
+            Write-Host "ignoring an error that occured with Disconnect-ExchangeOnline: $_"
+        }
         $s = @{
-            AppID                   = $configuration['applicationAppId'] 
-            # CertificateThumbprint   = $configuration.certificateThumbprint 
+            AppID                   = $configuration['appId'] 
+            # CertificateThumbprint   = $configuration['certificateThumbprint'] 
             Certificate             = $certificate
-            Organization            = $configuration['initialDomainNameOfTenant']
+            Organization            = $configuration['initialDomainName']
             ShowBanner              = $false
         }
         Write-Host "arguments are $($s | out-string)"
         $result = Connect-ExchangeOnline @s
-        Write-Host "Finished doing Connect-ExchangeOnline"
-        return $result
+        Write-Host "Finished doing Connect-ExchangeOnline, and the result is $($result).  First mailbox is $(@(get-mailbox)[0])"
+        # return $result
     }
 
     function ensureThatWeAreConnectedToExchangeOnline {
@@ -1130,7 +1255,7 @@ function connectToOffice365 {
             $pnpConnection -and 
             (
                 ($pnpConnection.Tenant).Trim().ToLower() -eq
-                $configuration['initialDomainNameOfTenant'].Trim().ToLower()
+                $configuration['initialDomainName'].Trim().ToLower()
             )
         ){
             return $true
@@ -1191,10 +1316,10 @@ function connectToOffice365 {
         }
         
         $s = @{
-            Url = ( "https://" +  ($configuration.initialDomainNameOfTenant -Split '\.')[0] + ".sharepoint.com") 
-            ClientId = $configuration['applicationAppId'] 
-            Tenant = $configuration['initialDomainNameOfTenant'] 
-            # Thumbprint = $configuration.certificateThumbprint 
+            Url = ( "https://" +  ($configuration['initialDomainName'] -Split '\.')[0] + ".sharepoint.com") 
+            ClientId = $configuration['appId'] 
+            Tenant = $configuration['initialDomainName'] 
+            # Thumbprint = $configuration['certificateThumbprint']
             CertificateBase64Encoded = $configuration['base64EncodedPfx']
             CertificatePassword = (stringToSecureString $configuration['pfxPassword'])
             # the official documentation for the connect-pnponline command
@@ -1209,12 +1334,12 @@ function connectToOffice365 {
             # pkcs#1-encoded RSA private key.  I have not ascertained whether
             # the connect-pnponline command actually works that way.  
 
-        }; $result = Connect-PnPOnline @s 
+        }; Connect-PnPOnline @s 1> $null
 
         # see https://pnp.github.io/powershell/cmdlets/Connect-PnPOnline.html
         # see https://learn.microsoft.com/en-us/sharepoint/dev/solution-guidance/security-apponly-azuread
         Write-Host "Finished doing Connect-PnPOnline (which I call 'Sharepoint Online')"   
-        return $result 
+        
     }
 
     function ensureThatWeAreConnectedToSharepointOnline {
@@ -1239,7 +1364,7 @@ function connectToOffice365 {
         [OutputType([Boolean])]
         param ()
         try {
-            $result = Get-RetentionCompliancePolicy -ErrorAction SilentlyContinue 2> $null
+            $result = Get-RetentionCompliancePolicy -ErrorAction Stop 2> $null
         } catch {
             return $False
         } 
@@ -1257,9 +1382,9 @@ function connectToOffice365 {
         # # connect to "Security & Compliance PowerShell in a Microsoft 365 organization."
         # # Write-Host "about to do Connect-IPPSSession "
         # # $s = @{
-        # #     AppID                   = $configuration.applicationAppId  
-        # #     CertificateThumbprint   = $configuration.certificateThumbprint 
-        # #     Organization            = $initialDomainNameOfTenant
+        # #     AppID                   = $configuration['appId']  
+        # #     CertificateThumbprint   = $configuration['certificateThumbprint'] 
+        # #     Organization            = $initialDomainName
         # # }
         # # Write-Host "arguments are $($s | out-string)"
         # # Connect-IPPSSession @s
@@ -1277,22 +1402,32 @@ function connectToOffice365 {
         # # -AzureADAuthorizationEndpointUri 'https://login.microsoftonline.com/organizations'
 
 
-        Write-Host "about to do our own equivalent of 'Connect-IPPSSession' "
+        # Write-Host "about to do our own equivalent of 'Connect-IPPSSession' "
+        # $s = @{
+        #     AppID                               = $configuration['appId']
+        #     # CertificateThumbprint               = $configuration['certificateThumbprint']
+        #     Certificate                         = $certificate
+        #     Organization                        = $configuration['initialDomainName']
+        #     UseRPSSession                       = $true
+        #     ShowBanner                          = $false
+        #     ConnectionUri                       = 'https://ps.compliance.protection.outlook.com/PowerShell-LiveId' 
+        #     AzureADAuthorizationEndpointUri     = 'https://login.microsoftonline.com/organizations'
+        # }
+        # Write-Host "arguments are $($s | out-string)"
+        # $result = Connect-ExchangeOnline @s
+        # Write-Host "Finished doing our own equivalent of 'Connect-IPPSSession"
+
+        Write-Host "about to do Connect-IPPSSession' "
         $s = @{
-            AppID                               = $configuration.applicationAppId  
-            # CertificateThumbprint               = $configuration.certificateThumbprint 
+            AppID                               = $configuration['appId']  
             Certificate                         = $certificate
-            Organization                        = $configuration.initialDomainNameOfTenant
-            UseRPSSession                       = $true
-            ShowBanner                          = $false
-            ConnectionUri                       = 'https://ps.compliance.protection.outlook.com/PowerShell-LiveId' 
-            AzureADAuthorizationEndpointUri     = 'https://login.microsoftonline.com/organizations'
+            Organization                        = $configuration['initialDomainName']
         }
         Write-Host "arguments are $($s | out-string)"
-        $result = Connect-ExchangeOnline @s
-        Write-Host "Finished doing our own equivalent of 'Connect-IPPSSession"
+        Connect-IPPSSession @s 1> $null
+        Write-Host "Finished doing  'Connect-IPPSSession"
 
-        # return $result
+
 
     }
 
@@ -1308,12 +1443,14 @@ function connectToOffice365 {
     }
 
 
-    
-    try{ ensureThatWeAreConnectedToExchangeOnline } 
-    catch {
-        Write-Host ("encountered error when attempting to ensure that we are " +
-            "connected to Exchange Online: $($_)")
-    }
+
+    # try {
+    #     Disconnect-ExchangeOnline -Confirm:$false -ErrorAction Stop
+    #     # this is here mainly for trying to overcome dll hell.
+    # } catch {
+    #     Write-Host "ignoring an error that occured with Disconnect-ExchangeOnline: $_"
+    # }
+
 
     
     try{ ensureThatWeAreConnectedToMgGraph } 
@@ -1323,10 +1460,12 @@ function connectToOffice365 {
     }
 
 
-    try{ ensureThatWeAreConnectedToSharepointOnline } 
+
+    
+    try{ ensureThatWeAreConnectedToExchangeOnline } 
     catch {
         Write-Host ("encountered error when attempting to ensure that we are " +
-            "connected to Sharepoint Online: $($_) $($_.Exception)")
+            "connected to Exchange Online: $($_)")
     }
 
     try{ ensureThatWeAreConnectedToIPSSession } 
@@ -1338,6 +1477,11 @@ function connectToOffice365 {
 
 
 
+    try{ ensureThatWeAreConnectedToSharepointOnline } 
+    catch {
+        Write-Host ("encountered error when attempting to ensure that we are " +
+            "connected to Sharepoint Online: $($_) $($_.Exception)")
+    }
 
 
     # it is important that the Exchange Online stuff occurs before the MgGraph stuff because
@@ -1357,24 +1501,24 @@ function connectToOffice365 {
     #     # Write-Host "about to do Connect-MgGraph"
     #     # # Select-MgProfile -Name Beta
     #     # $s = @{
-    #     #     ClientId                = $configuration.applicationAppId 
-    #     #     # CertificateThumbprint   = $configuration.certificateThumbprint 
-    #     #     Certificate             = Get-Item (Join-Path $certificateStorageLocation $configuration.certificateThumbprint )
-    #     #     TenantId                = $configuration.tenantId 
+    #     #     ClientId                = $configuration['appId'] 
+    #     #     # CertificateThumbprint   = $configuration['certificateThumbprint'] 
+    #     #     Certificate             = Get-Item (Join-Path $certificateStorageLocation $configuration['certificateThumbprint'] )
+    #     #     TenantId                = $configuration['tenantId']
     #     #     ContextScope            = "Process"
     #     #     ForceRefresh            = $True
     #     # }; Connect-MgGraph @s 
     #     # Write-Host "Finished doing Connect-MgGraph"
 
-    #     # $initialDomainNameOfTenant = ((Get-MgOrganization).VerifiedDomains | where-object {$_.IsInitial -eq $true}).Name
+    #     # $initialDomainName = ((Get-MgOrganization).VerifiedDomains | where-object {$_.IsInitial -eq $true}).Name
 
-    #     # $initialDomainNameOfTenant = $configuration.initialDomainNameOfTenant
+    #     # $initialDomainName = $configuration['initialDomainName']
 
     #     # Write-Host "about to do Connect-AzureAD"
     #     # $s = @{
-    #     #     ApplicationId           = $configuration.applicationAppId 
-    #     #     CertificateThumbprint   = $configuration.certificateThumbprint 
-    #     #     TenantId                = $configuration.tenantId 
+    #     #     ApplicationId           = $configuration['appId'] 
+    #     #     CertificateThumbprint   = $configuration['certificateThumbprint']
+    #     #     TenantId                = $configuration['tenantId'] 
     #     # }; $azureConnection = Connect-AzureAD @s 
     #     # Write-Host "done"
 
@@ -1394,7 +1538,7 @@ function connectToOffice365 {
 
 
 
-    #     # $sharepointServiceUrl="https://" +  ($initialDomainNameOfTenant -Split '\.')[0] + "-admin.sharepoint.com"
+    #     # $sharepointServiceUrl="https://" +  ($initialDomainName -Split '\.')[0] + "-admin.sharepoint.com"
 
     #     # $s=@{
     #     #     Url=$sharepointServiceUrl
@@ -1402,9 +1546,9 @@ function connectToOffice365 {
     #     # }; Connect-SPOService @s
 
     #     # Connect-PnPOnline `
-    #         # -ClientId $configuration.applicationAppId  `
+    #         # -ClientId $configuration['appId']  `
     #         # -Tenant (Get-AzureAdDomain | where-object {$_.IsInitial}).Name `
-    #         # -Thumbprint $configuration.certificateThumbprint 
+    #         # -Thumbprint $configuration['certificateThumbprint'] 
             
     #     # Install-Module -Name "PnP.PowerShell"   
 
@@ -1766,7 +1910,7 @@ function getBitwardenItemContainingOffice365ManagementConfiguration {
         if($createIfNotAlreadyExists){
             Write-Host ""
             Write-Host "======================="
-            Write-Host "We will now construct office365 management credentials for $($primaryDomainName.ToLower()).  Please respond to the authorization prompt(s) accordingly."
+            Write-Host "We will now construct Microsoft Graph management credentials for $($primaryDomainName.ToLower()).  Please respond to the authorization prompt(s) accordingly."
             Write-Host "$($primaryDomainName.ToLower())"
             Write-Host "======================="
             Write-Host ""

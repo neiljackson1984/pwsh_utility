@@ -1,4 +1,7 @@
 function unlockTheBitwardenVault(){
+    #temporary hack to speed things up:
+    Write-Host "blindly assuming that bitwarden vault is unlocked..."; return
+    
     Write-Host "Attempting to unlock the bitwarden vault..."
     if ($(bw unlock --check)) {
         Write-Host "The bitwarden vault is already unlocked."
@@ -627,3 +630,256 @@ function addEntryToPSModulePathPersistently($pathEntry){
 
 }
 
+
+# I grabbed this function from a google search.  Todo: inspect it, clean it, delete it if possible.
+function Test-SubPath
+{
+	<#
+	.SYNOPSIS
+	Tests whether one path is a subpath of another.
+
+	.DESCRIPTION
+	Tests whether one path is a subpath of another.
+	The values passed in are compared as file path strings.
+	An optional switch allows for checking of the physical existence of the paths.
+
+	.PARAMETER ChildPath
+	The path of the child item.
+
+	.PARAMETER ParentPath
+	The path of the parent item.
+
+	.PARAMETER Physical
+	When the Physical switch is used, the output will be true only if the child item (and therefore also the parent item) actually exists.
+
+	.EXAMPLE
+	## Test paths as strings ##
+
+	PS C:\> $childPath  = 'C:\NonExistentFolder\NonExistentFile.txt'
+	PS C:\> $parentPath = 'C:\NonExistentFolder'
+	PS C:\> Test-SubPath -ChildPath $childPath -ParentPath $parentPath
+	True
+
+	# Returns True because the parent path is a subpath of the child path.
+
+	.EXAMPLE
+	## Test paths as strings ##
+
+	PS C:\> $childPath  = 'C:\NonExistentFolder\NonExistentFile.txt'
+	PS C:\> $parentPath = 'C:\NonExistent'
+	PS C:\> Test-SubPath -ChildPath $childPath -ParentPath $parentPath
+	False
+
+	# Returns False because, although the parent path is a substring of the child path, it is not a subpath.
+
+	.EXAMPLE
+	## Test paths as strings and check existence ##
+
+	PS C:\> $childPath  = 'C:\NonExistentFolder\NonExistentFile.txt'
+	PS C:\> $parentPath = 'C:\NonExistentFolder'
+	PS C:\> Test-SubPath -ChildPath $childPath -ParentPath $parentPath -Physical
+	False
+
+	# Returns False because, although the parent path is a subpath of the child path, the child item does not exist.
+
+	.EXAMPLE
+	## Test paths as strings and check existence ##
+
+	PS C:\> $childPath  = $Env:HOME
+	PS C:\> $parentPath = "$Env:HOMEDRIVE\"
+	PS C:\> Test-SubPath -ChildPath $childPath -ParentPath $parentPath -Physical
+	True
+
+	# Returns True because the parent path is a subpath of the child path and the child item (and therefore the parent item) exists.
+
+	.INPUTS
+	[System.String]
+	Accepts string objects via the ChildPath parameter. The output of Get-ChildItem can be piped into Test-SubPath.
+
+	.OUTPUTS
+	[System.Boolean]
+	Returns a boolean (true/false) object.
+
+	.NOTES
+	Author : nmbell
+
+	.LINK
+	Test-PowdrgitPath
+	.LINK
+	about_powdrgit
+	.LINK
+	https://github.com/nmbell/powdrgit/blob/main/help/about_powdrgit.md
+	#>
+
+	# Use cmdlet binding
+	[CmdletBinding()]
+
+	# Declare output type
+	[OutputType([System.Boolean])]
+
+	# Declare parameters
+	Param
+	(
+
+
+		[Parameter(
+	  	  Mandatory                       = $false
+	  	, Position                        = 0
+	  	, ValueFromPipeline               = $true
+	  	, ValueFromPipelineByPropertyName = $true
+	  	)]
+		[Alias('FullName','Path')]
+		[String]
+		$ChildPath
+
+	,	[Parameter(
+	  	  Mandatory                       = $false
+	  	, Position                        = 1
+	  	, ValueFromPipeline               = $false
+	  	, ValueFromPipelineByPropertyName = $true
+	  	)]
+		[String]
+		$ParentPath
+
+	,	[Switch]
+		$Physical
+	)
+
+	BEGIN
+	{
+		# $bk = 'B'
+
+		# Common BEGIN:
+		Set-StrictMode -Version 3.0
+		# $thisFunctionName = $MyInvocation.MyCommand
+		# $start            = Get-Date
+		# $indent           = ($Powdrgit.DebugIndentChar[0]+'   ')*($PowdrgitCallDepth++)
+		$PSDefaultParameterValues += @{ '*:Verbose' = $(If ($DebugPreference -notin 'Ignore','SilentlyContinue') { $DebugPreference } Else { $VerbosePreference }) } # turn on Verbose with Debug
+		# Write-Debug "  $(ts)$indent[$thisFunctionName][$bk]Start: $($start.ToString('yyyy-MM-dd HH:mm:ss.fff'))"
+
+		# Function BEGIN:
+	}
+
+	PROCESS
+	{
+		# $bk = 'P'
+
+		$result = $false
+
+		If ($ChildPath.Trim() -and $ParentPath.Trim())
+		{
+			# Test by the string values of the paths
+			$testPath = $ChildPath
+			Do {
+				If ($testPath -eq $ParentPath)
+				{
+					$result = $true
+					Break
+				}
+				$testPath = Split-Path -Path $testPath -Parent
+			} While ($testPath)
+
+			# Test for physical existence
+			If ($result -and $Physical)
+			{
+				$result = Test-Path -Path $ChildPath
+			}
+		}
+
+		Write-Output $result
+	}
+
+	END
+	{
+		# $bk = 'E'
+
+		# Function END:
+
+		# Common END:
+		# $end      = Get-Date
+		# $duration = New-TimeSpan -Start $start -End $end
+		# Write-Debug "  $(ts)$indent[$thisFunctionName][$bk]Finish: $($end.ToString('yyyy-MM-dd HH:mm:ss.fff')) ($($duration.ToString('d\d\ hh\:mm\:ss\.fff')))"
+		# $PowdrgitCallDepth--
+	}
+}
+
+
+function getReferencedAssembliesRecursivelyForReflection([System.Reflection.Assembly] $rootAssembly, $filter={$true}, [String[]] $pathHints = @(), $accumulatedNames = ([System.Collections.ArrayList] @())){
+    # write-host "now processing $($rootAssembly.FullName)"
+    # the passed assembly is assumed to be in its own "private": load context that we are free to pollute.
+    # therefore, when calling this function, you shjould load the rooitAssembly especially in a temporary load context just to be polluted by this function.
+    $referencedAssemblyNames = $rootAssembly.GetReferencedAssemblies() 
+    
+
+    
+    
+    foreach(
+        $assembly in $(
+            @(
+                $rootAssembly
+
+                $rootAssembly.GetReferencedAssemblies() | 
+                    % {
+                        [System.Reflection.AssemblyName] $assemblyName = $_
+
+                        
+                        # (new-object "System.Runtime.Loader.AssemblyLoadContext" "asdfgasgafhg",$True).LoadFromAssemblyName($_)
+                        try {
+                            & {
+                                $private:ErrorActionPreference = "Stop"
+                                # [System.Runtime.Loader.AssemblyLoadContext]::GetLoadContext($rootAssembly).LoadFromAssemblyName($assemblyName)
+                                (new-object "System.Runtime.Loader.AssemblyLoadContext" "asdfgasgafhg",$True).LoadFromAssemblyName($assemblyName) 2> $null
+                            }
+                        } catch {
+                            # in this case, the runtime has been unable to load
+                            # the assembly based on its AssemblyName alone, so
+                            # we will look in the pathHints (should we be doing
+                            # pathHints first?)
+                            $pathsOfMatchingCandidateDllFiles = @(
+                                $pathHints |
+                                    foreach-object {
+                                        (Get-ChildItem `
+                                            -Path $_ `
+                                            -Recurse `
+                                            -File `
+                                            -Include "*.dll" 
+                                        ) | foreach-object {$_.FullName}
+                                    } | 
+                                    where-object {
+                                        try{
+                                            & {
+                                                $private:ErrorActionPreference = "Stop"
+                                                ([System.Reflection.Assembly]::LoadFile($_)).FullName -eq $assemblyName.FullName 2> $null
+                                            }
+                                        } catch {
+                                            $False
+                                        }
+                                    }
+                            )
+
+                            # (Get-ChildItem `
+                            #     -Path (join-path $pathOfRootFolderOfExchangeModule "netCore") `
+                            #     -Recurse `
+                            #     -Include "*.dll" 
+                            # ) | foreach-object {$_.FullName}
+
+                            if($pathsOfMatchingCandidateDllFiles ){
+                                (new-object "System.Runtime.Loader.AssemblyLoadContext" "asdfgasgafhg",$True).LoadFromAssemblyPath($pathsOfMatchingCandidateDllFiles[0])
+                            }
+
+                        }
+                    } 
+            ) | where-object $filter 
+        )
+    ){
+        if( -not ($assembly.FullName -in $accumulatedNames ) ){
+            # Write-Host "emitting: $($assembly.FullName)"
+            $assembly
+            $accumulatedNames.Add($assembly.FullName) 1> $null
+            # write-host "`$accumulatedNames.Count:  $($accumulatedNames.Count)"
+            getReferencedAssembliesRecursivelyForReflection -rootAssembly $assembly -filter $filter -accumulatedNames $accumulatedNames
+        }
+    }
+    
+    # $referencedAssemblies | where-object $filter 
+}
