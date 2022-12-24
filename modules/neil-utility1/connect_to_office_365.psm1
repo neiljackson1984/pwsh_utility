@@ -87,12 +87,13 @@ function forceExchangeModuleToLoadItsVersionOf_System_IdentityModel_Tokens_Jwt()
     # Import-Module ExchangeOnlineManagement
     # Disconnect-ExchangeOnline -confirm:0 
     
-    [System.AppDomain]::CurrentDomain.GetAssemblies() | 
-        Where-Object Location | 
-        Where-Object {$_.FullName -match "^System.IdentityModel.Tokens.Jwt\b.*`$" } |
-        Sort-Object -Property FullName | 
-        Select-Object -Property FullName, Location, GlobalAssemblyCache, IsFullyTrusted |
-        fl
+    $(
+        [System.AppDomain]::CurrentDomain.GetAssemblies() | 
+            Where-Object Location | 
+            Where-Object {$_.FullName -match "^System.IdentityModel.Tokens.Jwt\b.*`$" } |
+            Sort-Object -Property FullName | 
+            Select-Object -Property FullName, Location, GlobalAssemblyCache, IsFullyTrusted  
+    ) | Write-Host
 }
 
 
@@ -293,6 +294,8 @@ function connectToOffice365 {
         [String] $primaryDomainName = ""
     )
     
+
+    forceExchangeModuleToLoadItsVersionOf_System_IdentityModel_Tokens_Jwt
     # todo: think through and simplify all the possibilities of parameters.  We
     # have three parameters (namely: bitwardenItemIdOfTheConfiguration,
     # tenantIdHint, primaryDomainName)  that, at first glance, appear to be
@@ -1146,7 +1149,7 @@ function connectToOffice365 {
         param ()
         Write-Host "about to do Connect-MgGraph"
         # Select-MgProfile -Name Beta
-        Disconnect-MgGraph -ErrorAction SilentlyContinue 2>$null
+        Disconnect-MgGraph -ErrorAction SilentlyContinue 1>$null 2>$null
         $s = @{
             ClientId                = $configuration['appId']
             # CertificateThumbprint   = $configuration['certificateThumbprint'] 
@@ -1209,11 +1212,11 @@ function connectToOffice365 {
         param ()
         Write-Host "about to do Connect-ExchangeOnline"
         
-        try {
-            Disconnect-ExchangeOnline -Confirm:$false -ErrorAction Stop
-        } catch {
-            Write-Host "ignoring an error that occured with Disconnect-ExchangeOnline: $_"
-        }
+        # try {
+        #     Disconnect-ExchangeOnline -Confirm:$false -ErrorAction Stop
+        # } catch {
+        #     Write-Host "ignoring an error that occured with Disconnect-ExchangeOnline: $_"
+        # }
         $s = @{
             AppID                   = $configuration['appId'] 
             # CertificateThumbprint   = $configuration['certificateThumbprint'] 
@@ -1234,10 +1237,9 @@ function connectToOffice365 {
             Write-Host ("It seems that a connection to Exchange Online already " +
                 "exists, so we will not bother attempting to reconnect.")
         } else {
-            connectToExchangeOnline 
+            connectToExchangeOnline 1> $null
         }
     }
-
 
 
 
@@ -1360,21 +1362,30 @@ function connectToOffice365 {
     # IPS session).  It is not quite correct to treat IPS session as another
     # top-=level item, we ought to make it a substituent of the Exchange
     # connection somehow, but oh well. 
-    function getWeAreConnectedToIPSSession {
+    function getWeAreConnectedToIPPSSession {
         [OutputType([Boolean])]
         param ()
         try {
-            $result = Get-RetentionCompliancePolicy -ErrorAction Stop 2> $null
+            # $result = Get-RetentionCompliancePolicy -ErrorAction Stop 2> $null
+            $connectionContexts = @( [Microsoft.Exchange.Management.ExoPowershellSnapin.ConnectionContextFactory]::GetAllConnectionContexts() )
         } catch {
             return $False
         } 
-        return ( [Boolean] $result )   
+        $matchingConnectionContexts = @(
+            $connectionContexts |
+                Where-Object {
+                    ($_.ConnectionUri -eq "https://ps.compliance.protection.outlook.com") -and
+                    ($_.Organization.Trim().ToLower() -eq $configuration['initialDomainName'].Trim().ToLower())
+                }
+        )
+
+        return ( [Boolean] $matchingConnectionContexts )   
         # we really ought to be testing not only that we are connected, but also
         # that we are connected in a way that matches the configuration file.
 
     }
 
-    function connectToIPSSession {
+    function connectToIPPSSession {
         # [OutputType([Void])]
         param ()
             
@@ -1417,30 +1428,59 @@ function connectToOffice365 {
         # $result = Connect-ExchangeOnline @s
         # Write-Host "Finished doing our own equivalent of 'Connect-IPPSSession"
 
-        Write-Host "about to do Connect-IPPSSession' "
+        Write-Host "about to do Connect-IPPSSession"
         $s = @{
             AppID                               = $configuration['appId']  
             Certificate                         = $certificate
             Organization                        = $configuration['initialDomainName']
+            PSSessionOption = $(
+                & {
+                    $private:s = @{
+                        OpenTimeout = 15000
+                        IdleTimeout = (4*60000)
+                    }; New-PSSessionOption @s
+                }
+            )
         }
         Write-Host "arguments are $($s | out-string)"
-        Connect-IPPSSession @s 1> $null
-        Write-Host "Finished doing  'Connect-IPPSSession"
+        $result = Connect-IPPSSession @s
+        Write-Host "Finished doing  'Connect-IPPSSession', with result: $($result)"
 
 
 
     }
 
-    function ensureThatWeAreConnectedToIPSSession {
+    function ensureThatWeAreConnectedToIPPSSession {
         [OutputType([Void])]
         param ()
-        if( getWeAreConnectedToIPSSession ){
-            Write-Host ("It seems that a connection to IPSSession already " +
+        if( getWeAreConnectedToIPPSSession ){
+            Write-Host ("It seems that a connection to IPPSSession already " +
                 "exists, so we will not bother attempting to reconnect.")
         } else {
-            connectToIPSSession 
+            connectToIPPSSession 
         }
     }
+
+
+    
+    function ensureThatWeAreConnectedToExchangeOnlineAndIPPSSession {
+        # this function exists because we have no way to disconnect from ipps
+        # session independently of disconnecting from exchangeonline, and vice
+        # versa.
+        [OutputType([Void])]
+        param ()
+        if( (getWeAreConnectedToExchangeOnline) -and (getWeAreConnectedToIPPSSession) ){
+            Write-Host ("It seems that connections to Exchange Online and IPPSSession already " +
+                "exists, so we will not bother attempting to reconnect.")
+        } else {
+            Disconnect-ExchangeOnline -confirm:0
+            
+            
+            connectToExchangeOnline 1> $null
+            connectToIPPSSession 1> $null
+        }
+    }
+
 
 
 
@@ -1462,16 +1502,23 @@ function connectToOffice365 {
 
 
     
-    try{ ensureThatWeAreConnectedToExchangeOnline } 
-    catch {
-        Write-Host ("encountered error when attempting to ensure that we are " +
-            "connected to Exchange Online: $($_)")
-    }
+    # try{ ensureThatWeAreConnectedToExchangeOnline } 
+    # catch {
+    #     Write-Host ("encountered error when attempting to ensure that we are " +
+    #         "connected to Exchange Online: $($_)")
+    # }
 
-    try{ ensureThatWeAreConnectedToIPSSession } 
+    # try{ ensureThatWeAreConnectedToIPPSSession } 
+    # catch {
+    #     Write-Host ("encountered error when attempting to ensure that we are " +
+    #         "connected to IPPSSession: $($_)")
+    # }
+
+
+    try{ ensureThatWeAreConnectedToExchangeOnlineAndIPPSSession } 
     catch {
         Write-Host ("encountered error when attempting to ensure that we are " +
-            "connected to IPSSession: $($_)")
+            "connected to IPPSSession and ExchangeOnline: $($_)")
     }
 
 

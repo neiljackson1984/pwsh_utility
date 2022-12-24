@@ -211,7 +211,14 @@ function sendMail($emailAccount, $from, $to = @(), $cc = @(), $bcc = @(), $subje
 
     # $bitwardenItems = $rawBitwardenItems | ConvertFrom-Json | Where-Object {$_.name -eq 'AzureAD app password' -and $_.login.username -eq $emailAccount}
     $bitwardenItems = $rawBitwardenItems | ConvertFrom-Json 
-    $matchingBitwardenItems = $bitwardenItems | where-object { $_.fields | where-object { $_.name -eq 'record_type' -and $_.value -eq 'smtp_mail_sending' } }
+    $matchingBitwardenItems = $bitwardenItems | 
+        where-object { 
+            $_.fields | 
+                where-object { 
+                    $_.name -eq 'record_type' -and 
+                    $_.value -eq 'smtp_mail_sending' 
+                } 
+        }
 
     $bitwardenItemContainingEmailCredentials = $matchingBitwardenItems[0]
     if (! $bitwardenItemContainingEmailCredentials ){
@@ -246,74 +253,227 @@ function sendMail($emailAccount, $from, $to = @(), $cc = @(), $bcc = @(), $subje
 
 }
 
-function setLicensesAssignedToAzureAdUser($objectIdOfAzureAdUser, $skuPartNumbers){
-    $azureAdUser = Get-AzureADUser -ObjectId $objectIdOfAzureAdUser
-    if (! $azureAdUser ){
-        Write-Host "No Azure AD user having id $objectIdOfAzureAdUser exists."
+# function setLicensesAssignedToAzureAdUser($objectIdOfAzureAdUser, $skuPartNumbers){
+#     $azureAdUser = Get-AzureADUser -ObjectId $objectIdOfAzureAdUser
+#     if (! $azureAdUser ){
+#         Write-Host "No Azure AD user having id $objectIdOfAzureAdUser exists."
+#         return
+#     } 
+
+#     # to view the available sku part numbers, run the following command:
+#     # (Get-AzureADSubscribedSku).SkuPartNumber
+
+#     # assign licenses:
+#     # annoyingly, there does not seem to be a good way to buy licenses programmatically 
+#     $desiredSkuIds = @(( Get-AzureADSubscribedSku | where-object { $_.SkuPartNumber -in @($skuPartNumbers) }).SkuId)
+#     $existingSkuIds = @($azureAdUser.AssignedLicenses | foreach-object {$_.SkuId})
+#     Write-Host (
+#         "Initially, $($azureAdUser.UserPrincipalName) has these skuPartNumbers: " + ( 
+#             @(
+#                 ( Get-AzureADSubscribedSku | where-object { $_.SkuId -in $existingSkuIds }).SkuPartNumber
+#             ) -Join ", "
+#         )
+#     )
+    
+#     #ensure that licenses are assigned:
+#     $skuIdsToRemoveFromUser = $existingSkuIds | where-object {-not ($_ -in $desiredSkuIds)};
+#     $skuIdsToGiveToUser = $desiredSkuIds | where-object {-not ($_ -in $existingSkuIds)};
+    
+#     Write-Host ("skuIdsToRemoveFromUser: ", $skuIdsToRemoveFromUser)
+#     Write-Host ("skuIdsToGiveToUser: ", $skuIdsToGiveToUser)
+    
+#     if($skuIdsToRemoveFromUser -or $skuIdsToGiveToUser){
+#         Write-Host "changing the user's license assignment to match the desired configuration"
+        
+#         if($skuIdsToRemoveFromUser){
+#             # $assignedLicenses.RemoveLicenses = @($skuIdsToRemoveFromUser | foreach-object {$x = New-Object -TypeName Microsoft.Open.AzureAD.Model.AssignedLicense; $x.SkuId = $_; $x })
+#             $assignedLicenses = New-Object -TypeName Microsoft.Open.AzureAD.Model.AssignedLicenses
+#             $assignedLicenses.RemoveLicenses = $skuIdsToRemoveFromUser
+#             Set-AzureAdUserLicense -ObjectId $azureAdUser.ObjectId -AssignedLicenses $assignedLicenses
+#         }
+        
+#         foreach($skuIdToGiveToUser in $skuIdsToGiveToUser){
+#             $assignedLicense = New-Object -TypeName Microsoft.Open.AzureAD.Model.AssignedLicense;
+#             $assignedLicense.SkuId = $skuIdToGiveToUser;
+#             $assignedLicenses = New-Object -TypeName Microsoft.Open.AzureAD.Model.AssignedLicenses;
+#             $assignedLicenses.AddLicenses = $assignedLicense;
+#             $azureAdUser | Set-AzureADUser -UsageLocation "US"
+#             Set-AzureAdUserLicense -ObjectId $azureAdUser.ObjectId -AssignedLicenses $assignedLicenses
+#         }
+        
+#         # if($skuIdsToGiveToUser){
+#             # $assignedLicenses = New-Object -TypeName Microsoft.Open.AzureAD.Model.AssignedLicenses
+#             # $assignedLicenses.AddLicenses = $skuIdsToGiveToUser
+#             # Set-AzureAdUserLicense -ObjectId $azureAdUser.ObjectId -AssignedLicenses $assignedLicenses
+#         # }
+
+#         $existingSkuIds = @((Get-AzureAdUser -ObjectId $azureAdUser.ObjectId).AssignedLicenses | foreach-object {$_.SkuId})
+#         Write-Host (
+#             "After making changes, $($azureAdUser.UserPrincipalName) has these skuPartNumbers: " + ( 
+#                 @(
+#                     ( Get-AzureADSubscribedSku | where-object { $_.SkuId -in $existingSkuIds }).SkuPartNumber
+#                 ) -Join ", "
+#             )
+#         )
+
+#     } else {
+#         Write-Host "no changes need to be made to the user's licenses."
+#     }
+
+# }
+
+
+function setLicensesAssignedToMgUser($userId, $skuPartNumbers){
+    # $azureAdUser = Get-AzureADUser -ObjectId $objectIdOfAzureAdUser
+    # $mgUser = Get-MgUser -UserId  $userId
+    
+    # $propertyNames = @(get-mguser -UserId $userId  | get-member -MemberType Property | foreach-object {$_.Name}) 
+    # $mgUser = get-mguser -UserId $userId -Property $propertyNames
+    
+    # $mgUser = get-mguser -UserId $userId -Property @("UsageLocation", "AssignedLicenses") 
+    $mgUser = get-mguser -UserId $userId 
+    if (! $mgUser ){
+        Write-Host "No mgUser having id $userId exists."
         return
     } 
 
     # to view the available sku part numbers, run the following command:
-    # (Get-AzureADSubscribedSku).SkuPartNumber
+    # # (Get-AzureADSubscribedSku).SkuPartNumber
+    # (Get-MgSubscribedSku).SkuPartNumber
+
+    $mgSubscribedSku = Get-MgSubscribedSku
 
     # assign licenses:
     # annoyingly, there does not seem to be a good way to buy licenses programmatically 
-    $desiredSkuIds = @(( Get-AzureADSubscribedSku | where-object { $_.SkuPartNumber -in @($skuPartNumbers) }).SkuId)
-    $existingSkuIds = @($azureAdUser.AssignedLicenses | foreach-object {$_.SkuId})
+    $desiredSkuIds = @(
+        $mgSubscribedSku | 
+            where-object { $_.SkuPartNumber -in @($skuPartNumbers) } |
+            foreach-object { $_.SkuId }
+    )
+    $initialExistingSkuIds = @(
+        # Get-MgUserLicenseDetail -UserId $mgUser.Id | 
+        # $mgUser.AssignedLicenses | 
+        (get-mguser -UserId $mgUser.Id -Property @("AssignedLicenses")).AssignedLicenses | 
+            where-object { $_ } | 
+            foreach-object {$_.SkuId}
+    )
     Write-Host (
-        "Initially, $($azureAdUser.UserPrincipalName) has these skuPartNumbers: " + ( 
-            @(
-                ( Get-AzureADSubscribedSku | where-object { $_.SkuId -in $existingSkuIds }).SkuPartNumber
-            ) -Join ", "
-        )
+        @(
+            "Initially, $($mgUser.UserPrincipalName) has the "
+            "following $($initialExistingSkuIds.Length) skuPartNumbers: " 
+            ( 
+                @( $mgSubscribedSku |
+                    where-object { $_.SkuId -in $initialExistingSkuIds } |
+                    foreach-object {$_.SkuPartNumber}
+                ) -Join ", "
+            )
+        ) -join ""
     )
     
     #ensure that licenses are assigned:
-    $skuIdsToRemoveFromUser = $existingSkuIds | where-object {-not ($_ -in $desiredSkuIds)};
-    $skuIdsToGiveToUser = $desiredSkuIds | where-object {-not ($_ -in $existingSkuIds)};
+    $skuIdsToRemoveFromUser = @($initialExistingSkuIds | where-object {-not ($_ -in $desiredSkuIds)});
+    $skuIdsToGiveToUser = @($desiredSkuIds | where-object {-not ($_ -in $initialExistingSkuIds)});
     
-    Write-Host ("skuIdsToRemoveFromUser: ", $skuIdsToRemoveFromUser)
-    Write-Host ("skuIdsToGiveToUser: ", $skuIdsToGiveToUser)
+    Write-Host ("skuIdsToRemoveFromUser ($($skuIdsToRemoveFromUser.Length)): ", $skuIdsToRemoveFromUser)
+    Write-Host ("skuIdsToGiveToUser ($($skuIdsToGiveToUser.Length)):", $skuIdsToGiveToUser)
     
     if($skuIdsToRemoveFromUser -or $skuIdsToGiveToUser){
         Write-Host "changing the user's license assignment to match the desired configuration"
         
-        if($skuIdsToRemoveFromUser){
-            # $assignedLicenses.RemoveLicenses = @($skuIdsToRemoveFromUser | foreach-object {$x = New-Object -TypeName Microsoft.Open.AzureAD.Model.AssignedLicense; $x.SkuId = $_; $x })
-            $assignedLicenses = New-Object -TypeName Microsoft.Open.AzureAD.Model.AssignedLicenses
-            $assignedLicenses.RemoveLicenses = $skuIdsToRemoveFromUser
-            Set-AzureAdUserLicense -ObjectId $azureAdUser.ObjectId -AssignedLicenses $assignedLicenses
+        # make sure that the user has a UsageLocationn defined
+
+        $intialUsageLocation = (get-mguser -UserId $mgUser.Id -Property @("UsageLocation")).UsageLocation
+        if($intialUsageLocation){
+            Write-Host (@(
+                "$($mgUser.UserPrincipalName) already seems to have a UsageLocation "
+                "assigned (namely, `"$($intialUsageLocation)`"), so we will not "
+                "bother to set UsageLocation."
+            ) -join "")
+        } else {
+            $newUsageLocation = (Get-MgOrganization).CountryLetterCode
+            Write-Host (@(
+                "$($mgUser.UserPrincipalName) seems to have "
+                "no UsageLocation, so we will set UsageLocation "
+                "to `"$($newUsageLocation)`"."
+            ) -join "")
+
+            Update-MgUser -UserId $mgUser.Id -UsageLocation $newUsageLocation 1> $null
+            # $mgUser = get-mguser -UserId $userId -Property @("UsageLocation", "AssignedLicenses") 
         }
+
+        # if($skuIdsToRemoveFromUser){
+        #     # # $assignedLicenses.RemoveLicenses = @($skuIdsToRemoveFromUser | foreach-object {$x = New-Object -TypeName Microsoft.Open.AzureAD.Model.AssignedLicense; $x.SkuId = $_; $x })
+        #     $assignedLicenses = New-Object -TypeName Microsoft.Open.AzureAD.Model.AssignedLicenses
+        #     $assignedLicenses.RemoveLicenses = $skuIdsToRemoveFromUser
+        #     Set-AzureAdUserLicense -ObjectId $azureAdUser.ObjectId -AssignedLicenses $assignedLicenses
+
+
+        # }
         
-        foreach($skuIdToGiveToUser in $skuIdsToGiveToUser){
-            $assignedLicense = New-Object -TypeName Microsoft.Open.AzureAD.Model.AssignedLicense;
-            $assignedLicense.SkuId = $skuIdToGiveToUser;
-            $assignedLicenses = New-Object -TypeName Microsoft.Open.AzureAD.Model.AssignedLicenses;
-            $assignedLicenses.AddLicenses = $assignedLicense;
-            $azureAdUser | Set-AzureADUser -UsageLocation "US"
-            Set-AzureAdUserLicense -ObjectId $azureAdUser.ObjectId -AssignedLicenses $assignedLicenses
-        }
-        
+        # foreach($skuIdToGiveToUser in $skuIdsToGiveToUser){
+        #     $assignedLicense = New-Object -TypeName Microsoft.Open.AzureAD.Model.AssignedLicense;
+        #     $assignedLicense.SkuId = $skuIdToGiveToUser;
+        #     $assignedLicenses = New-Object -TypeName Microsoft.Open.AzureAD.Model.AssignedLicenses;
+        #     $assignedLicenses.AddLicenses = $assignedLicense;
+        #     $azureAdUser | Set-AzureADUser -UsageLocation "US"
+        #     Set-AzureAdUserLicense -ObjectId $azureAdUser.ObjectId -AssignedLicenses $assignedLicenses
+        # }
+
         # if($skuIdsToGiveToUser){
             # $assignedLicenses = New-Object -TypeName Microsoft.Open.AzureAD.Model.AssignedLicenses
             # $assignedLicenses.AddLicenses = $skuIdsToGiveToUser
             # Set-AzureAdUserLicense -ObjectId $azureAdUser.ObjectId -AssignedLicenses $assignedLicenses
         # }
 
-        $existingSkuIds = @((Get-AzureAdUser -ObjectId $azureAdUser.ObjectId).AssignedLicenses | foreach-object {$_.SkuId})
-        Write-Host (
-            "After making changes, $($azureAdUser.UserPrincipalName) has these skuPartNumbers: " + ( 
-                @(
-                    ( Get-AzureADSubscribedSku | where-object { $_.SkuId -in $existingSkuIds }).SkuPartNumber
-                ) -Join ", "
-            )
-        )
 
+
+        $s = @{
+            UserId = $mgUser.Id
+            RemoveLicenses = $skuIdsToRemoveFromUser
+            AddLicenses = (
+                # [IMicrosoftGraphAssignedLicense[]]
+                @(
+                    $skuIdsToGiveToUser | 
+                        foreach-object {
+                            (
+                                # [IMicrosoftGraphAssignedLicense] 
+                                @{
+                                    DisabledPlans = @()
+                                    SkuId = $_
+                                }
+                            )
+                        }
+                )
+            )
+        }; Set-MgUserLicense @s 1> $null
+
+        $finalExistingSkuIds = @(
+            # Get-MgUserLicenseDetail -UserId $mgUser.Id |
+            # $mgUser.AssignedLicenses | 
+            (get-mguser -UserId $mgUser.Id -Property @("AssignedLicenses")).AssignedLicenses |
+                where-object { $_ } | 
+                foreach-object {$_.SkuId}
+        )
+        Write-Host (
+            @(
+                "After making changes, $($mgUser.UserPrincipalName) "
+                "has these $($finalExistingSkuIds.Length) skuPartNumbers: " 
+                ( 
+                    @(
+                        $mgSubscribedSku | 
+                            where-object { $_.SkuId -in $finalExistingSkuIds } | 
+                            foreach-object {$_.SkuPartNumber}
+                    ) -Join ", "
+                )
+            ) -join ""
+        )
     } else {
         Write-Host "no changes need to be made to the user's licenses."
     }
 
 }
+
+
 
 function grantUserAccessToMailbox(
     $idOfUserToBeGrantedAccess, 

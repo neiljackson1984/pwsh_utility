@@ -6,101 +6,119 @@ function initializeUser {
     Param(
             [HashTable] $userSpec,
             [Switch] $sendToDebuggingAddressInsteadOfTrueAddresses = $false,
-            [Switch] $doSendWelcomeMessage = $false
+            [Switch] $doSendWelcomeMessage = $false,
+            [String] $emailAccountForSendingAdvisoryMessages = $null
     )
     $companyParameters = getFieldMapFromBitwardenItem $userSpec['bitwardenItemIdOfCompanyParameters']
-    if ($companyParameters -eq $companyParametersCollection['nakanoassociates.com']){
+    if ($companyParameters['emailDomainName'] -eq 'nakanoassociates.com'){
         Write-Host "this is a Nakano job"
         
         $idOfBitwardenItemContainingSoftetherVpnServerPassword='5d918212-baf7-44d7-bf18-acf701364944'
-        unlockTheBitwardenVault
-        $bitwardenItem = (bw get item $idOfBitwardenItemContainingSoftetherVpnServerPassword | ConvertFrom-Json)
+        $bitwardenItem = getBitwardenItem $idOfBitwardenItemContainingSoftetherVpnServerPassword
         $vpnServerPassword=$bitwardenItem.login.password
         $softetherVpnServerHostname = ( $bitwardenItem.login.uris[0].uri -split ":")[0]
         $softetherVpnServerPortnumber = ( $bitwardenItem.login.uris[0].uri -split ":")[1]
         $softetherVpnServerNameOfHub = (@($bitwardenItem.fields | Where-Object {$_.name -eq 'name of HUB'} | Foreach-object {$_.value})[0])
 
 
-        . $companyParameters['scriptBlockToConnectToCloud']
-        $publicDomainName = @(Get-AzureAdDomain | where-object {$_.IsDefault})[0].Name
+        # . $companyParameters['scriptBlockToConnectToCloud']
+        connectToOffice365 `
+            -bitwardenItemIdOfTheConfiguration $companyParameters['idOfBitwardenItemContainingMicrosoftGraphManagementConfiguration']
+
+        #$publicDomainName = @(Get-AzureAdDomain | where-object {$_.IsDefault})[0].Name
+        $publicDomainName = ((Get-MgOrganization).VerifiedDomains | where-object {$_.IsDefault -eq $true}).Name
 
         $defaultUsername        =($userSpec['firstName'][0] + $userSpec['lastName']).toLower()
         $defaultEmailAddress    ="$defaultUsername@$publicDomainName"
         $username               = if($userSpec.preferredEmailAlias){$userSpec.preferredEmailAlias} else {$defaultUsername}
         $primaryEmailAddress    = "$username@$publicDomainName"
         $userPrincipalName      = $primaryEmailAddress
-        $password = $($userSpec['password'])
+        $password = $userSpec['password']
 
         vpncmd ($softetherVpnServerHostname + ":" + $softetherVpnServerPortnumber) /SERVER /PASSWORD:"$vpnServerPassword" /ADMINHUB:"$softetherVpnServerNameOfHub"  /CMD UserCreate $username /GROUP:none /REALNAME:none /NOTE:none 
         vpncmd ($softetherVpnServerHostname + ":" + $softetherVpnServerPortnumber) /SERVER /PASSWORD:"$vpnServerPassword" /ADMINHUB:"$softetherVpnServerNameOfHub"  /CMD UserPasswordSet $username /PASSWORD:"$password"
 
 
-        $scriptToBeRunOnNaserver1 = ""
-        # $scriptToBeRunOnNaserver1 += "username=`"$username`"" + "`n"
-        # $scriptToBeRunOnNaserver1 += "password=`"$($userSpec['password'])`"" + "`n"
-        $scriptToBeRunOnNaserver1 += "# create a linux account for the new user" + "`n"
-        $scriptToBeRunOnNaserver1 += "useradd -m '$username'" + "`n"
-        $scriptToBeRunOnNaserver1 += "" + "`n"
-        $scriptToBeRunOnNaserver1 += "# set the password of the linux user:" + "`n"
-        $scriptToBeRunOnNaserver1 += "echo '$password' | passwd --stdin '$username'" + "`n"
-        $scriptToBeRunOnNaserver1 += "" + "`n"
-        $scriptToBeRunOnNaserver1 += "# add new user to the samba users database:" + "`n"
-        $scriptToBeRunOnNaserver1 += "echo -e '$password\n$password' | smbpasswd -a '$username'" + "`n"
-        $scriptToBeRunOnNaserver1 += "echo -e '$password\n$password' | smbpasswd -s '$username'" + "`n"
-        $scriptToBeRunOnNaserver1 += "" + "`n"
-        $scriptToBeRunOnNaserver1 += "# add the new user to the samba_users group:" + "`n"
-        $scriptToBeRunOnNaserver1 += "gpasswd --add '$username' samba_users" + "`n"
-        $scriptToBeRunOnNaserver1 += "" + "`n"
-        $scriptToBeRunOnNaserver1 += "# (optional) restart the smb server:" + "`n"
-        $scriptToBeRunOnNaserver1 += "service smb restart" + "`n"
+        $scriptToBeRunOnNaserver1 = @(
+            # "username=`"$username`"" 
+            # "password=`"$($userSpec['password'])`"" 
+            "# create a linux account for the new user" 
+            "useradd -m '$username'" 
+            "" 
+            "# set the password of the linux user:" 
+            "echo '$password' | passwd --stdin '$username'" 
+            "" 
+            "# add new user to the samba users database:" 
+            "echo -e '$password\n$password' | smbpasswd -a '$username'" 
+            "echo -e '$password\n$password' | smbpasswd -s '$username'" 
+            "" 
+            "# add the new user to the samba_users group:" 
+            "gpasswd --add '$username' samba_users" 
+            "" 
+            "# (optional) restart the smb server:" 
+            "service smb restart" 
+        ) -join "`n"
 
         # this is a bit of hack: we simply copy a command to the clipboard that is suitable for pasting into the screenconnect command interface.
         # perhaps eventually, we would ssh the command directly to naserver1.
         Set-Clipboard -Value ("#!sh`n#timeout=90000`n#maxlength=99999`n$scriptToBeRunOnNaserver1");
 
         
-        $passwordProfile = (New-Object -TypeName Microsoft.Open.AzureAD.Model.PasswordProfile);
-        $passwordProfile.ForceChangePasswordNextLogin = $false;
-        $passwordProfile.Password = $password;
+
         
         
-        $azureAdUser = (Get-AzureADUser -ObjectId  $userPrincipalName -ErrorAction SilentlyContinue)
+        # $azureAdUser = (Get-AzureADUser -ObjectId  $userPrincipalName -ErrorAction SilentlyContinue)
+        $mgUser = (Get-MgUser -UserId  $userPrincipalName -ErrorAction SilentlyContinue)
         
-        if( $azureAdUser ){
-            Write-Host "An azuread user having id '$userPrincipalName' already exists, so we will not create a new user." 
+        if( $mgUser ){
+            Write-Host "An mgUser having id '$userPrincipalName' already exists, so we will not create a new user." 
         } else {
-            Write-Host "No azuread user having id '$userPrincipalName' exists, so we will create one." 
+            Write-Host "No mgUser having id '$userPrincipalName' exists, so we will create one." 
             $s = @{
                 AccountEnabled    = $True
-                DisplayName       = "to_be updated_later"
-                PasswordProfile   = $passwordProfile
+                # DisplayName       = "to_be updated_later"
+                # PasswordProfile   = $(
+                #     $passwordProfile = (New-Object -TypeName Microsoft.Open.AzureAD.Model.PasswordProfile)
+                #     $passwordProfile.ForceChangePasswordNextLogin = $false
+                #     $passwordProfile.Password = $password
+                #     $passwordProfile
+                # )
+                PasswordProfile  = @{
+                    ForceChangePasswordNextSignIn           = $False
+                    ForceChangePasswordNextSignInWithMfa    = $False
+                    Password                                = $password
+                }
                 MailNickname      = $username
                 UserPrincipalName = $userPrincipalName
-            }; New-AzureADUser @s;
-            # New-AzureAdUser `
-            #     -AccountEnabled $True `
-            #     -DisplayName "to_be updated_later" `
-            #     -PasswordProfile $passwordProfile `
-            #     -UserPrincipalName $primaryEmailAddress `
-            #     -MailNickname $username
+                Surname           = $userSpec['lastName'] 
+                GivenName         = $userSpec['firstName'] 
+                DisplayName       = "$($userSpec['firstName']) $($userSpec['lastName'])"
+            # }; New-AzureADUser @s;
+            }; New-MgUser @s 1> $null;
         }
 
-        $azureAdUser = (Get-AzureADUser -ObjectId  $primaryEmailAddress)
+        # $azureAdUser = (Get-AzureADUser -ObjectId  $primaryEmailAddress)
+        $mgUser = Get-MgUser -UserId  $userPrincipalName 
         
-        $s = @{
-            ObjectID            = $azureAdUser.ObjectID
-            AccountEnabled      = $True
-            PasswordProfile     = $passwordProfile
-            MailNickname        = $username
-            UserPrincipalName   = $userPrincipalName
-            Surname             = $userSpec['lastName'] 
-            GivenName           = $userSpec['firstName'] 
-            DisplayName         = "$($userSpec['firstName']) $($userSpec['lastName'])"
-        }; Set-AzureADUser @s;
+        # $s = @{
+        #     ObjectID            = $azureAdUser.ObjectID
+        #     AccountEnabled      = $True
+        #     PasswordProfile     = $passwordProfile
+        #     MailNickname        = $username
+        #     UserPrincipalName   = $userPrincipalName
+        #     Surname             = $userSpec['lastName'] 
+        #     GivenName           = $userSpec['firstName'] 
+        #     DisplayName         = "$($userSpec['firstName']) $($userSpec['lastName'])"
+        # }; Set-AzureADUser @s;
 
-        setLicensesAssignedToAzureAdUser -objectIdOfAzureAdUser $azureAdUser.ObjectID -skuPartNumbers $userSpec.licenses
-        $azureAdUser = (Get-AzureADUser -ObjectId  $primaryEmailAddress)    
-            
+        # setLicensesAssignedToAzureAdUser -objectIdOfAzureAdUser $azureAdUser.ObjectID -skuPartNumbers $userSpec.licenses
+        setLicensesAssignedToMgUser -userId $mgUser.Id -skuPartNumbers $userSpec.licenses
+        
+        
+        # $azureAdUser = (Get-AzureADUser -ObjectId  $primaryEmailAddress)    
+        $mgUser = Get-MgUser -UserId  $mgUser.Id  
+        
+        
         $desiredEmailAddresses = @()
         $desiredEmailAddresses += "SMTP:$primaryEmailAddress"
         if(! ($primaryEmailAddress -eq $defaultEmailAddress)){
@@ -112,11 +130,13 @@ function initializeUser {
         }
 
 
-        $mailbox = Get-Mailbox $azureAdUser.ObjectID -ErrorAction SilentlyContinue
+        # $mailbox = Get-Mailbox $azureAdUser.ObjectID -ErrorAction SilentlyContinue
+        $mailbox = Get-Mailbox $mgUser.Id -ErrorAction SilentlyContinue
         if (! $mailbox ){
             Write-Host "The user $userPrincipalName does not appear to have a mailbox, so we will not attempt to adjust email addresses."
         } else {
             Write-Host "initially, mailbox.EmailAddresses: ", $mailbox.EmailAddresses
+            
             $emailAddressesToRemove = $mailbox.EmailAddresses | where-object {
                 ($_ -match '(?-i)^SMTP:.+$') -and (-not ($_ -in $desiredEmailAddresses)) # it is an smtp address of some sort and it is not in the desiredEmailAddresses List
             }
@@ -124,17 +144,23 @@ function initializeUser {
                 -not ($_ -in $mailbox.EmailAddresses) # it is not already in the mailbox's Email Addresses
             }
 
-            Write-Host "emailAddressesToRemove: ", $emailAddressesToRemove
-            Write-Host "emailAddressesToAdd: ", $emailAddressesToAdd
-            
-            $s = @{
-                EmailAddresses = @{
-                    Add=@($emailAddressesToAdd); 
-                    Remove=@($emailAddressesToRemove)
-                }; 
-            }; $mailbox | Set-Mailbox @s ; 
-            $mailbox = Get-Mailbox $azureAdUser.ObjectID
-            Write-Host "finally, mailbox.EmailAddresses: ", $mailbox.EmailAddresses
+            if( ([Boolean] $emailAddressesToRemove) -or ([Boolean] $emailAddressesToAdd) ){
+                Write-Host "emailAddressesToRemove ($($emailAddressesToRemove.Length)): ", $emailAddressesToRemove
+                Write-Host "emailAddressesToAdd ($($emailAddressesToAdd.Length)): ", $emailAddressesToAdd
+                
+
+                $s = @{
+                    EmailAddresses = @{
+                        Add=@($emailAddressesToAdd); 
+                        Remove=@($emailAddressesToRemove)
+                    }; 
+                }; $mailbox | Set-Mailbox @s ; 
+                # $mailbox = Get-Mailbox $azureAdUser.ObjectID
+                $mailbox =  Get-Mailbox $mgUser.Id
+                Write-Host "finally, mailbox.EmailAddresses: ", $mailbox.EmailAddresses
+            } else {
+                Write-Host "email addresses for $userPrincipalName are as desired, so we will not bother to add or remove any."
+            }
         }
         return;
     }
@@ -156,23 +182,25 @@ function initializeUser {
         $primaryEmailAddress    = "$username@$publicDomainName"
         $userPrincipalName      = $primaryEmailAddress
 
-        New-ADUser `
-            -ErrorAction SilentlyContinue `
-            -Path ( "OU=humans" + "," + "OU=users" + "," + "OU=company" + "," + (Get-ADDomain).DistinguishedName  ) `
-            -Name $username `
-            -AccountPassword (ConvertTo-SecureString $userSpec['password'] -AsPlainText -Force  ) `
-            -Enabled $True `
-            -PassThru 
-            
         $adUser = Get-ADUser $username
-        
+        if($adUser){
+            Write-Host "The adUser `"$($username)`" already exists, so we will not bother to create."
+        } else {
+            Write-Host "creating adUser `"$($username)`"."
+            
+            New-ADUser `
+                -ErrorAction SilentlyContinue `
+                -Path ( "OU=humans" + "," + "OU=users" + "," + "OU=company" + "," + (Get-ADDomain).DistinguishedName  ) `
+                -Name $username `
+                -AccountPassword (ConvertTo-SecureString $userSpec['password'] -AsPlainText -Force  ) `
+                -Enabled $True `
+                -PassThru 
+            
+            $adUser = Get-ADUser $username
+        }
+            
         $adUser | Set-ADAccountPassword -NewPassword (ConvertTo-SecureString $userSpec['password'] -AsPlainText -Force  ) 
         
-        # $adUser.UserPrincipalName  = $userPrincipalName 
-        # $adUser.EmailAddress       = $userPrincipalName 
-        # $adUser.Surname            = $userSpec['lastName'] 
-        # $adUser.GivenName          = $userSpec['firstName'] 
-        # $adUser.DisplayName        = ($userSpec['firstName'] + " " + $userSpec['lastName'])            
         $s = @{
             UserPrincipalName   =  $userPrincipalName 
             EmailAddress        =  $userPrincipalName 
@@ -190,11 +218,14 @@ function initializeUser {
         #works, but decided not to do.
 
         if($userSpec['encodedDesiredMSDsConsistencyGuid']){
-            Set-ItemProperty -Path "AD:\$($adUser.distinguishedName)" -Name "mS-DS-ConsistencyGuid" -Value ([Convert]::FromBase64String($userSpec['encodedDesiredMSDsConsistencyGuid']))
+            $s = @{
+                Path   = "AD:\$($adUser.distinguishedName)" 
+                Name   = "mS-DS-ConsistencyGuid" 
+                Value  = ([Convert]::FromBase64String($userSpec['encodedDesiredMSDsConsistencyGuid']))
+            }; Set-ItemProperty 
         }
 
         $adUser = $adUser | Get-ADUser -Properties ProxyAddresses
-        
         $initialProxyAddresses = @($adUser.ProxyAddresses)
         
         #remove all (probably one) primary email addresses (i.e. elements of proxyAddresses starting with "SMTP:"
@@ -230,44 +261,39 @@ function initializeUser {
         Write-Host "desiredFinalProxyAddresses: ", $desiredFinalProxyAddresses
         
         
-        $result = Set-ADUser -Instance $adUser
-        Write-Host "checkpoint 1"
+        Set-ADUser -Instance $adUser 1> $null
         Import-Module ADSync
-        Write-Host "checkpoint 2"
-        Start-ADSyncSyncCycle  -PolicyType Delta
-        Write-Host "checkpoint 3"    
+        Start-ADSyncSyncCycle  -PolicyType Delta  
         Write-Host "adUser: $($adUser | Out-String)"
 
         return $adUser
     }
 
-
-
-    $idOfBitwardenItem = $companyParameters['idOfBitwardenItemContainingActiveDirectoryCredentials']
-    #this is the id of the bitwearden item that contains the tri-nar domain credentials.
-    #this is a hack until I can figure out a better, certificate-based,solution.
-    # unlock the bitwarden vault:
-    # if (! $(bw unlock --check)){ $env:BW_SESSION =  $(bw unlock --raw || bw login --raw) }
-    # if (! $(bw unlock --check)){ $env:BW_SESSION = $((bw unlock --raw) -or (bw login --raw)) }
-    # if (! $(bw unlock --check)){ $env:BW_SESSION =  $(pwsh -Command "bw unlock --raw || bw login --raw") }
-    # the "||" operator is only defined in powershell core!!!!
-
-    unlockTheBitwardenVault
-    $bitwardenItem = (bw get item $idOfBitwardenItem | ConvertFrom-Json)
-
-
-    $username = (@($bitwardenItem.fields | Where-Object {$_.name -eq 'active_directory_domain_name'} | Foreach-object {$_.value})[0]) + "\" + ($bitwardenItem.login.username -split "@")[0]
+    $bitwardenItem = getBitwardenItem $companyParameters['idOfBitwardenItemContainingActiveDirectoryCredentials']
+    $username = (
+        @(
+            $bitwardenItem.fields | Where-Object {$_.name -eq 'active_directory_domain_name'} | 
+                Foreach-object {$_.value}
+        )[0] +
+        "\" + 
+        ($bitwardenItem.login.username -split "@")[0]
+    )
     $password=$bitwardenItem.login.password
 
-    if ($companyParameters['softetherVpnConnectionNeededToTalkToDomainController']){
-        Write-Host "connecting to vpn connection $($companyParameters['softetherVpnConnectionNeededToTalkToDomainController'])"
-        vpncmd /client localhost /cmd AccountConnect $companyParameters['softetherVpnConnectionNeededToTalkToDomainController']
+    if ($companyParameters['nameOfSoftetherVpnConnectionNeededToTalkToDomainController']){
+        Write-Host "connecting to vpn connection $($companyParameters['nameOfSoftetherVpnConnectionNeededToTalkToDomainController'])"
+        vpncmd /client localhost /cmd AccountConnect $companyParameters['nameOfSoftetherVpnConnectionNeededToTalkToDomainController']
     }
 
     Set-Item WSMan:\localhost\Client\TrustedHosts -Force -Value $companyParameters['domainController']
     $ss = @{
         ComputerName = $companyParameters['domainController'];
-        Credential=(New-Object System.Management.Automation.PSCredential ($username, (ConvertTo-SecureString $password -AsPlainText -Force)));
+        
+
+        Credential=(New-Object `
+            System.Management.Automation.PSCredential `
+            $username, (ConvertTo-SecureString $password -AsPlainText -Force)
+        )
         
         # ConfigurationName="Powershell.7.1.5";
         ConfigurationName="microsoft.powershell";
@@ -285,14 +311,24 @@ function initializeUser {
     $adUser = Invoke-Command @ss -ScriptBlock $scriptBlockToBeRunOnDomainController | Select-Object -Last 1
     Write-Host "adUser: $($adUser | Out-String)"
 
-    . $companyParameters['scriptBlockToConnectToCloud']
-    $azureAdUser = Get-AzureADUser -ObjectId $adUser.UserPrincipalName
+    if(-not $adUser){
+        Write-Host "we have failed to retrieve the adUser, and so will return now."
+        return
+    }
 
-    if (! $azureAdUser ){
-        Write-Host "No Azure AD user having id $($adUser.UserPrincipalName) exists.  Probably need to wait a few minutes for adsync to push changes to the cloud."
+    # . $companyParameters['scriptBlockToConnectToCloud']
+    connectToOffice365 -bitwardenItemIdOfTheConfiguration $companyParameters['idOfBitwardenItemContainingMicrosoftGraphManagementConfiguration']
+
+    # $azureAdUser = Get-AzureADUser -ObjectId $adUser.UserPrincipalName
+    $mgUser = Get-MgUser -UserId $adUser.UserPrincipalName -ErrorAction SilentlyContinue
+
+    # if (! $azureAdUser ){
+    if (! $mgUser ){
+        Write-Host "No MGUser having id $($adUser.UserPrincipalName) exists.  Probably need to wait a few minutes for adsync to push changes to the cloud."
     } else {
         # assign licenses:
-        setLicensesAssignedToAzureAdUser -objectIdOfAzureAdUser $azureAdUser.ObjectID -skuPartNumbers $userSpec.licenses
+        # setLicensesAssignedToAzureAdUser -objectIdOfAzureAdUser $azureAdUser.ObjectID -skuPartNumbers $userSpec.licenses
+        setLicensesAssignedToMgUser -userId $mgUser.Id -skuPartNumbers $userSpec.licenses
     }
 
 
