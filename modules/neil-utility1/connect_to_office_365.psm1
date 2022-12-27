@@ -12,6 +12,7 @@
 
 function forceExchangeModuleToLoadItsVersionOf_System_IdentityModel_Tokens_Jwt(){
     # [System.Reflection.Assembly]::LoadFrom((join-path (Get-InstalledModule "ExchangeOnlineManagement").InstalledLocation "netCore/System.IdentityModel.Tokens.Jwt.dll"))
+    # 
     # I am well aware that this is extremely heavy-handed, and actually wrong if we happen to be in windows powershell rather than powershell core.
 
     # It seems that the Microsoft.Graph module is actually perfectly content,
@@ -34,7 +35,6 @@ function forceExchangeModuleToLoadItsVersionOf_System_IdentityModel_Tokens_Jwt()
         (join-path $pathOfRootFolderOfExchangeModule "netCore/System.IdentityModel.Tokens.Jwt.dll")
         (join-path $pathOfRootFolderOfExchangeModule "netCore/Microsoft.Identity.Client.dll")
         (join-path $pathOfRootFolderOfExchangeModule "netCore/Microsoft.Exchange.Management.ExoPowershellGalleryModule.dll")
-
     )
 
 

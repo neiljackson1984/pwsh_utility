@@ -431,3 +431,182 @@ $(
 
 #%%
 $alc.Name
+
+& {
+
+}
+
+#%%
+function foo1 {
+    [CmdletBinding()]
+    [OutputType([String])]
+    param (
+        # [String] $arg1,
+        # [String] $arg2
+        [Parameter(Position=0, ValueFromRemainingArguments)]
+         $remaining
+    )
+
+    @(
+        "args ($(@($remaining).Count)):"
+        for($i=0; $i -lt @($remaining).Count; $i++){
+            "    arg$($i) ($(if($null -eq @($remaining)[$i]){"(null)"} else { @($remaining)[$i].GetType().FullName})): $(@($remaining)[$i])"
+        }
+
+    ) -join "`n"
+}
+
+function splat {
+    [CmdletBinding()]
+    param (
+        [Parameter(
+            Mandatory, 
+            ValueFromPipeline
+        )] 
+        [String]
+        $nameOfFunction,
+
+        # [Parameter(ValueFromRemainingArguments)]
+        # $remaining
+
+        
+        # [Parameter()]
+        # [HashTable]
+        # $hashTable = @{},
+
+                
+        [Parameter()]
+        [Array]
+        $array = @()
+
+    )
+
+    Write-Host "nameOfFunction: $nameOfFunction"
+    # Write-Host "remaining: ($($remaining.GetType().FullName)) $($remaining)"
+    # Write-Host "hashTable: ($($hashTable.GetType().FullName)) $($hashTable)"
+    Write-Host "array: ($($array.GetType().FullName)) $($array)"
+    
+    # & $nameOfFunction $remaining
+
+    # & $nameOfFunction $remaining
+    
+    # [Hashtable] $x = ([Hashtable] @($remaining)[0])
+    # & $nameOfFunction @x
+
+    # $x = $($remaining)
+
+    # & $nameOfFunction @x
+    # & $nameOfFunction @hashTable @array
+
+    # & $nameOfFunction @array
+
+    $s = $($array)
+    & $nameOfFunction @s
+
+}
+
+function splat2 {
+    # [CmdletBinding()]
+    
+    process {
+        if($args.Count -eq 0){
+            $s = @()
+        } else {
+            $s = @($args)[0]
+        }
+        Write-Host "`$_ ($($_.GetType().FullName)): $($_)"
+
+        & $_ @s
+    }
+
+}
+
+#%%
+
+{foo1} | splat @{
+    arg1 = "a"
+    arg2 = "b"
+}
+#%%
+
+splat "foo1" @{
+    arg1 = "a"
+    arg2 = "b"
+}
+
+splat "foo1" @(22)
+splat "foo1" 22
+
+#%%
+
+$u =     @{
+    black = "bad"
+    white = "good"
+}
+
+foo1 @u
+foo1 @$("u")
+foo1 "u"
+foo1 "@u"
+
+foo1(22,33,44)
+foo1 (,@(22,33,44))
+
+foo1 @{
+    black = "bad"
+    white = "good"
+}
+
+#%%
+@(&{
+    black = "bad"
+    white = "good"
+})
+
+#%%
+
+$t = @(
+    33,
+    @{
+        black = "bad"
+        white = "good"
+    }
+)
+
+
+
+#%%
+
+"foo1" | splat2     @{
+    black = "bad"
+    white = "good"
+}
+
+"foo1" | splat2  @(33; 44; 55;)
+
+{foo1} | splat2  @(33; 44; 55;)
+
+#%%
+
+foo1
+
+$s = @{
+    arg1 = "a"
+    arg2 = 44
+}
+foo1 @s
+foo1 @ s
+foo1 (& "@s")
+foo1 @ "s"
+
+foo1 | splat @{
+    arg1 = "a"
+    arg2 = "b"
+}
+
+@s
+#%%
+foo1 @@{
+    arg1 = "a"
+    arg2 = "b"
+}

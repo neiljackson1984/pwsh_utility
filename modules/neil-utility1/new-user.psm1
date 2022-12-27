@@ -13,12 +13,12 @@ function initializeUser {
     if ($companyParameters['emailDomainName'] -eq 'nakanoassociates.com'){
         Write-Host "this is a Nakano job"
         
-        $idOfBitwardenItemContainingSoftetherVpnServerPassword='5d918212-baf7-44d7-bf18-acf701364944'
-        $bitwardenItem = getBitwardenItem $idOfBitwardenItemContainingSoftetherVpnServerPassword
-        $vpnServerPassword=$bitwardenItem.login.password
-        $softetherVpnServerHostname = ( $bitwardenItem.login.uris[0].uri -split ":")[0]
-        $softetherVpnServerPortnumber = ( $bitwardenItem.login.uris[0].uri -split ":")[1]
-        $softetherVpnServerNameOfHub = (@($bitwardenItem.fields | Where-Object {$_.name -eq 'name of HUB'} | Foreach-object {$_.value})[0])
+        $idOfBitwardenItemContainingSoftetherVpnServerCredentials='5d918212-baf7-44d7-bf18-acf701364944'
+        $bitwardenItemContainingSoftetherVpnServerCredentials = getBitwardenItem $idOfBitwardenItemContainingSoftetherVpnServerCredentials
+        $vpnServerPassword=$bitwardenItemContainingSoftetherVpnServerCredentials.login.password
+        $softetherVpnServerHostname = ( $bitwardenItemContainingSoftetherVpnServerCredentials.login.uris[0].uri -split ":")[0]
+        $softetherVpnServerPortnumber = ( $bitwardenItemContainingSoftetherVpnServerCredentials.login.uris[0].uri -split ":")[1]
+        $softetherVpnServerNameOfHub = (@($bitwardenItemContainingSoftetherVpnServerCredentials.fields | Where-Object {$_.name -eq 'name of HUB'} | Foreach-object {$_.value})[0])
 
 
         # . $companyParameters['scriptBlockToConnectToCloud']
@@ -269,16 +269,16 @@ function initializeUser {
         return $adUser
     }
 
-    $bitwardenItem = getBitwardenItem $companyParameters['idOfBitwardenItemContainingActiveDirectoryCredentials']
+    $bitwardenItemContainingActiveDirectoryCredentials = getBitwardenItem $companyParameters['idOfBitwardenItemContainingActiveDirectoryCredentials']
     $username = (
         @(
-            $bitwardenItem.fields | Where-Object {$_.name -eq 'active_directory_domain_name'} | 
+            $bitwardenItemContainingActiveDirectoryCredentials.fields | Where-Object {$_.name -eq 'active_directory_domain_name'} | 
                 Foreach-object {$_.value}
         )[0] +
         "\" + 
-        ($bitwardenItem.login.username -split "@")[0]
+        ($bitwardenItemContainingActiveDirectoryCredentials.login.username -split "@")[0]
     )
-    $password=$bitwardenItem.login.password
+    $password=$bitwardenItemContainingActiveDirectoryCredentials.login.password
 
     if ($companyParameters['nameOfSoftetherVpnConnectionNeededToTalkToDomainController']){
         Write-Host "connecting to vpn connection $($companyParameters['nameOfSoftetherVpnConnectionNeededToTalkToDomainController'])"
