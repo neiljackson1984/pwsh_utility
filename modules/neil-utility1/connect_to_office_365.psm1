@@ -282,16 +282,28 @@ function connectToOffice365 {
 
     [CmdletBinding()]
     Param (
-        [Parameter(HelpMessage=  "The bitwarden item id of the bitwarden item containing the configuration data.  passing a falsey bitwardenItemIdOfTheConfiguration along with a truthy makeNewConfiguration will cause us to create a new configuration create a new bitwarden item to store it in. ")]
+        [Parameter(
+            HelpMessage= {@(
+                "This is just a shortcut for specifying the "
+                "bitwarden item id in the canonical way.  "
+                "This parameter is completely ignored if "
+                "bitwardenItemIdOfTheConfiguration is truthy."
+            ) -join ""},
+            Position=0
+        )]
+        [String] $primaryDomainName = "",
+        
+    
+    
         # [String]$pathOfTheConfigurationFile = "config.json" # (Join-Path $PSScriptRoot "config.json")
+        [Parameter(HelpMessage=  "The bitwarden item id of the bitwarden item containing the configuration data.  passing a falsey bitwardenItemIdOfTheConfiguration along with a truthy makeNewConfiguration will cause us to create a new configuration create a new bitwarden item to store it in. ")]
         [String] $bitwardenItemIdOfTheConfiguration = "",
         [Switch] $makeNewConfiguration = $False,
 
         [Parameter(HelpMessage=  "This argument is only relevant when makeNewConfiguration is true.  This string will, if truthy, be passed to the Connect-MgGraph command to try to force a connection to the specified tenant -- to prevent mistakenly logging in to the wrong tenant. ")]
-        [String] $tenantIdHint = "",
+        [String] $tenantIdHint = ""
 
-        [Parameter(HelpMessage=  "This is just a shortcut for specifying the bitwarden item id in the canonical way.  This parameter is completely ignored if bitwardenItemIdOfTheConfiguration is truthy.")]
-        [String] $primaryDomainName = ""
+
     )
     
 
@@ -1476,8 +1488,16 @@ function connectToOffice365 {
             Disconnect-ExchangeOnline -confirm:0
             
             
-            connectToExchangeOnline 1> $null
+            
             connectToIPPSSession 1> $null
+
+            
+            
+            connectToExchangeOnline 1> $null
+            # I am intentionally doing connectToExchangeOnline after
+            # connectToIPSSession, in the hopes that we will end up with the
+            # ExchangeOnline version of any commands that have the same names as
+            # those imported by ConnectToIPSSession.
         }
     }
 
@@ -1501,12 +1521,6 @@ function connectToOffice365 {
 
 
 
-    
-    # try{ ensureThatWeAreConnectedToExchangeOnline } 
-    # catch {
-    #     Write-Host ("encountered error when attempting to ensure that we are " +
-    #         "connected to Exchange Online: $($_)")
-    # }
 
     # try{ ensureThatWeAreConnectedToIPPSSession } 
     # catch {
@@ -1514,14 +1528,21 @@ function connectToOffice365 {
     #         "connected to IPPSSession: $($_)")
     # }
 
-
+    
     try{ ensureThatWeAreConnectedToExchangeOnlineAndIPPSSession } 
     catch {
         Write-Host ("encountered error when attempting to ensure that we are " +
             "connected to IPPSSession and ExchangeOnline: $($_)")
     }
+    # # 2022-12-30-1255: I have commented out the above and replaced it with the below so that
+    # # we will not connect to ipssession at all.
 
-
+    
+    # try{ ensureThatWeAreConnectedToExchangeOnline } 
+    # catch {
+    #     Write-Host ("encountered error when attempting to ensure that we are " +
+    #         "connected to Exchange Online: $($_)")
+    # }
 
 
     try{ ensureThatWeAreConnectedToSharepointOnline } 
