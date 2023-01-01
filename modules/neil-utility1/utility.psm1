@@ -45,7 +45,7 @@ function makeNewBitwardenItem {
     $bitwardenItem['login']['totp'] = ""
 
     unlockTheBitwardenVault
-    $result = [System.Convert]::ToBase64String( ([system.Text.Encoding]::UTF8).GetBytes(($bitwardenItem | ConvertTo-Json)) )  | bw --nointeraction --raw create item 
+    $result = [System.Convert]::ToBase64String( ([system.Text.Encoding]::UTF8).GetBytes(($bitwardenItem | ConvertTo-Json -Depth 50)) )  | bw --nointeraction --raw create item 
     $newlyCreatedBitwardenItem = ( $result | ConvertFrom-Json -AsHashtable)
     Write-Host "created new bitwarden item having id $($newlyCreatedBitwardenItem['id'])."
     return (getBitwardenItem -bitwardenItemId $newlyCreatedBitwardenItem['id'] )
@@ -132,7 +132,7 @@ function putFieldMapToBitwardenItem {
 
     }
     unlockTheBitwardenVault 1> $null
-    ([System.Convert]::ToBase64String( ([system.Text.Encoding]::UTF8).GetBytes(($bitwardenItem | ConvertTo-Json)) ) | bw --nointeraction --raw edit item $bitwardenItem['id'] ) 1> $null
+    ([System.Convert]::ToBase64String( ([system.Text.Encoding]::UTF8).GetBytes(($bitwardenItem | ConvertTo-Json -Depth 50)) ) | bw --nointeraction --raw edit item $bitwardenItem['id'] ) 1> $null
 }
 
 function x509Certificate2ToBase64EncodedPfx {

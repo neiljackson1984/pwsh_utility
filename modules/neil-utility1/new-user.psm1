@@ -71,9 +71,9 @@ function initializeUser {
         $mgUser = (Get-MgUser -UserId  $userPrincipalName -ErrorAction SilentlyContinue)
         
         if( $mgUser ){
-            Write-Host "An mgUser having id '$userPrincipalName' already exists, so we will not create a new user." 
+            Write-Host "An MgUser having id '$userPrincipalName' already exists, so we will not create a new user." 
         } else {
-            Write-Host "No mgUser having id '$userPrincipalName' exists, so we will create one." 
+            Write-Host "No MgUser having id '$userPrincipalName' exists, so we will create one." 
             $s = @{
                 AccountEnabled    = $True
                 # DisplayName       = "to_be updated_later"
@@ -324,7 +324,7 @@ function initializeUser {
 
     # if (! $azureAdUser ){
     if (! $mgUser ){
-        Write-Host "No MGUser having id $($adUser.UserPrincipalName) exists.  Probably need to wait a few minutes for adsync to push changes to the cloud."
+        Write-Host "No MgUser having id $($adUser.UserPrincipalName) exists.  Probably need to wait a few minutes for adsync to push changes to the cloud."
     } else {
         # assign licenses:
         # setLicensesAssignedToAzureAdUser -objectIdOfAzureAdUser $azureAdUser.ObjectID -skuPartNumbers $userSpec.licenses
