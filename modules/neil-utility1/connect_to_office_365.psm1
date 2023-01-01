@@ -1826,12 +1826,22 @@ function connectToOffice365 {
             Disconnect-ExchangeOnline -confirm:0
             
             
-            
-            connectToIPPSSession 1> $null
+            $errors = @()
+            try {
+                connectToIPPSSession 1> $null
+            } catch {
+                $errors += $_
+            }
 
+            try {
+                connectToExchangeOnline 1> $null
+            } catch {
+                $errors += $_
+            }
             
+            $errors |% {throw $_}
+            # should I be using write-error instead of throw?
             
-            connectToExchangeOnline 1> $null
             # I am intentionally doing connectToExchangeOnline after
             # connectToIPSSession, in the hopes that we will end up with the
             # ExchangeOnline version of any commands that have the same names as
