@@ -23,6 +23,14 @@ function getBitwardenItem {
     unlockTheBitwardenVault
     [HashTable] $bitwardenItem = ( bw --nointeraction --raw get item $bitwardenItemId  | ConvertFrom-Json -AsHashtable)
     #todo: error handling
+
+    #todo: a bit of a hack to work around the overhead in calling the bw
+    # executable might be to store a private cache of the vault here.  Not great
+    # for security or concurrency, but it might help bring the delay into a
+    # tolerable range.  Along the same lines, we might explore the "rbw" client,
+    # which is an unofficial bitwardin command-line client written in Rust that
+    # purports to be much faster than the official, node.js-based, bitwarden
+    # client.
     return $bitwardenItem
 }
 
@@ -586,6 +594,10 @@ function Format-SortedList
 {
     [OutputType([String[]])]
     
+
+    #Todo: deal properly with multiple pipeline inputs.
+    # allow user to pass arguments in to the underlying calls to format-list and sort-object.
+
     param (
         [Parameter(ValueFromPipeline = $true)]
         [Object]$InputObject
