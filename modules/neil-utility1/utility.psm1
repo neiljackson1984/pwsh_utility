@@ -584,39 +584,50 @@ function grantUserAccessToMailbox(
 ## thanks to https://stackoverflow.com/questions/3281999/format-list-sort-properties-by-name
 function Format-SortedList
 {
+    [OutputType([String[]])]
+    
     param (
         [Parameter(ValueFromPipeline = $true)]
-        [Object]$InputObject,
-        [Parameter(Mandatory = $false)]
-        [Switch]$Descending
+        [Object]$InputObject
+
+        # [Parameter(Mandatory = $false)]
+        # [Switch]$Descending
     )
 
     process
     {
-        $properties = $InputObject | Get-Member -MemberType Properties
+        # $properties = $InputObject | Get-Member -MemberType Properties
 
-        if ($Descending) {
-            $properties = $properties | Sort-Object -Property Name -Descending
-        }
+        # if ($Descending) {
+        #     $properties = $properties | Sort-Object -Property Name -Descending
+        # }
 
-        $longestName = 0
-        $longestValue = 0
+        # $longestName = 0
+        # $longestValue = 0
 
-        $properties | ForEach-Object {
-            if ($_.Name.Length -gt $longestName) {
-                $longestName = $_.Name.Length
-            }
+        # $properties | ForEach-Object {
+        #     if ($_.Name.Length -gt $longestName) {
+        #         $longestName = $_.Name.Length
+        #     }
 
-            if ($InputObject."$($_.Name)".ToString().Length -gt $longestValue) {
-                $longestValue = $InputObject."$($_.Name)".ToString().Length * -1
-            }
-        }
+        #     if ($InputObject."$($_.Name)".ToString().Length -gt $longestValue) {
+        #         $longestValue = $InputObject."$($_.Name)".ToString().Length * -1
+        #     }
+        # }
 
-        Write-Host ([Environment]::NewLine)
+        # Write-Host ([Environment]::NewLine)
 
-        $properties | ForEach-Object { 
-            Write-Host ("{0,$longestName} : {1,$longestValue}" -f $_.Name, $InputObject."$($_.Name)".ToString())
-        }
+        # $properties | ForEach-Object { 
+        #     Write-Host ("{0,$longestName} : {1,$longestValue}" -f $_.Name, $InputObject."$($_.Name)".ToString())
+        # }
+
+
+        $initialOutputRendering = $PSStyle.OutputRendering
+        $PSStyle.OutputRendering = [System.Management.Automation.OutputRendering]::Ansi
+        # $x = ($InputObject | fl | Out-String -Width 999999) -split "`n" | Sort-Object
+        $x = @(($InputObject | fl | Out-String) -split "`n" | Sort-Object)
+        $PSStyle.OutputRendering = $PSStyle.OutputRendering
+        $x
     }
 }
 
