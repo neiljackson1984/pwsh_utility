@@ -1,6 +1,9 @@
 
 Import-Module (join-path $psScriptRoot "utility.psm1")
 Import-Module (join-path $psScriptRoot "connect_to_office_365.psm1")
+
+# todo 2023-01-10:  use my newly created New-DomainControllerPSSession function to generate the 
+# pssession to the domain controller, rather than doing it 'manually'.
 function initializeUser {
     [CmdletBinding()]
     Param(
