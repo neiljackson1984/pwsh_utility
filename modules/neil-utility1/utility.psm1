@@ -1066,3 +1066,38 @@ function getReferencedAssembliesRecursivelyForReflection([System.Reflection.Asse
     
     # $referencedAssemblies | where-object $filter 
 }
+
+
+function getAmazonAddToCartUrl {
+    [OutputType([String])]
+    
+    #example:
+    # getAmazonAddToCartUrl @(
+    #   ,@("B09S9VWQK1", 1) # NVIDIA RTX A4500 video card ($1145)
+    #   ,@("B0BHJF2VRN", 1) # Samsung 990 PRO 1TB PCIe NVMe  SSD M.2
+    # )
+
+    param (
+        [Parameter()]
+        [Object[][]] $asinQuantityPairs
+
+        # [Parameter(Mandatory = $false)]
+        # [Switch]$Descending
+    )
+
+    # Amazon add-to-cart URL syntax:
+    # (see https://webservices.amazon.com/paapi5/documentation/add-to-cart-form.html)
+    $url = "https://www.amazon.com/gp/aws/cart/add.html?" + (
+            @(
+                for ($i=0; $i -lt $asinQuantityPairs.count; $i++ ){
+                    if($asinQuantityPairs[$i][1]){
+                        "ASIN.$($i)=$($asinQuantityPairs[$i][0])"
+                        "Quantity.$($i)=$($asinQuantityPairs[$i][1])"
+                    }
+                }
+            ) -join "&"
+        )
+
+    Set-Clipboard -Value $url
+    $url
+}

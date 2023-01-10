@@ -7,6 +7,7 @@
         , "email_forwarding_and_access_report.psm1"
         , "new-user.psm1"
         , "connect_to_office_365.psm1"
+        , "autodesk_identity.psm1"
         # no good way to do wildcards here, unfortunately
     )
     

@@ -262,6 +262,20 @@ function initializeUser {
         
         
         Set-ADUser -Instance $adUser 1> $null
+
+        # add the user to the various wse groups.
+        foreach($nameOfGroup in @(
+            "WseAllowAddInAccess"
+            "WseAllowComputerAccess"
+            "WseAllowHomePageLinks"
+            "WseAllowShareAccess"
+            "WseRemoteAccessUsers"
+            "WseRemoteWebAccessUsers"
+        )){
+            Add-ADGroupMember -Identity $nameOfGroup -Members $adUser.objectGUID 
+        }
+
+
         Import-Module ADSync
         Start-ADSyncSyncCycle  -PolicyType Delta  
         Write-Host "adUser: $($adUser | Out-String)"
