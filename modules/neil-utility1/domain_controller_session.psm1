@@ -83,5 +83,11 @@ function New-DomainControllerPSSession {
         # UseSSL=$True;
     }
     
-    return New-PSSession @ss
+    $psSession = New-PSSession @ss
+
+    if($psSession){
+        Write-Host "$(Invoke-Command -Session $psSession { return "hello from $($env:computername).  ((Get-ADDomain).DistinguishedName): $((Get-ADDomain).DistinguishedName)" })"
+    }
+
+    return $psSession
 }

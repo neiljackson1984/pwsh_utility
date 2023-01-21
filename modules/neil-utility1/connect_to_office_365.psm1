@@ -1494,6 +1494,7 @@ function connectToOffice365 {
         # the above might be another way to test for the existence of connectivity.
     }
 
+
     function connectToMgGraph {
         [OutputType([Void])]
         param ()
@@ -1899,6 +1900,11 @@ function connectToOffice365 {
             "connected to Sharepoint Online: $($_) $($_.Exception)")
     }
 
+
+    
+    if(getWeAreConnectedToMgGraph){
+        Write-Host "You are connected to Microsoft Graph.  ((Get-MgOrganization -Property "displayName").displayName): $((Get-MgOrganization -Property "displayName").displayName)"
+    }
 
     # it is important that the Exchange Online stuff occurs before the MgGraph stuff because
     # Graph loads an older version of the System.IdentityModel.Tokens.Jwt assembly than does

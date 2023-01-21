@@ -493,15 +493,16 @@ function grantUserAccessToMailbox(
     $createInboxRuleToRedirect=$False
 ){
 
-    $azureAdUserToBeGrantedAccess = Get-AzureADUser -ObjectID $idOfUserToBeGrantedAccess
+    # $azureAdUserToBeGrantedAccess = Get-AzureADUser -ObjectID $idOfUserToBeGrantedAccess
+    $mgUserToBeGrantedAccess = Get-MgUser -UserId $idOfUserToBeGrantedAccess
     $mailbox = Get-Mailbox -ID $idOfMailbox
 
-    Write-Host "now giving the user $($azureAdUserToBeGrantedAccess.UserPrincipalName) full access to the mailbox $($mailbox.PrimarySmtpAddress)."
+    Write-Host "now giving the user $($mgUserToBeGrantedAccess.UserPrincipalName) full access to the mailbox $($mailbox.PrimarySmtpAddress)."
 
-    Remove-MailboxPermission -Identity $mailbox.Id   -User    $azureAdUserToBeGrantedAccess.ObjectID -AccessRights FullAccess -Confirm:$false -ErrorAction SilentlyContinue
+    Remove-MailboxPermission -Identity $mailbox.Id   -User    $mgUserToBeGrantedAccess.Id -AccessRights FullAccess -Confirm:$false -ErrorAction SilentlyContinue
     # we first remove any existing permission, as a way (apparently, this is the only way) to be sure that Automapping is turned off
-    Add-MailboxPermission    -Identity $mailbox.Id   -User    $azureAdUserToBeGrantedAccess.ObjectID -AccessRights FullAccess -Automapping:$false 
-    Add-RecipientPermission  -Identity $mailbox.Id   -Trustee $azureAdUserToBeGrantedAccess.ObjectID -AccessRights SendAs  -confirm:$false
+    Add-MailboxPermission    -Identity $mailbox.Id   -User    $mgUserToBeGrantedAccess.Id -AccessRights FullAccess -Automapping:$false 
+    Add-RecipientPermission  -Identity $mailbox.Id   -Trustee $mgUserToBeGrantedAccess.Id -AccessRights SendAs  -confirm:$false
 
     if($createInboxRuleToRedirect){
         $nameOfInboxRule = "redirect to $($azureAdUserToBeGrantedAccess.Mail) 5146a9a247d64ef9ba6dcfd1057e00e3"
@@ -516,13 +517,14 @@ function grantUserAccessToMailbox(
 
 
     # send an email to the user informing them that they now have full access to the mailbox and how to access it.
-    $azureAdUserToBeAdvised = $azureAdUserToBeGrantedAccess
-    $recipientAddress = ($azureAdUserToBeAdvised.DisplayName + "<" + $azureAdUserToBeAdvised.Mail + ">")
+    # $azureAdUserToBeAdvised = $azureAdUserToBeGrantedAccess
+    $mgUserToBeAdvised = $mgUserToBeGrantedAccess
+    $recipientAddress = ($mgUserToBeAdvised.DisplayName + "<" + $mgUserToBeAdvised.Mail + ">")
     if($sendInstructionalMessageToUsersThatHaveBeenGrantedAccess){
         $messageBodyLines = @()
         $messageBodyLines += 
             @( 
-                "Dear $($azureAdUserToBeAdvised.DisplayName), " 
+                "Dear $($mgUserToBeAdvised.DisplayName), " 
 
                 ""
 
@@ -579,7 +581,7 @@ function grantUserAccessToMailbox(
             emailAccount = $emailAccountForSendingAdvisoryMessages
             from         = $emailAccountForSendingAdvisoryMessages
             to           = $(if($sendAdvisoryMessageToDummyAddressInsteadOfRealRecipientAddress){$dummyAddressForAdvisoryMessages} else {$recipientAddress})
-            subject      = $(if($sendAdvisoryMessageToDummyAddressInsteadOfRealRecipientAddress){"(TO: $recipientAddress) " } else {""} ) + "$($azureAdUserToBeAdvised.DisplayName) now has full access to the $($mailbox.PrimarySmtpAddress) mailbox"
+            subject      = $(if($sendAdvisoryMessageToDummyAddressInsteadOfRealRecipientAddress){"(TO: $recipientAddress) " } else {""} ) + "$($mgUserToBeAdvised.DisplayName) now has full access to the $($mailbox.PrimarySmtpAddress) mailbox"
             body         = $messageBody
         } ; sendMail @xx
     }

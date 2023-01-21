@@ -144,8 +144,8 @@ function Set-ActiveAutodeskIdentity {
         # "Autodesk Desktop Licensing Service"
 
 
-        start-process "C:\Program Files (x86)\Autodesk\Autodesk Desktop App\AutodeskDesktopApp.exe" 
-        # only for testing
+        # start-process "C:\Program Files (x86)\Autodesk\Autodesk Desktop App\AutodeskDesktopApp.exe" 
+        # only for testing, so we can confirm by eyeball that the swap has succeeded.
     }
 }
 
