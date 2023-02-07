@@ -286,46 +286,54 @@ function initializeUser {
         return $adUser
     }
 
-    $bitwardenItemContainingActiveDirectoryCredentials = getBitwardenItem $companyParameters['idOfBitwardenItemContainingActiveDirectoryCredentials']
-    $username = (
-        @(
-            $bitwardenItemContainingActiveDirectoryCredentials.fields | Where-Object {$_.name -eq 'active_directory_domain_name'} | 
-                Foreach-object {$_.value}
-        )[0] +
-        "\" + 
-        ($bitwardenItemContainingActiveDirectoryCredentials.login.username -split "@")[0]
-    )
-    $password=$bitwardenItemContainingActiveDirectoryCredentials.login.password
+    # $bitwardenItemContainingActiveDirectoryCredentials = getBitwardenItem $companyParameters['idOfBitwardenItemContainingActiveDirectoryCredentials']
+    # $username = (
+    #     @(
+    #         $bitwardenItemContainingActiveDirectoryCredentials.fields | Where-Object {$_.name -eq 'active_directory_domain_name'} | 
+    #             Foreach-object {$_.value}
+    #     )[0] +
+    #     "\" + 
+    #     ($bitwardenItemContainingActiveDirectoryCredentials.login.username -split "@")[0]
+    # )
+    # $password=$bitwardenItemContainingActiveDirectoryCredentials.login.password
 
-    if ($companyParameters['nameOfSoftetherVpnConnectionNeededToTalkToDomainController']){
-        Write-Host "connecting to vpn connection $($companyParameters['nameOfSoftetherVpnConnectionNeededToTalkToDomainController'])"
-        vpncmd /client localhost /cmd AccountConnect $companyParameters['nameOfSoftetherVpnConnectionNeededToTalkToDomainController']
-    }
+    # if ($companyParameters['nameOfSoftetherVpnConnectionNeededToTalkToDomainController']){
+    #     Write-Host "connecting to vpn connection $($companyParameters['nameOfSoftetherVpnConnectionNeededToTalkToDomainController'])"
+    #     vpncmd /client localhost /cmd AccountConnect $companyParameters['nameOfSoftetherVpnConnectionNeededToTalkToDomainController']
+    # }
 
-    Set-Item WSMan:\localhost\Client\TrustedHosts -Force -Value $companyParameters['domainController']
-    $ss = @{
-        ComputerName = $companyParameters['domainController'];
+    # Set-Item WSMan:\localhost\Client\TrustedHosts -Force -Value $companyParameters['domainController']
+    # $ss = @{
+    #     ComputerName = $companyParameters['domainController'];
         
 
-        Credential=(New-Object `
-            System.Management.Automation.PSCredential `
-            $username, (ConvertTo-SecureString $password -AsPlainText -Force)
-        )
+    #     Credential=(New-Object `
+    #         System.Management.Automation.PSCredential `
+    #         $username, (ConvertTo-SecureString $password -AsPlainText -Force)
+    #     )
         
-        # ConfigurationName="Powershell.7.1.5";
-        ConfigurationName="microsoft.powershell";
-        # run Get-PSSessionConfiguration  to see a complete list of available configurations
+    #     # ConfigurationName="Powershell.7.1.5";
+    #     ConfigurationName="microsoft.powershell";
+    #     # run Get-PSSessionConfiguration  to see a complete list of available configurations
         
-        SessionOption=@{
-            # OutputBufferingMode=;
-        };
+    #     SessionOption=@{
+    #         # OutputBufferingMode=;
+    #     };
 
-        # Authentication='Digest';
-        # UseSSL=$True;
-    }
+    #     # Authentication='Digest';
+    #     # UseSSL=$True;
+    # }
+
 
     $VerbosePreference = 'Continue'
-    $adUser = Invoke-Command @ss -ScriptBlock $scriptBlockToBeRunOnDomainController | Select-Object -Last 1
+    $adUser = (
+        @{
+            Session = (getDcSession -bitwardenItemIdOfCompanyParameters $userSpec['bitwardenItemIdOfCompanyParameters'])
+            ScriptBlock = $scriptBlockToBeRunOnDomainController
+        } | 
+        % {Invoke-Command @_} |
+        Select-Object -Last 1
+    )
     Write-Host "adUser: $($adUser | Out-String)"
 
     if(-not $adUser){
@@ -407,3 +415,54 @@ function initializeUser {
 
 }
 
+function getDcSession {
+    [CmdletBinding()]
+    [OutputType([System.Management.Automation.Runspaces.PSSession])]
+    Param(
+        [String] $bitwardenItemIdOfCompanyParameters
+    )
+
+    $companyParameters = getFieldMapFromBitwardenItem $bitwardenItemIdOfCompanyParameters
+    $bitwardenItemContainingActiveDirectoryCredentials = getBitwardenItem $companyParameters['idOfBitwardenItemContainingActiveDirectoryCredentials']
+
+    $username = (
+        @(
+            $bitwardenItemContainingActiveDirectoryCredentials.fields | 
+                ? {$_.name -eq 'active_directory_domain_name'} | 
+                % {$_.value}
+        )[0] +
+        "\" + 
+        @($bitwardenItemContainingActiveDirectoryCredentials.login.username -split "@")[0]
+    )
+    $password=$bitwardenItemContainingActiveDirectoryCredentials.login.password
+
+    if ($companyParameters['nameOfSoftetherVpnConnectionNeededToTalkToDomainController']){
+        Write-Host "connecting to vpn connection $($companyParameters['nameOfSoftetherVpnConnectionNeededToTalkToDomainController'])"
+        vpncmd /client localhost /cmd AccountConnect $companyParameters['nameOfSoftetherVpnConnectionNeededToTalkToDomainController'] | Out-Null
+    }
+
+    
+    Set-Item WSMan:\localhost\Client\TrustedHosts -Force -Value $companyParameters['domainController']  | Out-Null
+    $ss = @{
+        ComputerName = $companyParameters['domainController'];
+        
+
+        Credential=(New-Object `
+            System.Management.Automation.PSCredential `
+            $username, (ConvertTo-SecureString $password -AsPlainText -Force)
+        )
+        
+        # ConfigurationName="Powershell.7.1.5";
+        ConfigurationName="microsoft.powershell";
+        # run Get-PSSessionConfiguration  to see a complete list of available configurations
+        
+        SessionOption=@{
+            # OutputBufferingMode=;
+        };
+
+        # Authentication='Digest';
+        # UseSSL=$True;
+    }
+
+    return (New-PSSession @ss);
+}
