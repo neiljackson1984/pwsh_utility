@@ -362,38 +362,116 @@ function initializeUser {
         $recipientAddress = ($adUser.DisplayName + "<" + $adUser.UserPrincipalName + ">")
 
             
-        $xx = @{
+        @{
             emailAccount = $emailAccountForSendingAdvisoryMessages
-            from         = $emailAccountForSendingAdvisoryMessages
-            to           = $(if($sendToDebuggingAddressInsteadOfTrueAddresses){$companyParameters['debuggingAddress']} else {$recipientAddress})
-            cc           = ( $companyParameters['managerName'] + "<" + $(if($sendToDebuggingAddressInsteadOfTrueAddresses){$companyParameters['debuggingAddress']} else {$companyParameters['managerEmailAddress']}) + ">" )
-            subject      = $(if($sendToDebuggingAddressInsteadOfTrueAddresses){"(TO: $recipientAddress) " } else {""} ) + "$($companyParameters['companyName']) Active Directory account for $($userSpec['firstName']) $($userSpec['lastName'])"
-            body         = @( 
+
+            from = $emailAccountForSendingAdvisoryMessages
+
+            to = $(
+                if($sendToDebuggingAddressInsteadOfTrueAddresses){
+                    $companyParameters['debuggingAddress']
+                } else {
+                    $recipientAddress
+                }
+            )
+
+            cc = @( 
+                
+                $companyParameters['managerName'] + 
+                "<" + 
+                $(
+                    if($sendToDebuggingAddressInsteadOfTrueAddresses){
+                        $companyParameters['debuggingAddress']
+                    } else {
+                        $companyParameters['managerEmailAddress']
+                    }
+                ) + 
+                ">" 
+
+                if(-not $sendToDebuggingAddressInsteadOfTrueAddresses){
+                    $userSpec.personalEmailAddresses
+                }
+            )
+
+            subject = (
+                $(
+                    if($sendToDebuggingAddressInsteadOfTrueAddresses){
+                        "(TO: $recipientAddress) " 
+                    } else {
+                        ""
+                    } 
+                ) + 
+                "$($companyParameters['companyName']) Active Directory account for $($userSpec['firstName']) $($userSpec['lastName'])"
+            )
+
+            body  = @( 
                 "Dear $($userSpec.firstName) $($userSpec.lastName), "
+
                 ""
-                "Welcome to $($companyParameters['companyName']).  " `
-                + "Here are your $($companyParameters['companyName']) Active Directory credentials:"
+
+                "Welcome to $($companyParameters['companyName']).  " +
+                "Here are your $($companyParameters['companyName']) Active Directory credentials:"
+
                 "    username (and email address): $($adUser.UserPrincipalName)"
+
                 "    password: $($userSpec['password'])"
+
                 ""
-                "Use the above username and password to log into " `
-                + "your computer at the $($companyParameters['companyName']) office and " `
-                + "to access $($companyParameters['companyName']) email.  To change your " `
-                + "password, go to  $($companyParameters['passwordChangeUrl'])."
+
+                "To change your " +
+                "password, go to  $($companyParameters['passwordChangeUrl'])."
+
                 ""
-                "There is a webmail interface at https://outlook.office.com, which allows " `
-                + "you to access your $($companyParameters['companyName']) email from a web " `
-                + " browser.  You can also access email in Outlook on your $($companyParameters['companyName']) computer."
+
+                "Use the above username and password to log into " +
+                "your computer at the $($companyParameters['companyName']) office and " +
+                "to access $($companyParameters['companyName']) email.  "
+
                 ""
-                "Here are all the details that you might need to "`
-                + "set up email on your smart phone, if you are so inclined:"
-                "    Account type: Exchange (some phones call this `"Corporate`")"
-                "    Email address: $($adUser.UserPrincipalName)"
-                "    Username: $($adUser.UserPrincipalName)"
-                "    Password: $($userSpec['password'])"
-                "    Domain: $($companyParameters['emailDomainName'])"
-                "    Exchange Server address: outlook.office365.com"
-                "    TLS (this is usually a checkbox): yes (checked)"
+                
+                if ($companyParameters['emailDomainName'] -eq 'lucasinterior.com'){
+
+                    "Your $($companyParameters['companyName']) email account is provided " +
+                    "by Gmail.  To access email, use the web interface at " +
+                    "https://gmail.com or use your mail client of choice.  "
+
+                    ""
+
+                    "Your $($companyParameters['companyName']) phone extension number " + 
+                    "is $($userSpec.phoneExtensionNumber).  "
+
+                    ""
+
+                    "Your $($companyParameters['companyName']) phone direct-dial " +
+                    "number is $($userSpec.directDialPhoneNumber)."
+
+
+                } else {
+
+                    "There is a webmail interface at https://outlook.office.com, which allows " +
+                    "you to access your $($companyParameters['companyName']) email from a web " +
+                    " browser.  You can also access email in Outlook on your $($companyParameters['companyName']) computer."
+
+                    ""
+
+                    "Here are all the details that you might need to " +
+                    "set up email on your smart phone, if you are so inclined:"
+
+                    "    Account type: Exchange (some phones call this `"Corporate`")"
+
+                    "    Email address: $($adUser.UserPrincipalName)"
+
+                    "    Username: $($adUser.UserPrincipalName)"
+
+                    "    Password: $($userSpec['password'])"
+
+                    "    Domain: $($companyParameters['emailDomainName'])"
+
+                    "    Exchange Server address: outlook.office365.com"
+
+                    "    TLS (this is usually a checkbox): yes (checked)"
+
+                }
                 ""
                 ""
                 "Sincerely,"
@@ -407,7 +485,8 @@ function initializeUser {
                 "SEATTLE WA 98199-1209"
                 "206-282-1616"
             ) -Join "`n"
-        };     sendMail @xx
+
+        } | % { sendMail @_ }
     }
 
 
