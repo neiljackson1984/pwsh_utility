@@ -261,75 +261,6 @@ function sendMail($emailAccount, $from, $to = @(), $cc = @(), $bcc = @(), $subje
 
 }
 
-# function setLicensesAssignedToAzureAdUser($objectIdOfAzureAdUser, $skuPartNumbers){
-#     $azureAdUser = Get-AzureADUser -ObjectId $objectIdOfAzureAdUser
-#     if (! $azureAdUser ){
-#         Write-Host "No Azure AD user having id $objectIdOfAzureAdUser exists."
-#         return
-#     } 
-
-#     # to view the available sku part numbers, run the following command:
-#     # (Get-AzureADSubscribedSku).SkuPartNumber
-
-#     # assign licenses:
-#     # annoyingly, there does not seem to be a good way to buy licenses programmatically 
-#     $desiredSkuIds = @(( Get-AzureADSubscribedSku | where-object { $_.SkuPartNumber -in @($skuPartNumbers) }).SkuId)
-#     $existingSkuIds = @($azureAdUser.AssignedLicenses | foreach-object {$_.SkuId})
-#     Write-Host (
-#         "Initially, $($azureAdUser.UserPrincipalName) has these skuPartNumbers: " + ( 
-#             @(
-#                 ( Get-AzureADSubscribedSku | where-object { $_.SkuId -in $existingSkuIds }).SkuPartNumber
-#             ) -Join ", "
-#         )
-#     )
-    
-#     #ensure that licenses are assigned:
-#     $skuIdsToRemoveFromUser = $existingSkuIds | where-object {-not ($_ -in $desiredSkuIds)};
-#     $skuIdsToGiveToUser = $desiredSkuIds | where-object {-not ($_ -in $existingSkuIds)};
-    
-#     Write-Host ("skuIdsToRemoveFromUser: ", $skuIdsToRemoveFromUser)
-#     Write-Host ("skuIdsToGiveToUser: ", $skuIdsToGiveToUser)
-    
-#     if($skuIdsToRemoveFromUser -or $skuIdsToGiveToUser){
-#         Write-Host "changing the user's license assignment to match the desired configuration"
-        
-#         if($skuIdsToRemoveFromUser){
-#             # $assignedLicenses.RemoveLicenses = @($skuIdsToRemoveFromUser | foreach-object {$x = New-Object -TypeName Microsoft.Open.AzureAD.Model.AssignedLicense; $x.SkuId = $_; $x })
-#             $assignedLicenses = New-Object -TypeName Microsoft.Open.AzureAD.Model.AssignedLicenses
-#             $assignedLicenses.RemoveLicenses = $skuIdsToRemoveFromUser
-#             Set-AzureAdUserLicense -ObjectId $azureAdUser.ObjectId -AssignedLicenses $assignedLicenses
-#         }
-        
-#         foreach($skuIdToGiveToUser in $skuIdsToGiveToUser){
-#             $assignedLicense = New-Object -TypeName Microsoft.Open.AzureAD.Model.AssignedLicense;
-#             $assignedLicense.SkuId = $skuIdToGiveToUser;
-#             $assignedLicenses = New-Object -TypeName Microsoft.Open.AzureAD.Model.AssignedLicenses;
-#             $assignedLicenses.AddLicenses = $assignedLicense;
-#             $azureAdUser | Set-AzureADUser -UsageLocation "US"
-#             Set-AzureAdUserLicense -ObjectId $azureAdUser.ObjectId -AssignedLicenses $assignedLicenses
-#         }
-        
-#         # if($skuIdsToGiveToUser){
-#             # $assignedLicenses = New-Object -TypeName Microsoft.Open.AzureAD.Model.AssignedLicenses
-#             # $assignedLicenses.AddLicenses = $skuIdsToGiveToUser
-#             # Set-AzureAdUserLicense -ObjectId $azureAdUser.ObjectId -AssignedLicenses $assignedLicenses
-#         # }
-
-#         $existingSkuIds = @((Get-AzureAdUser -ObjectId $azureAdUser.ObjectId).AssignedLicenses | foreach-object {$_.SkuId})
-#         Write-Host (
-#             "After making changes, $($azureAdUser.UserPrincipalName) has these skuPartNumbers: " + ( 
-#                 @(
-#                     ( Get-AzureADSubscribedSku | where-object { $_.SkuId -in $existingSkuIds }).SkuPartNumber
-#                 ) -Join ", "
-#             )
-#         )
-
-#     } else {
-#         Write-Host "no changes need to be made to the user's licenses."
-#     }
-
-# }
-
 
 function setLicensesAssignedToMgUser($userId, $skuPartNumbers){
     # $azureAdUser = Get-AzureADUser -ObjectId $objectIdOfAzureAdUser
@@ -479,6 +410,165 @@ function setLicensesAssignedToMgUser($userId, $skuPartNumbers){
         Write-Host "no changes need to be made to the user's licenses."
     }
 
+}
+
+function setSmtpAddressesOfMailbox
+{
+
+    <#
+	.SYNOPSIS
+	effectively deletes and replaces all smtp addresses in the EmailAddresses property of a mailbox.
+
+	.DESCRIPTION
+
+	.EXAMPLE
+	setSmtpAddressesOfMailbox `
+        -mailboxId "f4476753-3c37-4f09-9d62-64955041c411" `
+        -desiredSmtpAddresses @(
+            # primary address:
+            "john@apples.com",
+
+            #secondary addresses:
+            "johnny@apples.com",
+            "jdog@apples.com"
+        )
+
+
+	#>
+
+	[CmdletBinding()]
+
+    [OutputType([Void])]
+
+    param (   
+        [
+            Parameter(
+                Mandatory = $True
+            )
+        ]
+        [String] 
+        $mailboxId,
+
+        [
+            Parameter(
+                Mandatory = $False,
+                HelpMessage = (
+                    "The first element will be taken to be the " + 
+                    "desired primary smtp address, unless the "  +
+                    " desiredPrimarySmtpAddress argument is "    +
+                    "present."
+                )
+            )
+        ]
+        [String[]] $desiredSmtpAddresses = @(),
+
+        [
+            Parameter(
+                Mandatory = $False,
+                HelpMessage = (
+                    "This argument, if present, will be used to " +
+                    "forcefully specify which address shall be "  +
+                    "primary, rather than implicitly using the "  +
+                    "first element of the desiredSmtpAddresses "  +
+                    "array."
+                )
+            )
+        ]
+        [String] $desiredPrimarySmtpAddress = $null
+    )
+
+    process
+    {
+        $candidateMailboxes = @(Get-Mailbox -Identity $mailboxId -ErrorAction SilentlyContinue)
+        if($candidateMailboxes.Count -ne 1){
+            Write-Host (
+                "we could not find a single mailbox having " +
+                "Identity `"$($mailboxId)`".  Therefore, " + 
+                "we will stop here."
+            )
+            return
+        } 
+        $mailbox = $candidateMailboxes[0]
+
+        Write-Host "setting the email addresses for the mailbox $($mailbox.Identity)."
+
+        # from the arguments, extract one $primarySmtpAddress
+        # and an array of $secondarySmtpAddresses, not containing the $primarySmtpAddress .
+        [String] $primarySmtpAddress = $(
+            if($desiredPrimarySmtpAddress){
+                $desiredPrimarySmtpAddress
+            } else {
+                $desiredSmtpAddresses[0]
+            }
+        )
+
+        $desiredEmailAddresses = @(
+            "SMTP:$($primarySmtpAddress)"
+
+            $desiredSmtpAddresses |
+                ? { 
+                    $_ -ne  $primarySmtpAddress 
+                    # this is not quite right, because we should be doing
+                    # case-insensitive comparison.
+                } |
+                % {"smtp:$($_)"}
+        )
+
+        Write-Host "initially, mailbox.EmailAddresses: ", $mailbox.EmailAddresses
+        
+        $emailAddressesToRemove = $mailbox.EmailAddresses | where-object {
+            ($_ -match '(?i)^SMTP:.+$') -and (-not ($_ -in $desiredEmailAddresses)) 
+            # it is an smtp address of some sort and it is not in the desiredEmailAddresses List
+        }
+        $emailAddressesToAdd = $desiredEmailAddresses | where-object {
+            -not ($_ -in $mailbox.EmailAddresses)
+            # it is not already in the mailbox's Email Addresses
+        }
+
+        if( ([Boolean] $emailAddressesToRemove) -or ([Boolean] $emailAddressesToAdd) ){
+            Write-Host "emailAddressesToRemove ($($emailAddressesToRemove.Count)): ", $emailAddressesToRemove
+            Write-Host "emailAddressesToAdd ($($emailAddressesToAdd.Count)): ", $emailAddressesToAdd
+            $emailAddressesArg = (
+                $(
+                    if($emailAddressesToRemove.Count -gt 0){
+                        @{ Remove=@($emailAddressesToRemove) }
+                    } else {
+                        @{}
+                    }
+                ) + 
+                $(
+                    if($emailAddressesToAdd.Count -gt 0){
+                        @{ Add=@($emailAddressesToRemove) }
+                    } else {
+                        @{}
+                    }
+                )
+            )
+
+            Write-Host "`$emailAddressesArg: $($emailAddressesArg | format-list | Out-String)"
+            
+            # in the case where $emailAddressesToAdd is empty or
+            # $emailAddressesToRemove is empty (or mayube they both have to be
+            # empty?), the Set-Mailbox command throws the following  error.
+            # Therefore, we have to take pains to avoid passing an empty list.
+            #
+            # Set-Mailbox: Cannot process argument transformation on parameter
+            # 'EmailAddresses'. Cannot convert value
+            # "System.Collections.Generic.Dictionary`2[System.String,System.Object]"
+            # to type "Microsoft.Exchange.Data.ProxyAddressCollection". Error:
+            # "MultiValuedProperty collections cannot contain null values.
+            
+            @{
+                Identity = $mailbox.Guid
+                EmailAddresses = $emailAddressesArg
+            } | % {Set-Mailbox @_} 
+
+            $mailbox =  Get-Mailbox -Identity $mailbox.Guid
+            Write-Host "finally, mailbox.EmailAddresses: ", $mailbox.EmailAddresses
+        } else {
+            Write-Host "email addresses for $($mailbox.Identity) are as desired, so we will not bother to add or remove any."
+        }  
+    }
 }
 
 

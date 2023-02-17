@@ -123,47 +123,55 @@ function initializeUser {
         
         
         $desiredEmailAddresses = @()
-        $desiredEmailAddresses += "SMTP:$primaryEmailAddress"
+        $desiredEmailAddresses += "$primaryEmailAddress"
         if(! ($primaryEmailAddress -eq $defaultEmailAddress)){
             #make sure that the $default email address, as a non-primary smtp address, exists in the ProxyAddresses array
-            $desiredEmailAddresses += "smtp:$defaultEmailAddress"
+            $desiredEmailAddresses += "$defaultEmailAddress"
         }
         foreach($desiredAdditionalEmailAddress in $userSpec['desiredAdditionalEmailAddresses']){
-            $desiredEmailAddresses += "smtp:$desiredAdditionalEmailAddress"
+            $desiredEmailAddresses += "$desiredAdditionalEmailAddress"
         }
 
 
-        # $mailbox = Get-Mailbox $azureAdUser.ObjectID -ErrorAction SilentlyContinue
         $mailbox = Get-Mailbox $mgUser.Id -ErrorAction SilentlyContinue
         if (! $mailbox ){
             Write-Host "The user $userPrincipalName does not appear to have a mailbox, so we will not attempt to adjust email addresses."
         } else {
-            Write-Host "initially, mailbox.EmailAddresses: ", $mailbox.EmailAddresses
             
-            $emailAddressesToRemove = $mailbox.EmailAddresses | where-object {
-                ($_ -match '(?-i)^SMTP:.+$') -and (-not ($_ -in $desiredEmailAddresses)) # it is an smtp address of some sort and it is not in the desiredEmailAddresses List
-            }
-            $emailAddressesToAdd = $desiredEmailAddresses | where-object {
-                -not ($_ -in $mailbox.EmailAddresses) # it is not already in the mailbox's Email Addresses
-            }
+            
+            # Write-Host "initially, mailbox.EmailAddresses: ", $mailbox.EmailAddresses
+            
+            # $emailAddressesToRemove = $mailbox.EmailAddresses | where-object {
+            #     ($_ -match '(?-i)^SMTP:.+$') -and (-not ($_ -in $desiredEmailAddresses)) # it is an smtp address of some sort and it is not in the desiredEmailAddresses List
+            # }
+            # $emailAddressesToAdd = $desiredEmailAddresses | where-object {
+            #     -not ($_ -in $mailbox.EmailAddresses) # it is not already in the mailbox's Email Addresses
+            # }
 
-            if( ([Boolean] $emailAddressesToRemove) -or ([Boolean] $emailAddressesToAdd) ){
-                Write-Host "emailAddressesToRemove ($($emailAddressesToRemove.Length)): ", $emailAddressesToRemove
-                Write-Host "emailAddressesToAdd ($($emailAddressesToAdd.Length)): ", $emailAddressesToAdd
+            # if( ([Boolean] $emailAddressesToRemove) -or ([Boolean] $emailAddressesToAdd) ){
+            #     Write-Host "emailAddressesToRemove ($($emailAddressesToRemove.Length)): ", $emailAddressesToRemove
+            #     Write-Host "emailAddressesToAdd ($($emailAddressesToAdd.Length)): ", $emailAddressesToAdd
                 
 
-                $s = @{
-                    EmailAddresses = @{
-                        Add=@($emailAddressesToAdd); 
-                        Remove=@($emailAddressesToRemove)
-                    }; 
-                }; $mailbox | Set-Mailbox @s ; 
-                # $mailbox = Get-Mailbox $azureAdUser.ObjectID
-                $mailbox =  Get-Mailbox $mgUser.Id
-                Write-Host "finally, mailbox.EmailAddresses: ", $mailbox.EmailAddresses
-            } else {
-                Write-Host "email addresses for $userPrincipalName are as desired, so we will not bother to add or remove any."
-            }
+            #     $s = @{
+            #         EmailAddresses = @{
+            #             Add=@($emailAddressesToAdd); 
+            #             Remove=@($emailAddressesToRemove)
+            #         }; 
+            #     }; $mailbox | Set-Mailbox @s ; 
+            #     $mailbox =  Get-Mailbox $mgUser.Id
+            #     Write-Host "finally, mailbox.EmailAddresses: ", $mailbox.EmailAddresses
+            # } else {
+            #     Write-Host "email addresses for $userPrincipalName are as desired, so we will not bother to add or remove any."
+            # }
+            
+            @{
+                mailboxId = $mailbox.Guid 
+                desiredSmtpAddresses = $desiredEmailAddresses
+                desiredPrimarySmtpAddress = $primaryEmailAddress
+            } | % { setSmtpAddressesOfMailbox  @_ }
+
+
         }
         return;
     }
