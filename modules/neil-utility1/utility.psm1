@@ -1,6 +1,6 @@
 function unlockTheBitwardenVault(){
     #temporary hack to speed things up:
-    Write-Host "blindly assuming that bitwarden vault is unlocked..."; return
+    Write-Debug "blindly assuming that bitwarden vault is unlocked..."; return
     
     Write-Host "Attempting to unlock the bitwarden vault..."
     if ($(bw unlock --check)) {

@@ -3,14 +3,15 @@ import-module (join-path $psScriptRoot "utility.psm1")
 function make_email_forwarding_and_access_report(){
 
     $reportTime = (Get-Date )
-    $defaultDomainName = (Get-AzureAdDomain | where-object {$_.IsDefault}).Name
+    $defaultDomainName = (Get-MgDomain | where-object {$_.IsDefault}).Id
 
-    $pathOfOutputReportFile = "email_forwarding_and_access_report_$defaultDomainName_$('{0:yyyy-MM-dd_HH-mm}' -f $reportTime).txt"
+    $pathOfOutputReportFile = "email_forwarding_and_access_report_$($defaultDomainName)_$('{0:yyyy-MM-dd_HH-mm}' -f $reportTime).txt"
+
 
     $allMailboxPermissions = get-mailbox | get-mailboxpermission 
     $allRecipientPermissions = get-mailbox | get-RecipientPermission 
-    $allAzureAdUsers = Get-AzureADUser
-    $licensedAzureAdUsers = $allAzureAdUsers | where {$_.AssignedLicenses.Length -gt 0}
+    $allMgUsers = Get-MgUser
+    $licensedMgUsers = $allMgUsers | where {(Get-MgUser -UserId $_.Id -Property "AssignedLicenses").AssignedLicenses}
 
 
     "" | Out-File -FilePath $pathOfOutputReportFile
@@ -27,36 +28,29 @@ function make_email_forwarding_and_access_report(){
 
     foreach($mailbox in (get-mailbox | Sort-Object -Property PrimarySmtpAddress)){
     # foreach($mailbox in (get-mailbox | Sort-Object -Property PrimarySmtpAddress | Where-Object { -not $_.Identity.Contains("-snapshot20210502")  })){
-        $azureAdUserWhoOwnsThisMailbox = $allAzureAdUsers | where {$_.UserPrincipalName -eq $mailbox.PrimarySmtpAddress}
+        # $mgUserWhoOwnsThisMailbox = $allMgUsers | where {$_.UserPrincipalName -eq $mailbox.PrimarySmtpAddress}
+        $mgUserWhoOwnsThisMailbox = (Get-MgUser -UserId $mailbox.ExternalDirectoryObjectId)
         
-        $fullAccessPermissionsToThisMailbox = (
-            $allMailboxPermissions | where {
-                ($_.Identity -eq $mailbox.Identity) -and 
-                ($_.AccessRights.contains( "FullAccess" )) -and
-                (! $_.Deny) -and
-                # (($allAzureAdUsers.UserPrincipalName).contains($_.User))
-                (($licensedAzureAdUsers.UserPrincipalName).contains($_.User))
-            }
-        )
+        
         
         $recipientPermissionsToThisMailbox = (
             $allRecipientPermissions | where {
                 ($_.Identity -eq $mailbox.Identity) -and 
                 ($_.AccessRights.contains( "SendAs" )) -and
                 ($_.AccessControlType -eq "Allow") -and 
-                (($licensedAzureAdUsers.UserPrincipalName).contains($_.Trustee))
+                (($licensedMgUsers.UserPrincipalName).contains($_.Trustee))
             }
         )
         
         
-        $azureAdUsersThatHaveFullAccessToThisMailbox = (
-            ([system.Array] ($fullAccessPermissionsToThisMailbox | foreach {Get-AzureADUser -ObjectId $_.User} )) +
-            ([system.Array] @($azureAdUserWhoOwnsThisMailbox))
+        $mgUsersThatHaveFullAccessToThisMailbox = (
+            ([system.Array] ($fullAccessPermissionsToThisMailbox | foreach {Get-MgUser -UserId $_.User} )) +
+            ([system.Array] @($mgUserWhoOwnsThisMailbox))
         ) | Sort-Object -Property UserPrincipalName
         
-        $azureAdUsersThatHaveSendAsPermissionToThisMailbox = (
-            ([system.Array] ($recipientPermissionsToThisMailbox | foreach {Get-AzureADUser -ObjectId $_.Trustee} )) +
-            ([system.Array] @($azureAdUserWhoOwnsThisMailbox))
+        $mgUsersThatHaveSendAsPermissionToThisMailbox = (
+            ([system.Array] ($recipientPermissionsToThisMailbox | foreach {Get-MgUser -UserId $_.Trustee} )) +
+            ([system.Array] @($mgUserWhoOwnsThisMailbox))
         ) | Sort-Object -Property UserPrincipalName
         
         $addressesToWhichThisMailboxIsBeingRedirected = (
@@ -106,22 +100,22 @@ function make_email_forwarding_and_access_report(){
         $reportMessage += "`n" + 
         "`t" + "is accessible (full access permission) " + 
         $(
-            if($azureAdUsersThatHaveFullAccessToThisMailbox.Length -eq 1){
-                "only to " + $azureAdUsersThatHaveFullAccessToThisMailbox[0].UserPrincipalName
-            } elseif ($azureAdUsersThatHaveFullAccessToThisMailbox.Length -gt 1){
+            if($mgUsersThatHaveFullAccessToThisMailbox.Length -eq 1){
+                "only to " + $mgUsersThatHaveFullAccessToThisMailbox[0].UserPrincipalName
+            } elseif ($mgUsersThatHaveFullAccessToThisMailbox.Length -gt 1){
                 "to the following users: " + "`n" +
-                [system.String]::Join("`n", ($azureAdUsersThatHaveFullAccessToThisMailbox | Sort-Object | ForEach-Object {"`t`t" + $_.UserPrincipalName}))
+                [system.String]::Join("`n", ($mgUsersThatHaveFullAccessToThisMailbox | Sort-Object | ForEach-Object {"`t`t" + $_.UserPrincipalName}))
             } else {
                 "to nobody."
             } 
         ) + "`n" + 
         "`t" + "and is sendable (send-as permission) " + 
         $(
-            if($azureAdUsersThatHaveSendAsPermissionToThisMailbox.Length -eq 1){
-                "only to " + $azureAdUsersThatHaveSendAsPermissionToThisMailbox[0].UserPrincipalName
-            } elseif ($azureAdUsersThatHaveSendAsPermissionToThisMailbox.Length -gt 1){
+            if($mgUsersThatHaveSendAsPermissionToThisMailbox.Length -eq 1){
+                "only to " + $mgUsersThatHaveSendAsPermissionToThisMailbox[0].UserPrincipalName
+            } elseif ($mgUsersThatHaveSendAsPermissionToThisMailbox.Length -gt 1){
                 "to the following users: " + "`n" +
-                [system.String]::Join("`n", ($azureAdUsersThatHaveSendAsPermissionToThisMailbox | Sort-Object | ForEach-Object  {"`t`t" + $_.UserPrincipalName}))
+                [system.String]::Join("`n", ($mgUsersThatHaveSendAsPermissionToThisMailbox | Sort-Object | ForEach-Object  {"`t`t" + $_.UserPrincipalName}))
             } else {
                 "to nobody."
             } 

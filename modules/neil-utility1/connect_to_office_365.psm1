@@ -68,8 +68,8 @@ function forceExchangeModuleToLoadItsVersionOf_System_IdentityModel_Tokens_Jwt()
             $assembliesToLoad | foreach-object {$_.Location}
         )
 
-        Write-Host "We will now attempt to load the following $($pathsOfDllFilesToLoad.Length) dll files: "
-        $pathsOfDllFilesToLoad | Write-Host
+        Write-Debug "We will now attempt to load the following $($pathsOfDllFilesToLoad.Length) dll files: "
+        $pathsOfDllFilesToLoad | Write-Debug
 
         foreach(
             $pathOfDllFile in $pathsOfDllFilesToLoad
@@ -78,7 +78,7 @@ function forceExchangeModuleToLoadItsVersionOf_System_IdentityModel_Tokens_Jwt()
                 $private:ErrorActionPreference = "Stop"
                 [System.Reflection.Assembly]::LoadFrom($pathOfDllFile) 1> $null
             } catch {
-                Write-Host "Catching an error: $_"
+                Write-Debug "Catching an error: $_"
             }
         }
     }
@@ -93,7 +93,7 @@ function forceExchangeModuleToLoadItsVersionOf_System_IdentityModel_Tokens_Jwt()
             Where-Object {$_.FullName -match "^System.IdentityModel.Tokens.Jwt\b.*`$" } |
             Sort-Object -Property FullName | 
             Select-Object -Property FullName, Location, GlobalAssemblyCache, IsFullyTrusted  
-    ) | Write-Host
+    ) | Write-Debug
 }
 
 
@@ -113,7 +113,7 @@ function forceGraphModuleToLoadItsVersionOf_System_IdentityModel_Tokens_Jwt(){
             $private:ErrorActionPreference = "Stop"
             [System.Reflection.Assembly]::LoadFrom($pathOfDllFile)
         } catch {
-            Write-Host "Catching an error: $_"
+            Write-Debug "Catching an error: $_"
         }
     }
 
@@ -1498,8 +1498,8 @@ function connectToOffice365 {
     function connectToMgGraph {
         [OutputType([Void])]
         param ()
-        Write-Host "about to do Connect-MgGraph"
-        # Select-MgProfile -Name Beta
+        Write-Debug "about to do Connect-MgGraph"
+        Select-MgProfile -Name Beta
         Disconnect-MgGraph -ErrorAction SilentlyContinue 1>$null 2>$null
         $s = @{
             ClientId                = $configuration['appId']
@@ -1514,7 +1514,7 @@ function connectToOffice365 {
             TenantId                = $configuration['tenantId']
             ContextScope            = "Process"
         }; Connect-MgGraph @s 1> $null
-        Write-Host "Finished doing Connect-MgGraph"
+        Write-Debug "Finished doing Connect-MgGraph"
     }
 
     function ensureThatWeAreConnectedToMgGraph {
@@ -1561,12 +1561,12 @@ function connectToOffice365 {
     function connectToExchangeOnline {
         # [OutputType([Void])]
         param ()
-        Write-Host "about to do Connect-ExchangeOnline"
+        Write-Debug "about to do Connect-ExchangeOnline"
         
         # try {
         #     Disconnect-ExchangeOnline -Confirm:$false -ErrorAction Stop
         # } catch {
-        #     Write-Host "ignoring an error that occured with Disconnect-ExchangeOnline: $_"
+        #     Write-Debug "ignoring an error that occured with Disconnect-ExchangeOnline: $_"
         # }
         $s = @{
             AppID                   = $configuration['appId'] 
@@ -1575,9 +1575,9 @@ function connectToOffice365 {
             Organization            = $configuration['initialDomainName']
             ShowBanner              = $false
         }
-        Write-Host "arguments are $($s | out-string)"
+        Write-Debug "arguments are $($s | out-string)"
         $result = Connect-ExchangeOnline @s
-        Write-Host "Finished doing Connect-ExchangeOnline, and the result is $($result).  First mailbox is $(@(get-mailbox)[0])"
+        Write-Debug "Finished doing Connect-ExchangeOnline, and the result is $($result).  First mailbox is $(@(get-mailbox)[0])"
         # return $result
     }
 
@@ -1585,7 +1585,7 @@ function connectToOffice365 {
         [OutputType([Void])]
         param ()
         if( getWeAreConnectedToExchangeOnline ){
-            Write-Host ("It seems that a connection to Exchange Online already " +
+            Write-Debug ("It seems that a connection to Exchange Online already " +
                 "exists, so we will not bother attempting to reconnect.")
         } else {
             connectToExchangeOnline 1> $null
@@ -1625,7 +1625,7 @@ function connectToOffice365 {
     function connectToSharepointOnline {
         # [OutputType([Void])]
         param ()
-        Write-Host "about to do Connect-PnPOnline (which I call 'Sharepoint Online')"    
+        Write-Debug "about to do Connect-PnPOnline (which I call 'Sharepoint Online')"    
         
         # $temporaryFile = New-TemporaryFile
         # Set-Content  -AsByteStream -Value ([System.Convert]::FromBase64String($configuration['base64EncodedPfx'])) -LiteralPath $temporaryFile.FullName 1> $null
@@ -1645,7 +1645,7 @@ function connectToOffice365 {
         # # $y = $x.PrivateKey.ExportRSAPrivateKeyPem()
 
 
-        # Write-Host "`$certificate.PSPath: $($certificate.PSPath)"
+        # Write-Debug "`$certificate.PSPath: $($certificate.PSPath)"
         # Remove-Item -Force -Path $temporaryFile.FullName
         
 
@@ -1691,7 +1691,7 @@ function connectToOffice365 {
 
         # see https://pnp.github.io/powershell/cmdlets/Connect-PnPOnline.html
         # see https://learn.microsoft.com/en-us/sharepoint/dev/solution-guidance/security-apponly-azuread
-        Write-Host "Finished doing Connect-PnPOnline (which I call 'Sharepoint Online')"   
+        Write-Debug "Finished doing Connect-PnPOnline (which I call 'Sharepoint Online')"   
         
     }
 
@@ -1699,7 +1699,7 @@ function connectToOffice365 {
         [OutputType([Void])]
         param ()
         if( getWeAreConnectedToSharepointOnline ){
-            Write-Host ("It seems that a connection to Sharepoint Online already " +
+            Write-Debug ("It seems that a connection to Sharepoint Online already " +
                 "exists, so we will not bother attempting to reconnect.")
         } else {
             connectToSharepointOnline 
@@ -1742,15 +1742,15 @@ function connectToOffice365 {
             
 
         # # connect to "Security & Compliance PowerShell in a Microsoft 365 organization."
-        # # Write-Host "about to do Connect-IPPSSession "
+        # # Write-Debug "about to do Connect-IPPSSession "
         # # $s = @{
         # #     AppID                   = $configuration['appId']  
         # #     CertificateThumbprint   = $configuration['certificateThumbprint'] 
         # #     Organization            = $initialDomainName
         # # }
-        # # Write-Host "arguments are $($s | out-string)"
+        # # Write-Debug "arguments are $($s | out-string)"
         # # Connect-IPPSSession @s
-        # # Write-Host "done"
+        # # Write-Debug "done"
 
         # # Connect-IPPSSession does not seem to be working properly with 
         # # unattended app-based authentication.  Connect-IPPSSession tends to 
@@ -1764,7 +1764,7 @@ function connectToOffice365 {
         # # -AzureADAuthorizationEndpointUri 'https://login.microsoftonline.com/organizations'
 
 
-        # Write-Host "about to do our own equivalent of 'Connect-IPPSSession' "
+        # Write-Debug "about to do our own equivalent of 'Connect-IPPSSession' "
         # $s = @{
         #     AppID                               = $configuration['appId']
         #     # CertificateThumbprint               = $configuration['certificateThumbprint']
@@ -1775,11 +1775,11 @@ function connectToOffice365 {
         #     ConnectionUri                       = 'https://ps.compliance.protection.outlook.com/PowerShell-LiveId' 
         #     AzureADAuthorizationEndpointUri     = 'https://login.microsoftonline.com/organizations'
         # }
-        # Write-Host "arguments are $($s | out-string)"
+        # Write-Debug "arguments are $($s | out-string)"
         # $result = Connect-ExchangeOnline @s
-        # Write-Host "Finished doing our own equivalent of 'Connect-IPPSSession"
+        # Write-Debug "Finished doing our own equivalent of 'Connect-IPPSSession"
 
-        Write-Host "about to do Connect-IPPSSession"
+        Write-Debug "about to do Connect-IPPSSession"
         $s = @{
             AppID                               = $configuration['appId']  
             Certificate                         = $certificate
@@ -1793,9 +1793,9 @@ function connectToOffice365 {
                 }
             )
         }
-        Write-Host "arguments are $($s | out-string)"
+        Write-Debug "arguments are $($s | out-string)"
         $result = Connect-IPPSSession @s
-        Write-Host "Finished doing  'Connect-IPPSSession', with result: $($result)"
+        Write-Debug "Finished doing  'Connect-IPPSSession', with result: $($result)"
 
 
 
