@@ -22,19 +22,25 @@ function make_email_forwarding_and_access_report(){
         "EMAIL FORWARDING AND ACCESS REPORT"
         "$defaultDomainName"
         "Prepared $('{0:yyyy/MM/dd HH:mm}' -f $reportTime)"
+        ""
     ) | Out-File  -Width 99999 -Append -FilePath $pathOfOutputReportFile
 
 
-
     foreach($mailbox in (get-mailbox | Sort-Object -Property PrimarySmtpAddress)){
-    # foreach($mailbox in (get-mailbox | Sort-Object -Property PrimarySmtpAddress | Where-Object { -not $_.Identity.Contains("-snapshot20210502")  })){
-        # $mgUserWhoOwnsThisMailbox = $allMgUsers | where {$_.UserPrincipalName -eq $mailbox.PrimarySmtpAddress}
-        $mgUserWhoOwnsThisMailbox = (Get-MgUser -UserId $mailbox.ExternalDirectoryObjectId)
+        $mgUserWhoOwnsThisMailbox = $null
+        $mgUserWhoOwnsThisMailbox = (Get-MgUser -UserId $mailbox.ExternalDirectoryObjectId -ErrorAction SilentlyContinue)
+        $fullAccessPermissionsToThisMailbox = @(
+            $allMailboxPermissions | ? {
+                ($_.Identity -eq $mailbox.Identity) -and 
+                ($_.AccessRights.contains( "FullAccess" )) -and
+                (! $_.Deny) -and
+                (($licensedMgUsers.UserPrincipalName).contains($_.User))
+            }
+        )
         
         
-        
-        $recipientPermissionsToThisMailbox = (
-            $allRecipientPermissions | where {
+        $recipientPermissionsToThisMailbox = @(
+            $allRecipientPermissions | ? {
                 ($_.Identity -eq $mailbox.Identity) -and 
                 ($_.AccessRights.contains( "SendAs" )) -and
                 ($_.AccessControlType -eq "Allow") -and 
@@ -42,44 +48,52 @@ function make_email_forwarding_and_access_report(){
             }
         )
         
+        $mgUsersThatHaveFullAccessToThisMailbox = @(
+            @(
+                $fullAccessPermissionsToThisMailbox | % {Get-MgUser -UserId $_.User} 
+                if($mgUserWhoOwnsThisMailbox){$mgUserWhoOwnsThisMailbox}
+            ) | Sort-Object -Property UserPrincipalName
+        )
         
-        $mgUsersThatHaveFullAccessToThisMailbox = (
-            ([system.Array] ($fullAccessPermissionsToThisMailbox | foreach {Get-MgUser -UserId $_.User} )) +
-            ([system.Array] @($mgUserWhoOwnsThisMailbox))
-        ) | Sort-Object -Property UserPrincipalName
+        $mgUsersThatHaveSendAsPermissionToThisMailbox = @(
+            @(
+                $recipientPermissionsToThisMailbox | % {Get-MgUser -UserId $_.Trustee} 
+                if($mgUserWhoOwnsThisMailbox){$mgUserWhoOwnsThisMailbox}
+            ) | Sort-Object -Property UserPrincipalName
+        )
         
-        $mgUsersThatHaveSendAsPermissionToThisMailbox = (
-            ([system.Array] ($recipientPermissionsToThisMailbox | foreach {Get-MgUser -UserId $_.Trustee} )) +
-            ([system.Array] @($mgUserWhoOwnsThisMailbox))
-        ) | Sort-Object -Property UserPrincipalName
-        
-        $addressesToWhichThisMailboxIsBeingRedirected = (
-            @( 
-                ( Get-InboxRule -Mailbox $mailbox.Identity 
-                ) | foreach-object{ 
-                    $_.RedirectTo; 
-                    $_.ForwardTo; 
-                    $_.ForwardAsAttachmentTo;  
+        $addressesToWhichThisMailboxIsBeingRedirected = @(
+
+            Get-InboxRule -Mailbox $mailbox.Identity | 
+                foreach-object{ 
+                    $_.RedirectTo
+                    $_.ForwardTo 
+                    $_.ForwardAsAttachmentTo  
                 } |  Where-Object {
                     $_
                     # we need the "|  Where-Object {$_}" in order to remove
                     # nulls from the pipeline, which happens when RedirectTo is,
                     # essentially, an empty list.
                 } | foreach-object { convertRedirectEntryToEmailAddress $_ }
-            ) + @(
-                Get-TransportRule | where-object {
+
+            
+
+            Get-TransportRule | 
+                where-object {
                     $_.State -eq "Enabled"
-                } | where-object {
-                    $sentToList = $_.SentTo;
+                } | 
+                where-object {
+                    $sentToList = $_.SentTo
                     @(
                         &{ $sentToList | foreach-object {(get-mailbox -identity $_).Identity} | where-object {$_} }
                     ).Contains($mailbox.Identity  )
-                } | foreach-object {
-                    $_.CopyTo;
-                    $_.BlindCopyTo;
-                    $_.RedirectMessageTo;
+                } | 
+                foreach-object {
+                    $_.CopyTo
+                    $_.BlindCopyTo
+                    $_.RedirectMessageTo
                 }
-            )
+
             # This is probably not a comprehensive way to detect all possible
             # forwarding due to mail flow rules, but it serves the immediate
             # purpose.
