@@ -352,6 +352,10 @@ function connectToOffice365 {
 
     # powershell -c "Install-Module -Confirm:0 -Force -Name Microsoft.Graph"; pwsh -c "Install-Module -Confirm:0 -Force -Name Microsoft.Graph"
 
+    # powershell -c "Install-Module -Confirm:0 -Force -Name Microsoft.Graph -AllowPrerelease; Install-Module -Confirm:0 -Force -Name ExchangeOnlineManagement -AllowPrerelease; Install-Module -Confirm:0 -Force -Name PnP.PowerShell"; 
+    # pwsh -c "Install-Module -Confirm:0 -Force -Name Microsoft.Graph.Beta -AllowPrerelease;"
+
+
 
     # the AzureADPreview module is being deprecated, and replaced with "Microsoft Graph Powershell"
     # see https://learn.microsoft.com/en-us/powershell/azure/active-directory/migration-faq?view=azureadps-2.0 
@@ -1499,7 +1503,7 @@ function connectToOffice365 {
         [OutputType([Void])]
         param ()
         Write-Debug "about to do Connect-MgGraph"
-        Select-MgProfile -Name Beta
+        # Select-MgProfile -Name Beta
         Disconnect-MgGraph -ErrorAction SilentlyContinue 1>$null 2>$null
         $s = @{
             ClientId                = $configuration['appId']
@@ -2299,7 +2303,40 @@ function connectToOffice365 {
 
 }
 
+function Install-MicrosoftGraphDependencies {
+    [CmdletBinding()]
+    [OutputType([Void])]
+    param ()
+    # this whole function is a bit of a hack; I'm sure this is not the preferred
+    # cleanest way to install depencies, but it is marginally better then
+    # putting these commands in comments somewhere.
+    process {
+        
+        @(
+            "Microsoft.Graph"
+            "Microsoft.Graph.Beta"
+            "ExchangeOnlineManagement"
+            "PnP.PowerShell"
+        ) | % { 
+            # during testing, before running this function, I go manually delete any
+            # graph, Exchange, and pnp -related folders from within the following folders:
+            #   - %programfiles%\WindowsPowerShell\Modules 
+            #   - %userprofile%\Documents\PowerShell\Modules
+            #   - %userprofile%\Documents\WindowsPowerShell\Modules (this folder does not exist as of 2023-02-26-1411 (I deleted it))
 
+            Write-Host "now installing $($_) in Windows Powershell."
+            powershell -c "Install-Module -Confirm:0 -Force -AllowPrerelease -Name $($_)"
+            # I don't think I am using windows powershell at all anymore, so
+            # installing the modules in windows in windows powershell is
+            # probably completely unnecessary and serves no purpose.
+
+            Write-Host "now installing $($_) in Powershell core."
+            pwsh -c "Install-Module -Confirm:0 -Force -AllowPrerelease -Name $($_)"
+
+        }
+    }
+
+}
 
 # function getBitwardenItemContainingOffice365ManagementConfiguration {
 function getBitwardenItemContainingMicrosoftGraphManagementConfiguration {
