@@ -261,6 +261,45 @@ function sendMail($emailAccount, $from, $to = @(), $cc = @(), $bcc = @(), $subje
 
 }
 
+function Send-TestMessage(){
+    [CmdletBinding()]
+    [OutputType([Void])]
+    param (   
+        [
+            Parameter(
+                Mandatory = $True
+            )
+        ]
+        [String] 
+        $recipientEmailAddress
+    )
+    process {
+        @{
+            emailAccount = "neil@autoscaninc.com"
+            from         = "neil@autoscaninc.com"
+            to           =  "$recipientEmailAddress"
+            subject      = "test message sent to $($recipientEmailAddress) $('{0:yyyy/MM/dd HH:mm:ss K}' -f [timezone]::CurrentTimeZone.ToLocalTime((Get-Date)))"
+            body         = @( 
+                "This is a test message sent to $($recipientEmailAddress).  Please disregard."
+
+                ""
+                ""
+
+                "Sincerely,"
+                "Neil Jackson"
+                "neil@autoscaninc.com"
+                "425-218-6726 (cell)"
+                "206-282-1616 ext. 102 (office)"
+                ""
+                "Autoscan, Inc."
+                "4040 23RD AVE W"
+                "SEATTLE WA 98199-1209"
+                "206-282-1616"
+            ) -Join "`n"
+
+        } | % { sendMail @_ }
+    }
+}
 
 function setLicensesAssignedToMgUser($userId, $skuPartNumbers){
     # $azureAdUser = Get-AzureADUser -ObjectId $objectIdOfAzureAdUser
