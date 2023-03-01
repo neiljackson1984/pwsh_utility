@@ -506,7 +506,20 @@ function getDcSession {
     [CmdletBinding()]
     [OutputType([System.Management.Automation.Runspaces.PSSession])]
     Param(
-        [String] $bitwardenItemIdOfCompanyParameters
+        [Parameter(
+            Mandatory=$True
+            
+        )]
+        [String] 
+        $bitwardenItemIdOfCompanyParameters,
+
+        [Parameter(
+            HelpMessage="Optionally, override the host name of the computer to connect to.",
+            Mandatory=$False
+            
+        )]
+        [String] 
+        $HostName
     )
 
     $companyParameters = getFieldMapFromBitwardenItem $bitwardenItemIdOfCompanyParameters
@@ -528,10 +541,11 @@ function getDcSession {
         vpncmd /client localhost /cmd AccountConnect $companyParameters['nameOfSoftetherVpnConnectionNeededToTalkToDomainController'] | Out-Null
     }
 
+    $HostName = $HostName ? $HostName : $companyParameters['domainController']
     
-    Set-Item WSMan:\localhost\Client\TrustedHosts -Force -Value $companyParameters['domainController']  | Out-Null
-    $ss = @{
-        ComputerName = $companyParameters['domainController'];
+    Set-Item WSMan:\localhost\Client\TrustedHosts -Force -Value $HostName | Out-Null
+    return @{
+        ComputerName = $HostName
         
 
         Credential=(New-Object `
@@ -549,7 +563,5 @@ function getDcSession {
 
         # Authentication='Digest';
         # UseSSL=$True;
-    }
-
-    return (New-PSSession @ss);
+    } | % { New-PSSession @_ }
 }

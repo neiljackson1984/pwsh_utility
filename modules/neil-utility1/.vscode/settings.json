@@ -51,10 +51,10 @@
     // "editor.quickSuggestionsDelay": 1000000
 
     // force us to use windows powershell (not to be confused with powershell core)
-    "powershell.powerShellAdditionalExePaths": {
-        "yargBlarg": "C:/Windows/System32/WindowsPowerShell/v1.0/powershell.exe",
-    },
-    "powershell.powerShellDefaultVersion": "yargBlarg",
+    // "powershell.powerShellAdditionalExePaths": {
+    //     "yargBlarg": "C:/Windows/System32/WindowsPowerShell/v1.0/powershell.exe",
+    // },
+    // "powershell.powerShellDefaultVersion": "yargBlarg",
     "selectby.regexes": {
         // "jupyterishCell": {
         //     // selects the content of the current "cell" (i.e. region of the document delimited by lines containing "# %%" (with arbitrary whitespace anywhere on the line)
