@@ -537,8 +537,48 @@ function getDcSession {
     $password=$bitwardenItemContainingActiveDirectoryCredentials.login.password
 
     if ($companyParameters['nameOfSoftetherVpnConnectionNeededToTalkToDomainController']){
-        Write-Host "connecting to vpn connection $($companyParameters['nameOfSoftetherVpnConnectionNeededToTalkToDomainController'])"
-        vpncmd /client localhost /cmd AccountConnect $companyParameters['nameOfSoftetherVpnConnectionNeededToTalkToDomainController'] | Out-Null
+        
+        $trialDuration = New-Timespan -Seconds 15
+        $giveUpTime = (Get-Date) + $trialDuration
+        $attemptsCount = 0
+        while(
+            ((Get-Date) -le $giveUpTime) -and
+            ($(vpncmd /client localhost /cmd AccountStatusGet $companyParameters['nameOfSoftetherVpnConnectionNeededToTalkToDomainController'] | Out-Null; $LASTEXITCODE ) -ne 0)
+        ) {
+            $result = $(
+                vpncmd /client localhost /cmd AccountConnect $companyParameters['nameOfSoftetherVpnConnectionNeededToTalkToDomainController'] | 
+                    Out-Null
+
+                $LASTEXITCODE 
+            )
+            $attemptsCount++
+            # write-host "result was $($result)."
+
+            if($result -eq 43){
+                # error 43 is described thus:
+                #
+                # Error occurred. (Error code: 43) The Virtual Network Adapter
+                # used by the specified VPN Connection Setting is already being
+                # used by another VPN Connection Setting. If there is another
+                # VPN Connection Setting that is using the same Virtual Network
+                # Adapter, disconnect that VPN Connection Setting.
+                # Write-Host "disconnecting from all existing softether vpn connections"
+                vpncmd /client localhost /cmd AccountList |
+                    % { 
+                        if($_ -match '^\s*VPN Connection Setting Name\s*\|(.*)$'){
+                            $Matches[1].Trim()
+                        }
+                    } |
+                    % { 
+                        # Write-Host "disconnecting from `"$($_)`""
+                        vpncmd /client localhost /cmd AccountDisconnect "$($_)" | Out-Null
+                    } 
+            }
+
+            
+            Start-Sleep 5
+        }
+        # write-host "attemptsCount: $($attemptsCount)"
     }
 
     $HostName = $HostName ? $HostName : $companyParameters['domainController']
@@ -565,3 +605,4 @@ function getDcSession {
         # UseSSL=$True;
     } | % { New-PSSession @_ }
 }
+

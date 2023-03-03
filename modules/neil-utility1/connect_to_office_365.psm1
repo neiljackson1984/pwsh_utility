@@ -240,11 +240,7 @@ Function getRoleSpecificationsExpression(){
     # that $azureAdServicePrincipal is the service principal for the app
     # that we have created.
 
-    # $targetServicePrincipals = `
-    #     Get-AzureADServiceAppRoleAssignment -ObjectId $azureAdServicePrincipal.ObjectId | 
-    #     select -Unique ResourceId |
-    #     foreach-object { (Get-AzureADObjectByObjectId -ObjectIds @($_.ResourceId  )) }
-    
+
     
     $roleSpecifications = @(
         foreach( $idOfTargetServicePrincipal in @(
@@ -414,9 +410,7 @@ function connectToOffice365 {
         $bitwardenItemIdOfTheConfiguration = getCanonicalNameOfBitwardenItemBasedOnPrimaryDomainName $primaryDomainName
     }
 
-    # Import-Module -Name 'AzureAD'  -UseWindowsPowerShell -ErrorAction SilentlyContinue
-    # Import-Module -Name 'AzureADPreview'   -UseWindowsPowerShell 
-    # Import-Module -Name 'AzureADPreview'   
+
     Import-Module -Name 'ExchangeOnlineManagement'
     Import-Module -Name 'PnP.PowerShell'
     # Import-Module -Name 'Microsoft.Graph' 
@@ -989,16 +983,8 @@ function connectToOffice365 {
 
         
     }
-
-    #attempt to read configuration from the configuration file
-    # try {
-    #     $configuration = (Get-Content -Raw $pathOfTheConfigurationFile | ConvertFrom-JSON) 2> $null
-    # } catch {
-    #     Write-Output "Failed to read configuration parameters from the configuration file."
-    #     Remove-Variable configuration -ErrorAction SilentlyContinue
-    # }
  
-    # if(! $configuration){
+    
     if($makeNewConfiguration){
         Write-Output "Constructing fresh configuration."
             
@@ -1020,12 +1006,12 @@ function connectToOffice365 {
                 # AppRole named "value".
 
 
-                # $targetServicePrincipal = Get-AzureADServicePrincipal -Filter "DisplayName eq '$($nameOfTargetServicePrincipal)'"
+                
                 $targetServicePrincipal = Get-MgServicePrincipal -Filter "DisplayName eq '$($nameOfTargetServicePrincipal)'"
 
                 # Iterate Permissions array
                 Write-Output -InputObject ('Retrieve app roles')
-                # [Microsoft.Open.AzureAD.Model.AppRole[] ] $requiredAppRoles = @()
+                
                 [Microsoft.Graph.PowerShell.Models.MicrosoftGraphAppRole[] ] $requiredAppRoles = @()
 
                 Foreach ($nameOfRequiredAppRole in $namesOfRequiredAppRoles) {
@@ -1033,26 +1019,8 @@ function connectToOffice365 {
                     $requiredAppRoles += ($targetServicePrincipal.AppRoles | Where-Object { $_.Value -eq $nameOfRequiredAppRole})
                 }
 
-                .{ #azureAd version:
-                    # $resourceAccessObjects = New-Object 'System.Collections.Generic.List[Microsoft.Open.AzureAD.Model.ResourceAccess]'
-                    # foreach ($appRole in $requiredAppRoles) {
-                    #     $resourceAccess = New-Object -TypeName "Microsoft.Open.AzureAD.Model.ResourceAccess"
-                    #     $resourceAccess.Id = $appRole.Id
-                    #     $resourceAccess.Type = 'Role'
-                    #     $resourceAccessObjects.Add($resourceAccess)
-                    # }
-                    # $requiredResourceAccess = New-Object -TypeName "Microsoft.Open.AzureAD.Model.RequiredResourceAccess"
-                    # $requiredResourceAccess.ResourceAppId = $targetServicePrincipal.AppId
-                    # $requiredResourceAccess.ResourceAccess = $resourceAccessObjects
 
-                    # # set the required resource access
-                    # #actually, we want to append to the app's RequiredResourceAccessList, not overwrite it.
-                    # $initialRequiredResourceAccessList = (Get-AzureADObjectByObjectId -ObjectId $childApp.ObjectId).RequiredResourceAccess
-                    # $newRequiredResourceAccessList = $initialRequiredResourceAccessList + $requiredResourceAccess
-                    
-                    # Set-AzureADApplication -ObjectId $childApp.ObjectId -RequiredResourceAccess $newRequiredResourceAccessList
-                }
-                .{ # mg version:
+                .{ 
                     @{
                         ApplicationId = $childApp.Id
                         RequiredResourceAccess = (
@@ -1085,12 +1053,6 @@ function connectToOffice365 {
                 foreach ($appRole in $requiredAppRoles) {
                     Write-Output -InputObject ('Granting admin consent for App Role: {0}' -f $($appRole.Value))
                     
-                    # $s = @{
-                    #     ObjectId        = $servicePrincipalForApp.ObjectId 
-                    #     Id              = $appRole.Id 
-                    #     PrincipalId     = $servicePrincipalForApp.ObjectId 
-                    #     ResourceId      = $targetServicePrincipal.ObjectId
-                    # }; New-AzureADServiceAppRoleAssignment @s
 
                     # check whether this assigment already exists
                     $mgServicePrincipalAppRoleAssignment = Get-MgServicePrincipalAppRoleAssignment -ServicePrincipalId $servicePrincipalForApp.Id |
@@ -1127,7 +1089,7 @@ function connectToOffice365 {
         Disconnect-MgGraph  -ErrorAction SilentlyContinue 1>$null
         # the disconnect command will clear out any cached identity/crednetials that the Graph powershell module might have cached.
     
-        # Connect-AzureAD
+
         $s = @{
             ContextScope = "Process"
             Scopes = @(
@@ -1201,7 +1163,6 @@ function connectToOffice365 {
         $displayNameOfApplication = (Get-MgContext).Account.ToString() + "_powershell_management"
         
         # Get the Azure Active Directory Application, creating it if it does not already exist.
-        # $azureAdApplication = Get-AzureADApplication -SearchString $displayNameOfApplication
         $mgApplication = Get-MgApplication -ConsistencyLevel eventual -Search "DisplayName:$displayNameOfApplication"
         if (! $mgApplication) {
             $s = @{
@@ -1236,31 +1197,25 @@ function connectToOffice365 {
             Write-Output "mgApplication $($mgApplication.DisplayName) (id = $($mgApplication.Id))"
         }
         
-        # Get the service principal associated with $azureAdApplication, creating it if it does not already exist.
-        # $azureAdServicePrincipal = Get-AzureADServicePrincipal -Filter ("appId eq '" + $azureAdApplication.AppId + "'")
+        # Get the service principal associated with $mgApplication, creating it if it does not already exist.
         $mgServicePrincipal = Get-MgServicePrincipal -Filter ("appId eq '" + $mgApplication.AppId + "'")
         if(! $mgServicePrincipal){
-            # $azureAdServicePrincipal = New-AzureADServicePrincipal -AppId $azureAdApplication.AppId
+            
             $mgServicePrincipal = New-MgServicePrincipal -AppId $mgApplication.AppId
         }  else {
             Write-Output "Service Principal $($mgServicePrincipal.DisplayName) (id = $($mgServicePrincipal.Id)) already exists."
         }
         
         #ensure that the service principal has global admin permissions to the current tenant
-        # $globalAdminAzureAdDirectoryRole =  Get-AzureADDirectoryRole | where {$_.DisplayName -eq "Global Administrator"}
         $globalAdminMgDirectoryRole =  Get-MgDirectoryRole | where {$_.DisplayName -eq "Global Administrator"}
         # todo: do this search on the server side, rather than here on the client side, by using a -filter (or maybe -search ?) argument.
 
-        # if(!$globalAdminAzureAdDirectoryRole){
         if(!$globalAdminMgDirectoryRole){
             # $globalAdminAzureAdDirectoryRole =  Get-AzureADDirectoryRole | where {$_.DisplayName -eq "Company Administrator"}
             $globalAdminMgDirectoryRole =  Get-MgDirectoryRole  | where {$_.DisplayName -eq "Company Administrator"}
             # for reasons unknown, in some tenants, the displayname of the global admin role is "Company Administrator"
         }
-        # $azureADDirectoryRoleMember = Get-AzureADDirectoryRoleMember -ObjectId $globalAdminAzureAdDirectoryRole.ObjectId | where {$_.ObjectId -eq $azureAdServicePrincipal.ObjectId}
-        # $mgDirectoryRoleMember = Get-MgDirectoryRoleMember -DirectoryRoleId $globalAdminMgDirectoryRole.Id | where {$_.Id -eq $mgServicePrincipal.Id}
-        # the above command seems only to return "user" objects and not also servicePrincipal objects.  This is unacceptable because we are interested in serviceprincipal objects.
-        
+
         ##  $mgDirectoryRoleMember = Get-MgDirectoryRoleMember -ConsistencyLevel eventual -DirectoryRoleId $globalAdminMgDirectoryRole.Id | where {$_.Id -eq $mgServicePrincipal.Id}
         #
         # you might think that adding "-ConsistencyLevel eventual" would be enough,
@@ -1275,7 +1230,6 @@ function connectToOffice365 {
 
         # iff. $azureAdServicePrincipal has the global admin permission, then $azureADDirectoryRoleMember will be $azureAdServicePrincipal, otherwise will be null
         if(! $mgDirectoryRoleMember ){
-            # Add-AzureADDirectoryRoleMember -ObjectId $globalAdminAzureAdDirectoryRole.ObjectId -RefObjectId $azureAdServicePrincipal.ObjectId 
             New-MgDirectoryRoleMemberByRef -DirectoryRoleId  $globalAdminMgDirectoryRole.Id  -oDataId "https://graph.microsoft.com/v1.0/directoryObjects/$($mgServicePrincipal.Id)"
             # I have no idea how I would come up with the above value in the oDataId
             # argument (except by blindly copying the example from
@@ -1293,9 +1247,7 @@ function connectToOffice365 {
         # we could have probably gotten away simply wrapping Add-AzureADDirectoryRoleMember in a try/catch statement.
         
         #ensure that our public key is installed in our application
-        # $keyCredential = Get-AzureADApplicationKeyCredential -ObjectId $azureAdApplication.ObjectId | where { 
-        #         ($_.ToJson() | ConvertFrom-JSON).customKeyIdentifier -eq $certificate.Thumbprint 
-        #     }
+
 
         $keyCredential = $mgApplication.KeyCredentials | where { 
                 [System.Convert]::ToBase64String($_.CustomKeyIdentifier) -eq 
@@ -1329,11 +1281,6 @@ function connectToOffice365 {
 
         #grant all the required approles (as defined by $roleSpecifications) to our app's service principal
         foreach ( $roleSpecification in $roleSpecifications){
-            # GrantAllThePermissionsWeWant `
-            #     -childApp $azureAdApplication `
-            #     -servicePrincipalForApp $azureAdServicePrincipal `
-            #     -nameOfTargetServicePrincipal $roleSpecification.nameOfTargetServicePrincipal `
-            #     -namesOfRequiredAppRoles $roleSpecification.namesOfRequiredAppRoles
             GrantAllThePermissionsWeWant `
                 -childApp $mgApplication `
                 -servicePrincipalForApp $mgServicePrincipal `
@@ -1342,7 +1289,7 @@ function connectToOffice365 {
         }
 
         $configuration = @{
-            ## tenantId = (Get-AzureADTenantDetail).ObjectId; 
+ 
             
             tenantId = (Get-MgOrganization).Id 
             #
@@ -1377,7 +1324,6 @@ function connectToOffice365 {
             # or tenantId would be the best candidates for the single standard
             # way to specify tenant identity.
 
-            # appId = $azureAdApplication.AppId;
             appId = $mgApplication.AppId
 
             # certificateThumbprint = $certificate.Thumbprint
@@ -1411,7 +1357,7 @@ function connectToOffice365 {
             -fieldMap $configuration `
             -bitwardenItemId $bitwardenItemIdOfTheConfiguration
 
-        # Disconnect-AzureAD
+
         Disconnect-MgGraph
         
         # $configuration = Get-Content -Raw $pathOfTheConfigurationFile | ConvertFrom-JSON
@@ -1436,29 +1382,6 @@ function connectToOffice365 {
     #making the connection:
 
     $certificate = base64EncodedPfxToX509Certificate2 $configuration['base64EncodedPfx'] -password $configuration['pfxPassword']
-
-
-
-
-    function getWeAreConnectedToAzureAD {
-        [OutputType([Boolean])]
-        param ()
-        
-        # we really ought to be testing not only that we are connected, but also
-        # that we are connected to the correct tenant (the one specified in the
-        # configuration file)
-        
-        # $azureConnection.Account -eq $null
-
-        try{
-            $result = [Microsoft.Open.Azure.AD.CommonLibrary.AzureSession]::AccessTokens
-        } catch {
-            return $False
-        } 
-        return ( [Boolean] $result )
-
-    }
-
 
     function getWeAreConnectedToMgGraph {
         [OutputType([Boolean])]
@@ -1873,6 +1796,13 @@ function connectToOffice365 {
     }
 
 
+    try{ ensureThatWeAreConnectedToSharepointOnline } 
+    catch {
+        Write-Host ("encountered error when attempting to ensure that we are " +
+            "connected to Sharepoint Online: $($_) $($_.Exception)")
+    }
+
+
 
 
     # try{ ensureThatWeAreConnectedToIPPSSession } 
@@ -1896,13 +1826,6 @@ function connectToOffice365 {
     #     Write-Host ("encountered error when attempting to ensure that we are " +
     #         "connected to Exchange Online: $($_)")
     # }
-
-
-    try{ ensureThatWeAreConnectedToSharepointOnline } 
-    catch {
-        Write-Host ("encountered error when attempting to ensure that we are " +
-            "connected to Sharepoint Online: $($_) $($_.Exception)")
-    }
 
 
     
