@@ -271,16 +271,32 @@ function Send-TestMessage(){
             )
         ]
         [String] 
-        $recipientEmailAddress
+        $recipientEmailAddress,
+
+        [
+            Parameter(
+                Mandatory = $False
+            )
+        ]
+        [String] 
+        $emailAccount = "neil@autoscaninc.com",
+
+        [
+            Parameter(
+                Mandatory = $False
+            )
+        ]
+        [String] 
+        $senderEmailAddress = "neil@autoscaninc.com"
     )
     process {
         @{
-            emailAccount = "neil@autoscaninc.com"
-            from         = "neil@autoscaninc.com"
+            emailAccount = $emailAccount
+            from         = $senderEmailAddress
             to           =  "$recipientEmailAddress"
             subject      = "test message sent to $($recipientEmailAddress) $('{0:yyyy/MM/dd HH:mm:ss K}' -f [timezone]::CurrentTimeZone.ToLocalTime((Get-Date)))"
             body         = @( 
-                "This is a test message sent to $($recipientEmailAddress).  Please disregard."
+                "This is a test message sent from $($senderEmailAddress) to $($recipientEmailAddress).  Please disregard."
 
                 ""
                 ""
