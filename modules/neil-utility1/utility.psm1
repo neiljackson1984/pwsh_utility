@@ -294,7 +294,7 @@ function Send-TestMessage(){
             emailAccount = $emailAccount
             from         = $senderEmailAddress
             to           =  "$recipientEmailAddress"
-            subject      = "test message sent to $($recipientEmailAddress) $('{0:yyyy/MM/dd HH:mm:ss K}' -f [timezone]::CurrentTimeZone.ToLocalTime((Get-Date)))"
+            subject      = "test message from $($senderEmailAddress) to $($recipientEmailAddress) $('{0:yyyy/MM/dd HH:mm:ss K}' -f [timezone]::CurrentTimeZone.ToLocalTime((Get-Date)))"
             body         = @( 
                 "This is a test message sent from $($senderEmailAddress) to $($recipientEmailAddress).  Please disregard."
 
