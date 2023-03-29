@@ -1245,6 +1245,6 @@ function getAmazonAddToCartUrl {
             ) -join "&"
         )
 
-    Set-Clipboard -Value $url
+    # Set-Clipboard -Value $url
     $url
 }

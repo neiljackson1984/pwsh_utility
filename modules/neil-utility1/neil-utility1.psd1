@@ -10,6 +10,7 @@
         "autodesk_identity.psm1"
         "autodesk_identity.psm1"
         "domain_controller_session.psm1"
+        "autodesk_popup_slapdown.psm1"
         # no good way to do wildcards here, unfortunately
     )
     
