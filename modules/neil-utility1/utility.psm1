@@ -1238,8 +1238,8 @@ function getAmazonAddToCartUrl {
             @(
                 for ($i=0; $i -lt $asinQuantityPairs.count; $i++ ){
                     if($asinQuantityPairs[$i][1]){
-                        "ASIN.$($i)=$($asinQuantityPairs[$i][0])"
-                        "Quantity.$($i)=$($asinQuantityPairs[$i][1])"
+                        "ASIN.$($i+1)=$($asinQuantityPairs[$i][0])"
+                        "Quantity.$($i+1)=$($asinQuantityPairs[$i][1])"
                     }
                 }
             ) -join "&"
