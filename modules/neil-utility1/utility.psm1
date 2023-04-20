@@ -356,9 +356,14 @@ function setLicensesAssignedToMgUser($userId, $skuPartNumbers){
             "Initially, $($mgUser.UserPrincipalName) has the "
             "following $($initialExistingSkuIds.Length) skuPartNumbers: " 
             ( 
-                @( $mgSubscribedSku |
-                    where-object { $_.SkuId -in $initialExistingSkuIds } |
-                    foreach-object {$_.SkuPartNumber}
+                @( 
+                    # $mgSubscribedSku |
+                    # where-object { $_.SkuId -in $initialExistingSkuIds } |
+                    # foreach-object {$_.SkuPartNumber}
+
+                    $initialExistingSkuIds | % {skuIdToSkuPartNumber $_}
+
+
                 ) -Join ", "
             )
         ) -join ""
@@ -454,9 +459,12 @@ function setLicensesAssignedToMgUser($userId, $skuPartNumbers){
                 "has these $($finalExistingSkuIds.Length) skuPartNumbers: " 
                 ( 
                     @(
-                        $mgSubscribedSku | 
-                            where-object { $_.SkuId -in $finalExistingSkuIds } | 
-                            foreach-object {$_.SkuPartNumber}
+                        # $mgSubscribedSku | 
+                        #     where-object { $_.SkuId -in $finalExistingSkuIds } | 
+                        #     foreach-object {$_.SkuPartNumber}
+
+                        $finalExistingSkuIds | % {skuIdToSkuPartNumber $_}
+
                     ) -Join ", "
                 )
             ) -join ""
@@ -928,7 +936,8 @@ function convertRedirectEntryToEmailAddress($redirectEntry){
 }
 
 function skuIdToSkuPartNumber($skuId){
-    ( Get-AzureADSubscribedSku | where-object { $_.SkuId -eq $skuId }).SkuPartNumber
+    # ( Get-AzureADSubscribedSku | where-object { $_.SkuId -eq $skuId }).SkuPartNumber
+    ( Get-MgSubscribedSku | where-object { $_.SkuId -eq $skuId }).SkuPartNumber
 }
  
 

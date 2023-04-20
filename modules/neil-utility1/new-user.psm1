@@ -31,12 +31,12 @@ function initializeUser {
         #$publicDomainName = @(Get-AzureAdDomain | where-object {$_.IsDefault})[0].Name
         $publicDomainName = ((Get-MgOrganization).VerifiedDomains | where-object {$_.IsDefault -eq $true}).Name
 
-        $defaultUsername        =($userSpec['firstName'][0] + $userSpec['lastName']).toLower()
-        $defaultEmailAddress    ="$defaultUsername@$publicDomainName"
+        $defaultUsername        = ($userSpec['firstName'][0] + $userSpec['lastName']).toLower()
+        $defaultEmailAddress    = "$defaultUsername@$publicDomainName"
         $username               = if($userSpec.preferredEmailAlias){$userSpec.preferredEmailAlias} else {$defaultUsername}
         $primaryEmailAddress    = "$username@$publicDomainName"
         $userPrincipalName      = $primaryEmailAddress
-        $password = $userSpec['password']
+        $password               = $userSpec['password']
 
         vpncmd ($softetherVpnServerHostname + ":" + $softetherVpnServerPortnumber) /SERVER /PASSWORD:"$vpnServerPassword" /ADMINHUB:"$softetherVpnServerNameOfHub"  /CMD UserCreate $username /GROUP:none /REALNAME:none /NOTE:none 
         vpncmd ($softetherVpnServerHostname + ":" + $softetherVpnServerPortnumber) /SERVER /PASSWORD:"$vpnServerPassword" /ADMINHUB:"$softetherVpnServerNameOfHub"  /CMD UserPasswordSet $username /PASSWORD:"$password"
