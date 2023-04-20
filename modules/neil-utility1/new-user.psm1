@@ -2,8 +2,6 @@
 Import-Module (join-path $psScriptRoot "utility.psm1")
 Import-Module (join-path $psScriptRoot "connect_to_office_365.psm1")
 
-# todo 2023-01-10:  use my newly created New-DomainControllerPSSession function to generate the 
-# pssession to the domain controller, rather than doing it 'manually'.
 function initializeUser {
     [CmdletBinding()]
     Param(
@@ -13,6 +11,18 @@ function initializeUser {
             [String] $emailAccountForSendingAdvisoryMessages = $null
     )
     $companyParameters = getFieldMapFromBitwardenItem $userSpec['bitwardenItemIdOfCompanyParameters']
+    connectToOffice365 -bitwardenItemIdOfTheConfiguration $companyParameters['idOfBitwardenItemContainingMicrosoftGraphManagementConfiguration']
+    $publicDomainName = ((Get-MgOrganization).VerifiedDomains | where-object {$_.IsDefault -eq $true}).Name
+        
+
+    $defaultUsername        = ($userSpec['firstName'][0] + $userSpec['lastName']).toLower()
+    $defaultEmailAddress    = "$defaultUsername@$publicDomainName"
+    $username               = if($userSpec.preferredEmailAlias){$userSpec.preferredEmailAlias} else {$defaultUsername}
+    $primaryEmailAddress    = "$username@$publicDomainName"
+    $userPrincipalName      = $primaryEmailAddress
+    $password               = $userSpec['password']
+    $displayName            = "$($userSpec['firstName']) $($userSpec['lastName'])"
+    
     if ($companyParameters['emailDomainName'] -eq 'nakanoassociates.com'){
         Write-Host "this is a Nakano job"
         
@@ -23,20 +33,8 @@ function initializeUser {
         $softetherVpnServerPortnumber = ( $bitwardenItemContainingSoftetherVpnServerCredentials.login.uris[0].uri -split ":")[1]
         $softetherVpnServerNameOfHub = (@($bitwardenItemContainingSoftetherVpnServerCredentials.fields | Where-Object {$_.name -eq 'name of HUB'} | Foreach-object {$_.value})[0])
 
+    
 
-        # . $companyParameters['scriptBlockToConnectToCloud']
-        connectToOffice365 `
-            -bitwardenItemIdOfTheConfiguration $companyParameters['idOfBitwardenItemContainingMicrosoftGraphManagementConfiguration']
-
-        #$publicDomainName = @(Get-AzureAdDomain | where-object {$_.IsDefault})[0].Name
-        $publicDomainName = ((Get-MgOrganization).VerifiedDomains | where-object {$_.IsDefault -eq $true}).Name
-
-        $defaultUsername        = ($userSpec['firstName'][0] + $userSpec['lastName']).toLower()
-        $defaultEmailAddress    = "$defaultUsername@$publicDomainName"
-        $username               = if($userSpec.preferredEmailAlias){$userSpec.preferredEmailAlias} else {$defaultUsername}
-        $primaryEmailAddress    = "$username@$publicDomainName"
-        $userPrincipalName      = $primaryEmailAddress
-        $password               = $userSpec['password']
 
         vpncmd ($softetherVpnServerHostname + ":" + $softetherVpnServerPortnumber) /SERVER /PASSWORD:"$vpnServerPassword" /ADMINHUB:"$softetherVpnServerNameOfHub"  /CMD UserCreate $username /GROUP:none /REALNAME:none /NOTE:none 
         vpncmd ($softetherVpnServerHostname + ":" + $softetherVpnServerPortnumber) /SERVER /PASSWORD:"$vpnServerPassword" /ADMINHUB:"$softetherVpnServerNameOfHub"  /CMD UserPasswordSet $username /PASSWORD:"$password"
@@ -44,7 +42,7 @@ function initializeUser {
 
         $scriptToBeRunOnNaserver1 = @(
             # "username=`"$username`"" 
-            # "password=`"$($userSpec['password'])`"" 
+            # "password=`"$($password)`"" 
             "# create a linux account for the new user" 
             "useradd -m '$username'" 
             "" 
@@ -66,11 +64,7 @@ function initializeUser {
         # perhaps eventually, we would ssh the command directly to naserver1.
         Set-Clipboard -Value ("#!sh`n#timeout=90000`n#maxlength=99999`n$scriptToBeRunOnNaserver1");
 
-        
 
-        
-        
-        # $azureAdUser = (Get-AzureADUser -ObjectId  $userPrincipalName -ErrorAction SilentlyContinue)
         $mgUser = (Get-MgUser -UserId  $userPrincipalName -ErrorAction SilentlyContinue)
         
         if( $mgUser ){
@@ -80,12 +74,6 @@ function initializeUser {
             $s = @{
                 AccountEnabled    = $True
                 # DisplayName       = "to_be updated_later"
-                # PasswordProfile   = $(
-                #     $passwordProfile = (New-Object -TypeName Microsoft.Open.AzureAD.Model.PasswordProfile)
-                #     $passwordProfile.ForceChangePasswordNextLogin = $false
-                #     $passwordProfile.Password = $password
-                #     $passwordProfile
-                # )
                 PasswordProfile  = @{
                     ForceChangePasswordNextSignIn           = $False
                     ForceChangePasswordNextSignInWithMfa    = $False
@@ -95,30 +83,16 @@ function initializeUser {
                 UserPrincipalName = $userPrincipalName
                 Surname           = $userSpec['lastName'] 
                 GivenName         = $userSpec['firstName'] 
-                DisplayName       = "$($userSpec['firstName']) $($userSpec['lastName'])"
-            # }; New-AzureADUser @s;
+                DisplayName       = $displayName
             }; New-MgUser @s 1> $null;
         }
 
-        # $azureAdUser = (Get-AzureADUser -ObjectId  $primaryEmailAddress)
+
         $mgUser = Get-MgUser -UserId  $userPrincipalName 
         
-        # $s = @{
-        #     ObjectID            = $azureAdUser.ObjectID
-        #     AccountEnabled      = $True
-        #     PasswordProfile     = $passwordProfile
-        #     MailNickname        = $username
-        #     UserPrincipalName   = $userPrincipalName
-        #     Surname             = $userSpec['lastName'] 
-        #     GivenName           = $userSpec['firstName'] 
-        #     DisplayName         = "$($userSpec['firstName']) $($userSpec['lastName'])"
-        # }; Set-AzureADUser @s;
-
-        # setLicensesAssignedToAzureAdUser -objectIdOfAzureAdUser $azureAdUser.ObjectID -skuPartNumbers $userSpec.licenses
         setLicensesAssignedToMgUser -userId $mgUser.Id -skuPartNumbers $userSpec.licenses
         
-        
-        # $azureAdUser = (Get-AzureADUser -ObjectId  $primaryEmailAddress)    
+   
         $mgUser = Get-MgUser -UserId  $mgUser.Id  
         
         
@@ -173,201 +147,164 @@ function initializeUser {
 
 
         }
-        return;
-    }
+        # return;
+    } else {
 
 
-    $scriptBlockToBeRunOnDomainController = {
-        $userSpec               = $using:userSpec
-        # $userPrincipalName      = $using:userPrincipalName
-        # $primaryEmailAddress    = $using:primaryEmailAddress
-        # $userPrincipalName      = $using:userPrincipalName
-
-        Write-Host "$env:computername is working on $($userSpec['firstName'][0] + $userSpec['lastName'])"
-
-        $publicDomainName = (get-adforest).UPNSuffixes[0]
-
-        $defaultUsername        =($userSpec['firstName'][0] + $userSpec['lastName']).toLower()
-        $defaultEmailAddress    ="$defaultUsername@$publicDomainName"
-        $username               = if($userSpec.preferredEmailAlias){$userSpec.preferredEmailAlias} else {$defaultUsername}
-        $primaryEmailAddress    = "$username@$publicDomainName"
-        $userPrincipalName      = $primaryEmailAddress
-
-        $adUser = Get-ADUser $username
-        if($adUser){
-            Write-Host "The adUser `"$($username)`" already exists, so we will not bother to create."
-        } else {
-            Write-Host "creating adUser `"$($username)`"."
+        $scriptBlockToBeRunOnDomainController = {
+            $userSpec               = $using:userSpec
             
-            New-ADUser `
-                -ErrorAction SilentlyContinue `
-                -Path ( "OU=humans" + "," + "OU=users" + "," + "OU=company" + "," + (Get-ADDomain).DistinguishedName  ) `
-                -Name $username `
-                -AccountPassword (ConvertTo-SecureString $userSpec['password'] -AsPlainText -Force  ) `
-                -Enabled $True `
-                -PassThru 
             
+            # $defaultUsername        = ($userSpec['firstName'][0] + $userSpec['lastName']).toLower()
+            # $defaultEmailAddress    = "$defaultUsername@$publicDomainName"
+            # $username               = if($userSpec.preferredEmailAlias){$userSpec.preferredEmailAlias} else {$defaultUsername}
+            # $primaryEmailAddress    = "$username@$publicDomainName"
+            # $userPrincipalName      = $primaryEmailAddress
+            # $password               = $userSpec['password']
+
+
+            $defaultUsername        = $using:defaultUsername       
+            $defaultEmailAddress    = $using:defaultEmailAddress   
+            $username               = $using:username              
+            $primaryEmailAddress    = $using:primaryEmailAddress   
+            $userPrincipalName      = $using:userPrincipalName     
+            $password               = $using:password              
+            $publicDomainName       = $using:publicDomainName              
+
+
+            Write-Host "$env:computername is working on $($userSpec['firstName'][0] + $userSpec['lastName'])"
+            assert $publicDomainName -eq (get-adforest).UPNSuffixes[0]
             $adUser = Get-ADUser $username
-        }
+            if($adUser){
+                Write-Host "The adUser `"$($username)`" already exists, so we will not bother to create."
+            } else {
+                Write-Host "creating adUser `"$($username)`"."
+                
+                New-ADUser `
+                    -ErrorAction SilentlyContinue `
+                    -Path ( "OU=humans" + "," + "OU=users" + "," + "OU=company" + "," + (Get-ADDomain).DistinguishedName  ) `
+                    -Name $username `
+                    -AccountPassword (ConvertTo-SecureString $password -AsPlainText -Force  ) `
+                    -Enabled $True `
+                    -PassThru 
+                
+                $adUser = Get-ADUser $username
+            }
+                
+            $adUser | Set-ADAccountPassword -NewPassword (ConvertTo-SecureString $password -AsPlainText -Force  ) 
             
-        $adUser | Set-ADAccountPassword -NewPassword (ConvertTo-SecureString $userSpec['password'] -AsPlainText -Force  ) 
-        
-        $s = @{
-            UserPrincipalName   =  $userPrincipalName 
-            EmailAddress        =  $userPrincipalName 
-            Surname             =  $userSpec['lastName'] 
-            GivenName           =  $userSpec['firstName'] 
-            DisplayName         =  ($userSpec['firstName'] + " " + $userSpec['lastName'])
-            # Name                =  ($userSpec['firstName'] + " " + $userSpec['lastName'])
-        }; $adUser | Set-ADUser @s 
-        
-        
-        # $adUser = $adUser | Get-ADUser ; $adUser.Name = $adUser.DisplayName; Set-ADUser -Instance $adUser;
-        #doesn't work
+            @{
+                UserPrincipalName   =  $userPrincipalName 
+                EmailAddress        =  $userPrincipalName 
+                Surname             =  $userSpec['lastName'] 
+                GivenName           =  $userSpec['firstName'] 
+                DisplayName         =  $displayName
+                # Name                =  $displayName
+            } | % { $adUser | Set-ADUser @_ }
+            
+            
+            # $adUser = $adUser | Get-ADUser ; $adUser.Name = $adUser.DisplayName; Set-ADUser -Instance $adUser;
+            #doesn't work
 
-        # $adUser | Get-ADObject | Rename-ADObject -NewName $adUser.DisplayName
-        #works, but decided not to do.
+            # $adUser | Get-ADObject | Rename-ADObject -NewName $adUser.DisplayName
+            #works, but decided not to do.
 
-        if($userSpec['encodedDesiredMSDsConsistencyGuid']){
-            $s = @{
-                Path   = "AD:\$($adUser.distinguishedName)" 
-                Name   = "mS-DS-ConsistencyGuid" 
-                Value  = ([Convert]::FromBase64String($userSpec['encodedDesiredMSDsConsistencyGuid']))
-            }; Set-ItemProperty 
-        }
+            if($userSpec['encodedDesiredMSDsConsistencyGuid']){
+                @{
+                    Path   = "AD:\$($adUser.distinguishedName)" 
+                    Name   = "mS-DS-ConsistencyGuid" 
+                    Value  = ([Convert]::FromBase64String($userSpec['encodedDesiredMSDsConsistencyGuid']))
+                } | % { Set-ItemProperty  @_ }
+            }
 
-        $adUser = $adUser | Get-ADUser -Properties ProxyAddresses
-        $initialProxyAddresses = @($adUser.ProxyAddresses)
-        
-        #remove all (probably one) primary email addresses (i.e. elements of proxyAddresses starting with "SMTP:"
-        $entriesToRemoveFromProxyAddresses = $adUser.ProxyAddresses | where-object {$_.StartsWith("SMTP:")}
-        foreach($entryToRemoveFromProxyAddresses in $entriesToRemoveFromProxyAddresses){
-            $adUser.ProxyAddresses.remove($entryToRemoveFromProxyAddresses)
-        }         
-        
-        $adUser.ProxyAddresses.add("SMTP:$primaryEmailAddress")
-        
-        $desiredProxyAddressesEntry="SMTP:$primaryEmailAddress"
-        if( ! ( $adUser.ProxyAddresses.contains($desiredProxyAddressesEntry) ) ){
-            $adUser.ProxyAddresses.add($desiredProxyAddressesEntry)
-        }
-        
-        if(! ($primaryEmailAddress -eq $defaultEmailAddress)){
-            #make sure that the $default email address, as a non-primary smtp address, exists in the ProxyAddresses array
-            $desiredProxyAddressesEntry="smtp:$defaultEmailAddress"
+            $adUser = $adUser | Get-ADUser -Properties ProxyAddresses
+            $initialProxyAddresses = @($adUser.ProxyAddresses)
+            
+            #remove all (probably one) primary email addresses (i.e. elements of proxyAddresses starting with "SMTP:"
+            $entriesToRemoveFromProxyAddresses = $adUser.ProxyAddresses | where-object {$_.StartsWith("SMTP:")}
+            foreach($entryToRemoveFromProxyAddresses in $entriesToRemoveFromProxyAddresses){
+                $adUser.ProxyAddresses.remove($entryToRemoveFromProxyAddresses)
+            }         
+            
+            $adUser.ProxyAddresses.add("SMTP:$primaryEmailAddress")
+            
+            $desiredProxyAddressesEntry="SMTP:$primaryEmailAddress"
             if( ! ( $adUser.ProxyAddresses.contains($desiredProxyAddressesEntry) ) ){
                 $adUser.ProxyAddresses.add($desiredProxyAddressesEntry)
             }
-        }
-        
-        foreach($desiredAdditionalEmailAddress in $userSpec['desiredAdditionalEmailAddresses']){
-            if( ! ( ($adUser.ProxyAddresses.contains("smtp:$desiredAdditionalEmailAddress")) -or ($adUser.ProxyAddresses.contains("SMTP:$desiredAdditionalEmailAddress"))) ){
-                $adUser.ProxyAddresses.add("smtp:$desiredAdditionalEmailAddress")
+            
+            if(! ($primaryEmailAddress -eq $defaultEmailAddress)){
+                #make sure that the $default email address, as a non-primary smtp address, exists in the ProxyAddresses array
+                $desiredProxyAddressesEntry="smtp:$defaultEmailAddress"
+                if( ! ( $adUser.ProxyAddresses.contains($desiredProxyAddressesEntry) ) ){
+                    $adUser.ProxyAddresses.add($desiredProxyAddressesEntry)
+                }
             }
+            
+            foreach($desiredAdditionalEmailAddress in $userSpec['desiredAdditionalEmailAddresses']){
+                if( ! ( ($adUser.ProxyAddresses.contains("smtp:$desiredAdditionalEmailAddress")) -or ($adUser.ProxyAddresses.contains("SMTP:$desiredAdditionalEmailAddress"))) ){
+                    $adUser.ProxyAddresses.add("smtp:$desiredAdditionalEmailAddress")
+                }
+            }
+            
+            $desiredFinalProxyAddresses = $adUser.ProxyAddresses
+            
+            Write-Host "initialProxyAddresses: ", $initialProxyAddresses
+            Write-Host "desiredFinalProxyAddresses: ", $desiredFinalProxyAddresses
+            
+            
+            Set-ADUser -Instance $adUser 1> $null
+
+            # add the user to the various wse groups.
+            foreach($nameOfGroup in @(
+                "WseAllowAddInAccess"
+                "WseAllowComputerAccess"
+                "WseAllowHomePageLinks"
+                "WseAllowShareAccess"
+                "WseRemoteAccessUsers"
+                "WseRemoteWebAccessUsers"
+            )){
+                Add-ADGroupMember -Identity $nameOfGroup -Members $adUser.objectGUID 
+            }
+
+
+            Import-Module ADSync
+            Start-ADSyncSyncCycle  -PolicyType Delta  
+            Write-Host "adUser: $($adUser | Out-String)"
+
+            return $adUser
         }
-        
-        $desiredFinalProxyAddresses = $adUser.ProxyAddresses
-        
-        Write-Host "initialProxyAddresses: ", $initialProxyAddresses
-        Write-Host "desiredFinalProxyAddresses: ", $desiredFinalProxyAddresses
-        
-        
-        Set-ADUser -Instance $adUser 1> $null
 
-        # add the user to the various wse groups.
-        foreach($nameOfGroup in @(
-            "WseAllowAddInAccess"
-            "WseAllowComputerAccess"
-            "WseAllowHomePageLinks"
-            "WseAllowShareAccess"
-            "WseRemoteAccessUsers"
-            "WseRemoteWebAccessUsers"
-        )){
-            Add-ADGroupMember -Identity $nameOfGroup -Members $adUser.objectGUID 
-        }
-
-
-        Import-Module ADSync
-        Start-ADSyncSyncCycle  -PolicyType Delta  
+        $VerbosePreference = 'Continue'
+        $adUser = (
+            @{
+                Session = (getDcSession -bitwardenItemIdOfCompanyParameters $userSpec['bitwardenItemIdOfCompanyParameters'])
+                ScriptBlock = $scriptBlockToBeRunOnDomainController
+            } | 
+            % {Invoke-Command @_} |
+            Select-Object -Last 1
+        )
         Write-Host "adUser: $($adUser | Out-String)"
 
-        return $adUser
-    }
+        if(-not $adUser){
+            Write-Host "we have failed to retrieve the adUser, and so will return now."
+            return
+        }
 
-    # $bitwardenItemContainingActiveDirectoryCredentials = getBitwardenItem $companyParameters['idOfBitwardenItemContainingActiveDirectoryCredentials']
-    # $username = (
-    #     @(
-    #         $bitwardenItemContainingActiveDirectoryCredentials.fields | Where-Object {$_.name -eq 'active_directory_domain_name'} | 
-    #             Foreach-object {$_.value}
-    #     )[0] +
-    #     "\" + 
-    #     ($bitwardenItemContainingActiveDirectoryCredentials.login.username -split "@")[0]
-    # )
-    # $password=$bitwardenItemContainingActiveDirectoryCredentials.login.password
+        $mgUser = Get-MgUser -UserId $adUser.UserPrincipalName -ErrorAction SilentlyContinue
 
-    # if ($companyParameters['nameOfSoftetherVpnConnectionNeededToTalkToDomainController']){
-    #     Write-Host "connecting to vpn connection $($companyParameters['nameOfSoftetherVpnConnectionNeededToTalkToDomainController'])"
-    #     vpncmd /client localhost /cmd AccountConnect $companyParameters['nameOfSoftetherVpnConnectionNeededToTalkToDomainController']
-    # }
+        if (! $mgUser ){
+            Write-Host "No MgUser having id $($adUser.UserPrincipalName) exists.  Probably need to wait a few minutes for adsync to push changes to the cloud."
+        } else {
+            # assign licenses:
+            setLicensesAssignedToMgUser -userId $mgUser.Id -skuPartNumbers $userSpec.licenses
+        }
 
-    # Set-Item WSMan:\localhost\Client\TrustedHosts -Force -Value $companyParameters['domainController']
-    # $ss = @{
-    #     ComputerName = $companyParameters['domainController'];
-        
-
-    #     Credential=(New-Object `
-    #         System.Management.Automation.PSCredential `
-    #         $username, (ConvertTo-SecureString $password -AsPlainText -Force)
-    #     )
-        
-    #     # ConfigurationName="Powershell.7.1.5";
-    #     ConfigurationName="microsoft.powershell";
-    #     # run Get-PSSessionConfiguration  to see a complete list of available configurations
-        
-    #     SessionOption=@{
-    #         # OutputBufferingMode=;
-    #     };
-
-    #     # Authentication='Digest';
-    #     # UseSSL=$True;
-    # }
-
-
-    $VerbosePreference = 'Continue'
-    $adUser = (
-        @{
-            Session = (getDcSession -bitwardenItemIdOfCompanyParameters $userSpec['bitwardenItemIdOfCompanyParameters'])
-            ScriptBlock = $scriptBlockToBeRunOnDomainController
-        } | 
-        % {Invoke-Command @_} |
-        Select-Object -Last 1
-    )
-    Write-Host "adUser: $($adUser | Out-String)"
-
-    if(-not $adUser){
-        Write-Host "we have failed to retrieve the adUser, and so will return now."
-        return
-    }
-
-    # . $companyParameters['scriptBlockToConnectToCloud']
-    connectToOffice365 -bitwardenItemIdOfTheConfiguration $companyParameters['idOfBitwardenItemContainingMicrosoftGraphManagementConfiguration']
-
-    # $azureAdUser = Get-AzureADUser -ObjectId $adUser.UserPrincipalName
-    $mgUser = Get-MgUser -UserId $adUser.UserPrincipalName -ErrorAction SilentlyContinue
-
-    # if (! $azureAdUser ){
-    if (! $mgUser ){
-        Write-Host "No MgUser having id $($adUser.UserPrincipalName) exists.  Probably need to wait a few minutes for adsync to push changes to the cloud."
-    } else {
-        # assign licenses:
-        # setLicensesAssignedToAzureAdUser -objectIdOfAzureAdUser $azureAdUser.ObjectID -skuPartNumbers $userSpec.licenses
-        setLicensesAssignedToMgUser -userId $mgUser.Id -skuPartNumbers $userSpec.licenses
     }
 
 
     if($doSendWelcomeMessage){
-        # $adUser = Get-ADUser $username
-        $recipientAddress = ($adUser.DisplayName + "<" + $adUser.UserPrincipalName + ">")
+        $recipientAddress = ($displayName + "<" + $userPrincipalName + ">")
 
             
         @{
@@ -420,19 +357,26 @@ function initializeUser {
                 "Welcome to $($companyParameters['companyName']).  " +
                 "Here are your $($companyParameters['companyName']) Active Directory credentials:"
 
-                "    username (and email address): $($adUser.UserPrincipalName)"
+                "    username (and email address): $($userPrincipalName)"
 
-                "    password: $($userSpec['password'])"
-
-                ""
-
-                "To change your " +
-                "password, go to  $($companyParameters['passwordChangeUrl'])."
+                "    password: $($password)"
 
                 ""
+
+                if($companyParameters['passwordChangeUrl']){
+                    "To change your " +
+                    "password, go to  $($companyParameters['passwordChangeUrl'])."
+
+                    ""
+                }
+
+                ##  "Use the above username and password to log into " +
+                ##  "your computer at the $($companyParameters['companyName']) office and " +
+                ##  "to access $($companyParameters['companyName']) email.  "
+
 
                 "Use the above username and password to log into " +
-                "your computer at the $($companyParameters['companyName']) office and " +
+                "your $($companyParameters['companyName']) computer and " +
                 "to access $($companyParameters['companyName']) email.  "
 
                 ""
@@ -440,8 +384,41 @@ function initializeUser {
                 if ($companyParameters['emailDomainName'] -eq 'lucasinterior.com'){
 
                     "Your $($companyParameters['companyName']) email account is provided " +
-                    "by Gmail.  To access email, use the web interface at " +
-                    "https://gmail.com or use your mail client of choice.  "
+                    "by Gmail.  To access $($companyParameters['companyName']) email, use the web interface at " +
+                    "https://gmail.com or use your email client of choice.  "
+
+                } else {
+
+                    ##  "There is a webmail interface at https://outlook.office.com, which allows " +                                   
+                    ##  "you to access your $($companyParameters['companyName']) email from a web " +                                   
+                    ##  " browser.  You can also access email in Outlook on your $($companyParameters['companyName']) computer."        
+                    ##                                                                                                                  
+                    ##  ""                                                                                                              
+                    ##                                                                                                                  
+                    ##  "Here are all the details that you might need to " +                                                            
+                    ##  "set up email on your smart phone, if you are so inclined:"                                                     
+                    ##                                                                                                                  
+                    ##  "    Account type: Exchange (some phones call this `"Corporate`")"                                              
+                    ##                                                                                                                  
+                    ##  "    Email address: $($userPrincipalName)"                                                                      
+                    ##                                                                                                                  
+                    ##  "    Username: $($userPrincipalName)"                                                                           
+                    ##                                                                                                                  
+                    ##  "    Password: $($password)"                                                                                    
+                    ##                                                                                                                  
+                    ##  "    Domain: $($companyParameters['emailDomainName'])"                                                          
+                    ##                                                                                                                  
+                    ##  "    Exchange Server address: outlook.office365.com"                                                            
+                    ##                                                                                                                  
+                    ##  "    TLS (this is usually a checkbox): yes (checked)"                                                           
+
+                    "Your $($companyParameters['companyName']) mailbox is hosted on " +
+                    "Microsoft Exchange Online.  To access $($companyParameters['companyName']) email, use the web interface at " +
+                    "https://outlook.office.com or use your email client of choice.  "
+
+                }
+
+                if ($userSpec.phoneExtensionNumber -and $userSpec.directDialPhoneNumber){
 
                     ""
 
@@ -453,33 +430,9 @@ function initializeUser {
                     "Your $($companyParameters['companyName']) phone direct-dial " +
                     "number is $($userSpec.directDialPhoneNumber)."
 
-
-                } else {
-
-                    "There is a webmail interface at https://outlook.office.com, which allows " +
-                    "you to access your $($companyParameters['companyName']) email from a web " +
-                    " browser.  You can also access email in Outlook on your $($companyParameters['companyName']) computer."
-
-                    ""
-
-                    "Here are all the details that you might need to " +
-                    "set up email on your smart phone, if you are so inclined:"
-
-                    "    Account type: Exchange (some phones call this `"Corporate`")"
-
-                    "    Email address: $($adUser.UserPrincipalName)"
-
-                    "    Username: $($adUser.UserPrincipalName)"
-
-                    "    Password: $($userSpec['password'])"
-
-                    "    Domain: $($companyParameters['emailDomainName'])"
-
-                    "    Exchange Server address: outlook.office365.com"
-
-                    "    TLS (this is usually a checkbox): yes (checked)"
-
                 }
+
+
                 ""
                 ""
                 "Sincerely,"

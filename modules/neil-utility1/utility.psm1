@@ -579,14 +579,14 @@ function setSmtpAddressesOfMailbox
 
         Write-Host "initially, mailbox.EmailAddresses: ", $mailbox.EmailAddresses
         
-        $emailAddressesToRemove = $mailbox.EmailAddresses | where-object {
+        $emailAddressesToRemove = @($mailbox.EmailAddresses | where-object {
             ($_ -match '(?i)^SMTP:.+$') -and (-not ($_ -in $desiredEmailAddresses)) 
             # it is an smtp address of some sort and it is not in the desiredEmailAddresses List
-        }
-        $emailAddressesToAdd = $desiredEmailAddresses | where-object {
+        })
+        $emailAddressesToAdd = @($desiredEmailAddresses | where-object {
             -not ($_ -in $mailbox.EmailAddresses)
             # it is not already in the mailbox's Email Addresses
-        }
+        })
 
         if( ([Boolean] $emailAddressesToRemove) -or ([Boolean] $emailAddressesToAdd) ){
             Write-Host "emailAddressesToRemove ($($emailAddressesToRemove.Count)): ", $emailAddressesToRemove
@@ -601,7 +601,7 @@ function setSmtpAddressesOfMailbox
                 ) + 
                 $(
                     if($emailAddressesToAdd.Count -gt 0){
-                        @{ Add=@($emailAddressesToRemove) }
+                        @{ Add=@($emailAddressesToAdd) }
                     } else {
                         @{}
                     }
