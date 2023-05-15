@@ -11,7 +11,8 @@ function unlockTheBitwardenVault(){
     }
 }
 
-function getBitwardenItem {
+# function getBitwardenItem {
+function Get-BitwardenItem {
     [OutputType([HashTable])] # I really want an Optional[HashTable] -- I will return null in case of failure.
     
     [CmdletBinding()]
@@ -24,14 +25,41 @@ function getBitwardenItem {
     [HashTable] $bitwardenItem = ( bw --nointeraction --raw get item $bitwardenItemId  | ConvertFrom-Json -AsHashtable)
     #todo: error handling
 
+    ## 2023-05-15-1101: 
+    #  the type of $bitwardenItem (and the type of any nested objects) at this
+    #  point happens to be System.Management.Automation.OrderedHashtable.  If we
+    #  were to omit the "-AsHashTable" switch, above, the type of $bitwarenItem
+    #  (and the type of any nested objects) would be
+    #  System.Management.Automation.PSCustomObject.  These types behave very
+    #  similarly, but the hash table has the advantage that all of the original
+    #  json properties are represented as keys in the hash table, whereas with
+    #  the pscustomobject, I have the sense that there would be some property
+    #  names that could appear in the original json but would not be accessible
+    #  in the PScustomObject because they would be shadowed by PsCustomObject's
+    #  own properties.  In other words, with the hash table, uniquely, we can
+    #  always resort to square-bracket member access operator if we need to.
+
+
     #todo: a bit of a hack to work around the overhead in calling the bw
-    # executable might be to store a private cache of the vault here.  Not great
-    # for security or concurrency, but it might help bring the delay into a
-    # tolerable range.  Along the same lines, we might explore the "rbw" client,
-    # which is an unofficial bitwardin command-line client written in Rust that
-    # purports to be much faster than the official, node.js-based, bitwarden
-    # client.
+    # executable might be to store a private cache of the vault here (or memoize
+    # one result at a time).  Not great for security or concurrency, but it
+    # might help bring the delay into a tolerable range.  Along the same lines,
+    # we might explore the "rbw" client, which is an unofficial bitwardin
+    # command-line client written in Rust that purports to be much faster than
+    # the official, node.js-based, bitwarden client.
     return $bitwardenItem
+}
+
+function Set-BitwardenItem {
+    [CmdletBinding()]
+    Param (
+        [Parameter(HelpMessage=  "The bitwarden item")]
+        [HashTable] $bitwardenItem
+    )
+    #todo 2023-05-15-1146: accept pipeline input.  think about what the return type should be.
+    unlockTheBitwardenVault
+    $bitwardenItem | ConvertTo-Json -Depth 99 | bw --nointeraction --raw  encode | bw --nointeraction --raw edit item $bitwardenItem.id
+
 }
 
 function makeNewBitwardenItem {
