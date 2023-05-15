@@ -257,3 +257,7 @@ Find-Module PowershellGet | fl
 Start-Process "$((Find-Module PowershellGet ).ProjectUri)"
 
 Get-Module PowershellGet | fl
+
+Get-Module ConnectWiseControlAPI | fl
+Get-Help ConnectWiseControlAPI
+"$((Find-Module ConnectWiseControlAPI).ProjectUri)"

@@ -536,7 +536,13 @@ function getDcSession {
 
     $HostName = $HostName ? $HostName : $companyParameters['domainController']
     
-    Set-Item WSMan:\localhost\Client\TrustedHosts -Force -Value $HostName | Out-Null
+    
+    Set-Item WSMan:\localhost\Client\TrustedHosts -Force -Concatenate -Value $HostName | Out-Null
+    # The -concatenate switch ensures that we do not clobber the existing list.
+    # probably ought to also check whether $HostName is already in the list (it
+    # looks like the set-item -Concatenate mechanism is already poreventing
+    # duplicates automatically, so we won't bother).
+
     return @{
         ComputerName = $HostName
         
