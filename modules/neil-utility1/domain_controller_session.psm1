@@ -40,7 +40,7 @@ function New-DomainControllerPSSession {
     }
 
     $companyParameters = getFieldMapFromBitwardenItem $bitwardenItemIdOfTheCompanyParameters
-    $bitwardenItemContainingActiveDirectoryCredentials = getBitwardenItem $companyParameters['idOfBitwardenItemContainingActiveDirectoryCredentials']
+    $bitwardenItemContainingActiveDirectoryCredentials = Get-BitwardenItem $companyParameters['idOfBitwardenItemContainingActiveDirectoryCredentials']
     $username = (
         @(
             $bitwardenItemContainingActiveDirectoryCredentials.fields | Where-Object {$_.name -eq 'active_directory_domain_name'} | 

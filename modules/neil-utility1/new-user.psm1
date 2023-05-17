@@ -27,7 +27,7 @@ function initializeUser {
         Write-Host "this is a Nakano job"
         
         $idOfBitwardenItemContainingSoftetherVpnServerCredentials='5d918212-baf7-44d7-bf18-acf701364944'
-        $bitwardenItemContainingSoftetherVpnServerCredentials = getBitwardenItem $idOfBitwardenItemContainingSoftetherVpnServerCredentials
+        $bitwardenItemContainingSoftetherVpnServerCredentials = Get-BitwardenItem $idOfBitwardenItemContainingSoftetherVpnServerCredentials
         $vpnServerPassword=$bitwardenItemContainingSoftetherVpnServerCredentials.login.password
         $softetherVpnServerHostname = ( $bitwardenItemContainingSoftetherVpnServerCredentials.login.uris[0].uri -split ":")[0]
         $softetherVpnServerPortnumber = ( $bitwardenItemContainingSoftetherVpnServerCredentials.login.uris[0].uri -split ":")[1]
@@ -476,7 +476,7 @@ function getDcSession {
     )
 
     $companyParameters = getFieldMapFromBitwardenItem $bitwardenItemIdOfCompanyParameters
-    $bitwardenItemContainingActiveDirectoryCredentials = getBitwardenItem $companyParameters['idOfBitwardenItemContainingActiveDirectoryCredentials']
+    $bitwardenItemContainingActiveDirectoryCredentials = Get-BitwardenItem $companyParameters['idOfBitwardenItemContainingActiveDirectoryCredentials']
 
     $username = (
         @(

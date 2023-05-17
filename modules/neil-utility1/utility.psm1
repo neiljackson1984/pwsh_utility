@@ -84,7 +84,7 @@ function makeNewBitwardenItem {
     $result = [System.Convert]::ToBase64String( ([system.Text.Encoding]::UTF8).GetBytes(($bitwardenItem | ConvertTo-Json -Depth 50)) )  | bw --nointeraction --raw create item 
     $newlyCreatedBitwardenItem = ( $result | ConvertFrom-Json -AsHashtable)
     Write-Host "created new bitwarden item having id $($newlyCreatedBitwardenItem['id'])."
-    return (getBitwardenItem -bitwardenItemId $newlyCreatedBitwardenItem['id'] )
+    return (Get-BitwardenItem -bitwardenItemId $newlyCreatedBitwardenItem['id'] )
 }
 
 
@@ -98,7 +98,7 @@ function getFieldMapFromBitwardenItem {
         [String]$bitwardenItemId 
     )
 
-    [HashTable] $bitwardenItem = getBitwardenItem -bitwardenItemId $bitwardenItemId
+    [HashTable] $bitwardenItem = Get-BitwardenItem -bitwardenItemId $bitwardenItemId
 
     $fieldMap = @{}
     
@@ -132,9 +132,9 @@ function putFieldMapToBitwardenItem {
         # if($doMakeNewBitwardenItem){ 
         #     makeNewBitwardenItem -name $nameForNewBitwardenItem
         # } else { 
-        #     getBitwardenItem -bitwardenItemId $bitwardenItemId 
+        #     Get-BitwardenItem -bitwardenItemId $bitwardenItemId 
         # }
-        getBitwardenItem -bitwardenItemId $bitwardenItemId 
+        Get-BitwardenItem -bitwardenItemId $bitwardenItemId 
     )
     foreach($key in $fieldMap.keys){
         if(-not $bitwardenItem['fields']){$bitwardenItem['fields'] = @()}
