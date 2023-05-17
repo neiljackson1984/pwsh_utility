@@ -170,6 +170,7 @@ function initializeUser {
             $userPrincipalName      = $using:userPrincipalName     
             $password               = $using:password              
             $publicDomainName       = $using:publicDomainName              
+            $displayName            = $using:displayName              
 
 
             Write-Host "$env:computername is working on $($userSpec['firstName'][0] + $userSpec['lastName'])"
@@ -201,7 +202,6 @@ function initializeUser {
                 DisplayName         =  $displayName
                 # Name                =  $displayName
             } | % { $adUser | Set-ADUser @_ }
-            
             
             # $adUser = $adUser | Get-ADUser ; $adUser.Name = $adUser.DisplayName; Set-ADUser -Instance $adUser;
             #doesn't work
