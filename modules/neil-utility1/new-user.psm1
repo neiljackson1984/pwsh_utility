@@ -173,7 +173,7 @@ function initializeUser {
 
 
             Write-Host "$env:computername is working on $($userSpec['firstName'][0] + $userSpec['lastName'])"
-            assert $publicDomainName -eq (get-adforest).UPNSuffixes[0]
+            # assert $publicDomainName -eq (get-adforest).UPNSuffixes[0]
             $adUser = Get-ADUser $username
             if($adUser){
                 Write-Host "The adUser `"$($username)`" already exists, so we will not bother to create."
