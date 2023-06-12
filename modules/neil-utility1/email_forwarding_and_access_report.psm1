@@ -83,7 +83,7 @@ function make_email_forwarding_and_access_report(){
                     $_.State -eq "Enabled"
                 } | 
                 where-object {
-                    $sentToList = $_.SentTo
+                    $sentToList = @($_.SentTo) | ? {$_}
                     @(
                         &{ $sentToList | foreach-object {(get-mailbox -identity $_).Identity} | where-object {$_} }
                     ).Contains($mailbox.Identity  )
