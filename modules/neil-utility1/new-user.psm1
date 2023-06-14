@@ -565,3 +565,44 @@ function getDcSession {
     } | % { New-PSSession @_ }
 }
 
+function connectVpn {
+    <#
+    .SYNOPSIS
+    Ensures that we are connected to the specified softether vpn connection.
+    Currently, we are specifying the softether vpn connection only by name, and
+    relying on an entry of that name existing and being correctly configured.
+
+    # .DESCRIPTION
+    # Long description
+
+    # .PARAMETER bitwardenItemIdOfCompanyParameters
+    # Parameter description
+
+    # .PARAMETER HostName
+    # Parameter description
+
+    # .EXAMPLE
+    # An example
+
+    # .NOTES
+    # General notes
+    #>
+    [CmdletBinding()]
+    [OutputType([void])]
+    Param(
+        [Parameter(
+            Mandatory=$True
+            
+        )]
+        [String] 
+        $bitwardenItemIdOfCompanyParameters,
+
+        [Parameter(
+            HelpMessage="Optionally, override the host name of the computer to connect to.",
+            Mandatory=$False
+            
+        )]
+        [String] 
+        $HostName
+    )
+}
