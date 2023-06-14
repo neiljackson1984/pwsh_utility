@@ -261,3 +261,8 @@ Get-Module PowershellGet | fl
 Get-Module ConnectWiseControlAPI | fl
 Get-Help ConnectWiseControlAPI
 "$((Find-Module ConnectWiseControlAPI).ProjectUri)"
+
+### 2023-06-14-1327
+# moved the pwsh_utility directory from "C:\work\pwsh_utility" to "U:\pwsh_utility"
+import-module "./utility.psm1"
+addEntryToPSModulePathPersistently "U:\pwsh_utility\modules"

@@ -674,7 +674,7 @@ function grantUserAccessToMailbox(
     $createInboxRuleToRedirect=$False
 ){
 
-    # $azureAdUserToBeGrantedAccess = Get-AzureADUser -ObjectID $idOfUserToBeGrantedAccess
+
     $mgUserToBeGrantedAccess = Get-MgUser -UserId $idOfUserToBeGrantedAccess
     $mailbox = Get-Mailbox -ID $idOfMailbox
 
@@ -686,19 +686,18 @@ function grantUserAccessToMailbox(
     Add-RecipientPermission  -Identity $mailbox.Id   -Trustee $mgUserToBeGrantedAccess.Id -AccessRights SendAs  -confirm:$false
 
     if($createInboxRuleToRedirect){
-        $nameOfInboxRule = "redirect to $($azureAdUserToBeGrantedAccess.Mail) 5146a9a247d64ef9ba6dcfd1057e00e3"
+        $nameOfInboxRule = "redirect to $($mgUserToBeGrantedAccess.Mail) 5146a9a247d64ef9ba6dcfd1057e00e3"
         Remove-InboxRule -confirm:$false -Mailbox $mailbox.Id -Identity $nameOfInboxRule -ErrorAction SilentlyContinue
         $s = @{
             Mailbox                    = $mailbox.Id 
             Name                       = $nameOfInboxRule      
-            RedirectTo                 = $azureAdUserToBeGrantedAccess.Mail
+            RedirectTo                 = $mgUserToBeGrantedAccess.Mail
             StopProcessingRules        = $False
         }; New-InboxRule @s
     }
 
 
     # send an email to the user informing them that they now have full access to the mailbox and how to access it.
-    # $azureAdUserToBeAdvised = $azureAdUserToBeGrantedAccess
     $mgUserToBeAdvised = $mgUserToBeGrantedAccess
     $recipientAddress = ($mgUserToBeAdvised.DisplayName + "<" + $mgUserToBeAdvised.Mail + ">")
     if($sendInstructionalMessageToUsersThatHaveBeenGrantedAccess){
