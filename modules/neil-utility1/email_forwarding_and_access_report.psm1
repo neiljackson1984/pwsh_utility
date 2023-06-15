@@ -8,10 +8,11 @@ function make_email_forwarding_and_access_report(){
     $pathOfOutputReportFile = "email_forwarding_and_access_report_$($defaultDomainName)_$('{0:yyyy-MM-dd_HH-mm}' -f $reportTime).txt"
 
 
-    $allMailboxPermissions = get-mailbox | get-mailboxpermission 
-    $allRecipientPermissions = get-mailbox | get-RecipientPermission 
-    $allMgUsers = Get-MgUser
-    $licensedMgUsers = $allMgUsers | where {(Get-MgUser -UserId $_.Id -Property "AssignedLicenses").AssignedLicenses}
+    # $allMailboxPermissions = get-mailbox | get-mailboxpermission 
+    # $allRecipientPermissions = get-mailbox | get-RecipientPermission 
+    # $allMgUsers = Get-MgUser
+    $licensedMgUsers = Get-MgUser -All -Property "Id","Guid","UserPrincipalName","AssignedLicenses" | 
+        ? {$_.AssignedLicenses}
 
 
     "" | Out-File -FilePath $pathOfOutputReportFile
@@ -29,37 +30,101 @@ function make_email_forwarding_and_access_report(){
     foreach($mailbox in (get-mailbox | Sort-Object -Property PrimarySmtpAddress)){
         $mgUserWhoOwnsThisMailbox = $null
         $mgUserWhoOwnsThisMailbox = (Get-MgUser -UserId $mailbox.ExternalDirectoryObjectId -ErrorAction SilentlyContinue)
+        
+        
+        # $fullAccessPermissionsToThisMailbox = @(
+        #     $allMailboxPermissions | ? {
+        #         ($_.Identity -eq $mailbox.Identity) -and 
+        #         ($_.AccessRights.contains( "FullAccess" )) -and
+        #         (! $_.Deny) -and
+        #         (($licensedMgUsers.UserPrincipalName).contains($_.User))
+        #     }
+        # )
         $fullAccessPermissionsToThisMailbox = @(
-            $allMailboxPermissions | ? {
-                ($_.Identity -eq $mailbox.Identity) -and 
+            (
+                @{
+                    Identity = $mailbox.Guid 
+                    
+                    # The GroupMailbox switch is required to return Microsoft 365
+                    # Groups in the results.
+                    # GroupMailbox = $True
+
+                    # The IncludeUnresolvedPermissions switch returns unresolved
+                    # permissions in the results.
+                    # IncludeUnresolvedPermissions = $True
+
+                    # The SoftDeletedMailbox switch is required to return
+                    # soft-deleted mailboxes in the results. Soft-deleted mailboxes
+                    # are deleted mailboxes that are still recoverable.
+                    # SoftDeletedMailbox = $True
+
+                    # The ResultSize parameter specifies the maximum number of
+                    # results to return. If you want to return all requests that
+                    # match the query, use unlimited for the value of this
+                    # parameter. The default value is 1000.
+                    ResultSize = "Unlimited"
+
+                    # The IncludeSoftDeletedUserPermissions switch returns
+                    # permissions from soft-deleted mailbox users in the results.
+                    # Soft-deleted mailboxes are mailboxes that have been deleted,
+                    # but are still recoverable.
+                    # IncludeSoftDeletedUserPermissions = $True
+                } | % { Get-MailboxPermission @_ }
+            ) | 
+            ? {
                 ($_.AccessRights.contains( "FullAccess" )) -and
                 (! $_.Deny) -and
-                (($licensedMgUsers.UserPrincipalName).contains($_.User))
+                # ([bool] (Get-MgUser -UserId $_.User -Property "AssignedLicenses").AssignedLicenses)
+                ($licensedMgUsers.UserPrincipalName).contains($_.User)
             }
         )
         
         
-        $recipientPermissionsToThisMailbox = @(
-            $allRecipientPermissions | ? {
-                ($_.Identity -eq $mailbox.Identity) -and 
+        # $recipientPermissionsToThisMailbox = @(
+        #     $allRecipientPermissions | ? {
+        #         ($_.Identity -eq $mailbox.Identity) -and 
+        #         ($_.AccessRights.contains( "SendAs" )) -and
+        #         ($_.AccessControlType -eq "Allow") -and 
+        #         (($licensedMgUsers.UserPrincipalName).contains($_.Trustee))
+        #     }
+        # )
+        $sendAsPermissionsToThisMailbox = @(
+            (
+               @{
+                    Identity = $mailbox.Guid
+
+                    # The AccessRights parameter filters the results by
+                    # permission. The only valid value for this parameter is
+                    # SendAs.
+                    AccessRights = "SendAs"
+
+                    ResultSize = "Unlimited"
+               } | % {Get-RecipientPermission @_}
+            ) | 
+            ? {
                 ($_.AccessRights.contains( "SendAs" )) -and
                 ($_.AccessControlType -eq "Allow") -and 
-                (($licensedMgUsers.UserPrincipalName).contains($_.Trustee))
+                # ([bool] (Get-MgUser -UserId $_.Trustee -Property "AssignedLicenses").AssignedLicenses)
+                ($licensedMgUsers.UserPrincipalName).contains($_.Trustee)
             }
         )
         
         $mgUsersThatHaveFullAccessToThisMailbox = @(
             @(
                 $fullAccessPermissionsToThisMailbox | % {Get-MgUser -UserId $_.User} 
+
                 if($mgUserWhoOwnsThisMailbox){$mgUserWhoOwnsThisMailbox}
-            ) | Sort-Object -Property UserPrincipalName
+            ) | 
+            Sort-Object -Property UserPrincipalName
         )
         
         $mgUsersThatHaveSendAsPermissionToThisMailbox = @(
             @(
-                $recipientPermissionsToThisMailbox | % {Get-MgUser -UserId $_.Trustee} 
+                $sendAsPermissionsToThisMailbox | % {Get-MgUser -UserId $_.Trustee} 
+
                 if($mgUserWhoOwnsThisMailbox){$mgUserWhoOwnsThisMailbox}
-            ) | Sort-Object -Property UserPrincipalName
+            ) | 
+            Sort-Object -Property UserPrincipalName
         )
         
         $addressesToWhichThisMailboxIsBeingRedirected = @(
