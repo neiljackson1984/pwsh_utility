@@ -1312,3 +1312,243 @@ function sendTestMessage([String] $recipient){
 
     } | % { sendMail @_ }
 }
+
+
+function downloadAndExpandArchiveFile([String] $url, [String] $pathOfDirectoryInWhichToExpand){
+    $localPathOfArchiveFile = (join-path $env:temp (New-Guid).Guid)
+    # Invoke-WebRequest -Uri $url  -OutFile $localPathOfArchiveFile
+
+    # #hack to avoid redownloading:
+    # $localPathOfArchiveFile = (join-path (join-path $env:temp "549b0588649a4cb19217ed6fe46c97e4") (split-path $url -leaf))
+    # New-Item -ItemType "directory" -Path (Split-Path $localPathOfArchiveFile -Parent) -ErrorAction SilentlyContinue 
+    # if(-not (Test-Path -Path $localPathOfArchiveFile -PathType leaf) ){
+    #     Invoke-WebRequest -Uri $url  -OutFile $localPathOfArchiveFile
+    # }
+
+    New-Item -ItemType "directory" -Path (Split-Path $localPathOfArchiveFile -Parent) -ErrorAction SilentlyContinue 
+    Invoke-WebRequest -Uri $url  -OutFile $localPathOfArchiveFile
+    
+    New-Item -ItemType "directory" -Path $pathOfDirectoryInWhichToExpand -ErrorAction SilentlyContinue
+    7z @(
+        # eXtract files with full paths    
+        "x"
+
+        #Recurse subdirectories for name search
+        "-r"
+
+        #-y : assume Yes on all queries
+        "-y" 
+        
+        # -o{Directory} : set Output directory
+        "-o$($pathOfDirectoryInWhichToExpand)" 
+        
+        # <archive_name>
+        "$localPathOfArchiveFile" 
+        
+        # <file_names>...
+        "*"
+    )
+
+}
+
+function installGoodies([System.Management.Automation.Runspaces.PSSession] $session){
+    Invoke-Command $session {  #ensure that chocoloatey is installed, and install other goodies
+        & { #ensure that chocoloatey is installed
+            
+            #!ps
+            #timeout=1800000
+            #maxlength=9000000
+
+            Set-ExecutionPolicy Bypass -Scope Process -Force  
+            [System.Net.ServicePointManager]::SecurityProtocol = [System.Net.ServicePointManager]::SecurityProtocol -bor 3072 
+            Invoke-Expression ((New-Object System.Net.WebClient).DownloadString('https://community.chocolatey.org/install.ps1'))  
+            choco upgrade --acceptlicense --confirm chocolatey  
+    
+            #ensure that 7zip is installed
+            choco install --acceptlicense -y 7zip  
+            choco upgrade --acceptlicense -y 7zip 
+    
+            #ensure that pwsh is installed
+            choco install --acceptlicense -y pwsh  
+            choco upgrade --acceptlicense -y pwsh  
+    
+            choco install --acceptlicense -y --force "winmerge"
+            choco install --acceptlicense -y --force "spacesniffer"
+            choco install --acceptlicense -y --force "notepadplusplus"
+            choco install --acceptlicense -y --force "sysinternals"
+            # choco install --acceptlicense -y --force "cygwin"
+            
+            choco install --acceptlicense -y --force "hdtune"
+        }
+    
+    
+    }
+}
+
+
+function installGoodies2(){
+    <#
+    .SYNOPSIS
+    To run this in a remote session $s, do 
+    icm $s -ScriptBlock ${function:installGoodies2} 
+    #>
+
+    & { #ensure that chocolatey is installed, and install other goodies
+        
+        #!ps
+        #timeout=1800000
+        #maxlength=9000000
+
+        Set-ExecutionPolicy Bypass -Scope Process -Force  
+        [System.Net.ServicePointManager]::SecurityProtocol = [System.Net.ServicePointManager]::SecurityProtocol -bor 3072 
+        Invoke-Expression ((New-Object System.Net.WebClient).DownloadString('https://community.chocolatey.org/install.ps1'))  
+        choco upgrade --acceptlicense --confirm chocolatey  
+
+        #ensure that 7zip is installed
+        choco install --acceptlicense -y 7zip  
+        choco upgrade --acceptlicense -y 7zip 
+
+        #ensure that pwsh is installed
+        choco install --acceptlicense -y pwsh  
+        choco upgrade --acceptlicense -y pwsh  
+
+        choco install --acceptlicense -y --force "winmerge"
+        choco install --acceptlicense -y --force "spacesniffer"
+        choco install --acceptlicense -y --force "notepadplusplus"
+        choco install --acceptlicense -y --force "sysinternals"
+        # choco install --acceptlicense -y --force "cygwin"
+        
+        choco install --acceptlicense -y --force "hdtune"
+    }
+}
+
+
+function runElevatedInActiveSession(){
+    <#
+        .SYNOPSIS
+        This is a hack on several levels that gets the job done.  Given a powershell session (typically a remote session),
+        this command runs psexec on the remote computer with the arguments passed to this function.
+    #>
+    
+    Param(
+        [System.Management.Automation.Runspaces.PSSession] $session,
+        [parameter(ValueFromRemainingArguments = $true)]
+        [String[]] $remainingArguments
+    )
+    Invoke-Command $session {             
+        & PsExec @(
+            # -accepteula This flag suppresses the display of the license dialog.
+            "-accepteula"
+
+            # -nobanner   Do not display the startup banner and copyright message.
+            "-nobanner"
+            
+            # -d         Don't wait for process to terminate (non-interactive).
+            "-d"
+
+            # -h         If the target system is Vista or higher, has the
+            # process run with the account's elevated token, if available.
+            "-h"
+
+            # -i         Run the program so that it interacts with the desktop
+            # of the specified session on the remote system. If no session is
+            # specified the process runs in the console session.
+            "-i",((query session | select-string '(?i)^.*\s+(\d+)\s+active(\s|$)').Matches[0].Groups[1].Value)
+            
+            # -s         Run the remote process in the System account.
+            "-s"
+
+            #command and arguments: 
+            $using:remainingArguments
+        )
+    }
+}
+
+function addEntryToSystemPathPersistently($pathEntry){
+    $existingPathEntries = @(([System.Environment]::GetEnvironmentVariable('PATH', [System.EnvironmentVariableTarget]::Machine)) -Split ([IO.Path]::PathSeparator) | Where-Object {$_})
+    # $desiredPathEntries = deduplicate($existingPathEntries + $pathEntry)
+    $desiredPathEntries = @(
+        @( 
+            @($existingPathEntries)
+            $pathEntry
+        ) | select-object -unique 
+    )
+
+
+    [System.Environment]::SetEnvironmentVariable(
+        'PATH', 
+        ([String]::Join([IO.Path]::PathSeparator, $desiredPathEntries)),
+        [System.EnvironmentVariableTarget]::Machine
+    )
+}
+
+function reportDrives(){
+
+    Get-Disk | 
+        sort Number |
+        select @(
+            "Number"
+            "IsOffline"
+            "OfflineReason"
+            @{
+                name="Size"
+                expression = {"{0:N} gigabytes" -f ($_.Size/[math]::pow(10,9))}
+            }
+        ) |
+        Format-Table
+
+
+    # Get-WmiObject -Class Win32_LogicalDisk |
+    Get-CimInstance -Class Win32_LogicalDisk |
+        ? {$_.DriveType -ne 5} |
+        Sort-Object Name | 
+        Select-Object @(
+            "Name"
+            "VolumeName"
+            "VolumeSerialNumber"
+            "SerialNumber"
+            "FileSystem"
+            "Description"
+            "VolumeDirty"
+            @{"Label"="total space`n(gigabytes)";"Expression"={"{0:N}" -f ($_.Size/[math]::pow(10,9)) -as [float]}}
+            @{"Label"="used space`n(gigabytes)";"Expression"={"{0:N}" -f ( ( $_.Size - $_.FreeSpace)/[math]::pow(10,9)) -as [float]}}
+            @{"Label"="free space`n(gigabytes)";"Expression"={"{0:N}" -f ($_.FreeSpace/[math]::pow(10,9)) -as [float]}}
+            @{"Label"="fraction free";"Expression"={"{0:N}" -f ($_.FreeSpace/$_.Size) -as [float]}}
+        ) |
+        Format-Table -AutoSize
+    
+
+    Get-Partition  | 
+        Sort DiskNumber,PartitionNumber |
+        select @(
+            "DiskNumber"
+            "PartitionNumber"
+            "Type"
+            # "DriveLetter"
+            @{
+                name="Drive Letter"
+                expression={
+                    # if($_.DriveLetter){$_.DriveLetter}
+                    # $_.DriveLetter.ToString()
+                    # "$($_.DriveLetter)"
+                    # $_.DriveLetter -as [String]
+                    if($_.DriveLetter){$_.DriveLetter}
+                }
+                # driveletter is a char, and is a null char to indicate no assigned drive letter.
+                # a null char screws up the alignment in the terminal.
+            }
+            @{
+                name="size"
+                expression={"{0,9:f1} gigabytes" -f (($_.Size/[math]::pow(10,9) ) -as [float])}
+            } 
+            @{
+                name="offset"
+                expression={"{0,9:f1} gigabytes" -f (($_.Offset/[math]::pow(10,9) ) -as [float])}
+            } 
+            "Guid"
+        ) | 
+        format-table -autosize | 
+        # out-string |
+        write-output
+
+}
