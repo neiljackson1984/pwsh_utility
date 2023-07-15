@@ -456,6 +456,15 @@ function initializeUser {
 }
 
 function getDcSession {
+    <#
+    .SYNOPSIS
+    This is basically a wrapper around New-PsSession that takes an additional
+    argument: bitwardenItemIdOfCompanyParameters. This is used to look up a
+    bitwarden item to set the default hostname to connect to and to control
+    whether we attempt to connect to some vpn connection.
+
+    #>
+    
     [CmdletBinding()]
     [OutputType([System.Management.Automation.Runspaces.PSSession])]
     Param(
@@ -466,13 +475,67 @@ function getDcSession {
         [String] 
         $bitwardenItemIdOfCompanyParameters,
 
+
+
+        ## the only New-PSSession arguments that we need to specify here are the ones for which we want to construct a "default" value.
+        ## any NewPSSession argument that we don't care about constructing a "default" value for will be handled by $remainingArguments below.
+        ## having to specify these here is in some sense a result of there not being a convenient way to reverse-splat an argument list into a hash table. 
         [Parameter(
-            HelpMessage="Optionally, override the host name of the computer to connect to.",
-            Mandatory=$False
-            
+            Mandatory=$False,
+            HelpMessage="Optionally, override the default ComputerName argument"            
         )]
         [String] 
-        $HostName
+        # New-PSSession's ComputerName argument has type String[] , in which case it will return more than one pssession's.  
+        # This confuses me because I do not know how to declare the OutputType to indicate that a function might return multiple objects,
+        # so I am going to specify my ComputerName argument as having type String.  Probably not ideal, but good enough for my application.
+        $ComputerName,
+
+        [Parameter(
+            Mandatory=$False,
+            HelpMessage="Optionally, override the default ConfigurationName argument"            
+        )]
+        [String] 
+        $ConfigurationName,
+
+        [Parameter(
+            Mandatory=$False,
+            HelpMessage="Optionally, override the default Credential argument"            
+        )]
+        [System.Management.Automation.PSCredential] 
+        $Credential
+        ,
+        [Parameter(
+            Mandatory=$False,
+            HelpMessage="Optionally, override the default SessionOption argument"            
+        )]
+        [Object] 
+        $SessionOption
+        ,
+
+
+        [Parameter(
+            ValueFromRemainingArguments = $True,
+            # HelpMessage = "remaining arguments will be passed to New-PsSession",
+            Mandatory = $False
+        )]
+        [Object[]] 
+        $remainingArguments = @()
+
+        # My idea with "remainingArguments" is not working as I had expected
+        # because Powershell does not treat the parameter names within a
+        # function invokation (i.e. strings starting with a dash) as strings but
+        # they are really high-level name tokens.  If you try to include
+        # "-blarg" in the argument list of a function call to a function that
+        # does not have an explicitly-decalred parameter named "blarg",
+        # powershell throws an error.
+        #
+        # the "remainingArguments" mechanism would work for positional parameters.
+        #
+        # 
+
+        # see [https://stackoverflow.com/questions/27764394/get-valuefromremainingarguments-as-an-hashtable]
+        # see [https://stackoverflow.com/questions/27463602/nested-parameters-for-powershell-cmdlet]
+        # see [https://www.powershellgallery.com/packages/MSAL.PS/4.7.1.2/Content/Select-PsBoundParameters.ps1]
     )
 
     $companyParameters = getFieldMapFromBitwardenItem $bitwardenItemIdOfCompanyParameters
@@ -490,79 +553,75 @@ function getDcSession {
     $password=$bitwardenItemContainingActiveDirectoryCredentials.login.password
 
     if ($companyParameters['nameOfSoftetherVpnConnectionNeededToTalkToDomainController']){
-        
-        $trialDuration = New-Timespan -Seconds 15
-        $giveUpTime = (Get-Date) + $trialDuration
-        $attemptsCount = 0
-        while(
-            ((Get-Date) -le $giveUpTime) -and
-            ($(vpncmd /client localhost /cmd AccountStatusGet $companyParameters['nameOfSoftetherVpnConnectionNeededToTalkToDomainController'] | Out-Null; $LASTEXITCODE ) -ne 0)
-        ) {
-            $result = $(
-                vpncmd /client localhost /cmd AccountConnect $companyParameters['nameOfSoftetherVpnConnectionNeededToTalkToDomainController'] | 
-                    Out-Null
-
-                $LASTEXITCODE 
-            )
-            $attemptsCount++
-            # write-host "result was $($result)."
-
-            if($result -eq 43){
-                # error 43 is described thus:
-                #
-                # Error occurred. (Error code: 43) The Virtual Network Adapter
-                # used by the specified VPN Connection Setting is already being
-                # used by another VPN Connection Setting. If there is another
-                # VPN Connection Setting that is using the same Virtual Network
-                # Adapter, disconnect that VPN Connection Setting.
-                # Write-Host "disconnecting from all existing softether vpn connections"
-                vpncmd /client localhost /cmd AccountList |
-                    % { 
-                        if($_ -match '^\s*VPN Connection Setting Name\s*\|(.*)$'){
-                            $Matches[1].Trim()
-                        }
-                    } |
-                    % { 
-                        # Write-Host "disconnecting from `"$($_)`""
-                        vpncmd /client localhost /cmd AccountDisconnect "$($_)" | Out-Null
-                    } 
-            }
-
-            
-            Start-Sleep 5
-        }
-        # write-host "attemptsCount: $($attemptsCount)"
+        connectVpn $companyParameters['nameOfSoftetherVpnConnectionNeededToTalkToDomainController'] | out-null
     }
 
-    $HostName = $HostName ? $HostName : $companyParameters['domainController']
+    $argumentsForNewPsSession = (
+
+        # my constructed "defaults":
+        @{
+            ComputerName = $ComputerName ?? $companyParameters['domainController']     
+
+            Credential = $Credential ?? (
+                @{
+                    TypeName = "System.Management.Automation.PSCredential"
+                    ArgumentList =  @(
+                        $username
+                        (ConvertTo-SecureString $password -AsPlainText -Force)
+                    )
+                } | % { New-Object @_ }
+            )
+            
+            # ConfigurationName="Powershell.7.1.5";
+            ConfigurationName = $ConfigurationName ?? "microsoft.powershell"
+            # run Get-PSSessionConfiguration  to see a complete list of available configurations
+            
+            # SessionOption=@{
+            #     # OutputBufferingMode=;
+            # }
+    
+            # Authentication='Digest';
+            # UseSSL=$True;
+
+        } + $(
+            if($SessionOption){@{SessionOption=$SessionOption}}
+            else {@{}}
+        )
+    )
+
+
+
+    # #overrides:
+    # @{
+    #     # somehow massage $remainingArguments into the form of a hash table
+    # }.GetEnumerator().ForEach( {$argumentsForNewPsSession[$_.key] = $_.value} )
+
+
+    # $HostName = $HostName ? $HostName : $companyParameters['domainController']
     
     
-    Set-Item WSMan:\localhost\Client\TrustedHosts -Force -Concatenate -Value $HostName | Out-Null
+    Set-Item WSMan:\localhost\Client\TrustedHosts -Force -Concatenate -Value $argumentsForNewPsSession['ComputerName'] | Out-Null
     # The -concatenate switch ensures that we do not clobber the existing list.
     # probably ought to also check whether $HostName is already in the list (it
-    # looks like the set-item -Concatenate mechanism is already poreventing
+    # looks like the set-item -Concatenate mechanism is already preventing
     # duplicates automatically, so we won't bother).
 
-    return @{
-        ComputerName = $HostName
-        
+    # return ( New-PSSession @argumentsForNewPsSession @remainingArguments )
+    # return ( New-PSSession @argumentsForNewPsSession )
 
-        Credential=(New-Object `
-            System.Management.Automation.PSCredential `
-            $username, (ConvertTo-SecureString $password -AsPlainText -Force)
-        )
-        
-        # ConfigurationName="Powershell.7.1.5";
-        ConfigurationName="microsoft.powershell";
-        # run Get-PSSessionConfiguration  to see a complete list of available configurations
-        
-        SessionOption=@{
-            # OutputBufferingMode=;
-        };
+    $psSession = $( New-PSSession @argumentsForNewPsSession )
 
-        # Authentication='Digest';
-        # UseSSL=$True;
-    } | % { New-PSSession @_ }
+    if($psSession) {
+        Invoke-Command $psSession {  
+            write-host (
+                @(
+                    "hello from $($env:computername).  Running powershell $($psVersionTable.PSEdition) $($psVersionTable.PSVersion)."
+                ) -join "`n"
+            )
+        } | write-host
+    } 
+
+    return $psSession
 }
 
 function connectVpn {
@@ -595,14 +654,64 @@ function connectVpn {
             
         )]
         [String] 
-        $bitwardenItemIdOfCompanyParameters,
-
-        [Parameter(
-            HelpMessage="Optionally, override the host name of the computer to connect to.",
-            Mandatory=$False
-            
-        )]
-        [String] 
-        $HostName
+        $nameOfSoftetherVpnConnection
     )
+
+        
+    $trialDuration = New-Timespan -Seconds 15
+    $giveUpTime = (Get-Date) + $trialDuration
+    $attemptsCount = 0
+    while(
+        (
+            (
+                Get-Date
+            ) -le $giveUpTime
+        ) -and
+        (
+            $(
+                vpncmd @(
+                    "/client", "localhost"
+                    "/cmd", "AccountStatusGet"
+                    $nameOfSoftetherVpnConnection
+                ) | 
+                Out-Null;
+                $LASTEXITCODE 
+            ) -ne 0
+        )
+    ) {
+        $result = $(
+            vpncmd /client localhost /cmd AccountConnect $nameOfSoftetherVpnConnection | 
+                Out-Null
+
+            $LASTEXITCODE 
+        )
+        $attemptsCount++
+        # write-host "result was $($result)."
+
+        if($result -eq 43){
+            # error 43 is described thus:
+            #
+            # Error occurred. (Error code: 43) The Virtual Network Adapter
+            # used by the specified VPN Connection Setting is already being
+            # used by another VPN Connection Setting. If there is another
+            # VPN Connection Setting that is using the same Virtual Network
+            # Adapter, disconnect that VPN Connection Setting.
+            # Write-Host "disconnecting from all existing softether vpn connections"
+            vpncmd /client localhost /cmd AccountList |
+                % { 
+                    if($_ -match '^\s*VPN Connection Setting Name\s*\|(.*)$'){
+                        $Matches[1].Trim()
+                    }
+                } |
+                % { 
+                    # Write-Host "disconnecting from `"$($_)`""
+                    vpncmd /client localhost /cmd AccountDisconnect "$($_)" | Out-Null
+                } 
+        }
+
+        Start-Sleep 5
+    }
+    # write-host "attemptsCount: $($attemptsCount)"
+
+
 }

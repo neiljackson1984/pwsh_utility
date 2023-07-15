@@ -1351,7 +1351,7 @@ function downloadAndExpandArchiveFile([String] $url, [String] $pathOfDirectoryIn
 
 }
 
-function installGoodies([System.Management.Automation.Runspaces.PSSession] $session){
+function installGoodies_deprecated([System.Management.Automation.Runspaces.PSSession] $session){
     Invoke-Command $session {  #ensure that chocoloatey is installed, and install other goodies
         & { #ensure that chocoloatey is installed
             
@@ -1386,11 +1386,19 @@ function installGoodies([System.Management.Automation.Runspaces.PSSession] $sess
 }
 
 
-function installGoodies2(){
+function installGoodies(){
     <#
     .SYNOPSIS
     To run this in a remote session $s, do 
-    icm $s -ScriptBlock ${function:installGoodies2} 
+    invoke-command $s -ScriptBlock ${function:installGoodies} 
+    or
+    invoke-command $s { invoke-expressions ${using:function:installGoodies} } 
+
+    # see [https://stackoverflow.com/questions/14441800/how-to-import-custom-powershell-module-into-the-remote-session]
+    # see [https://mkellerman.github.io/Import_custom_functions_into_your_backgroundjob/]
+    # see [https://stackoverflow.com/questions/30304366/powershell-passing-function-to-remote-command]
+    # see [https://stackoverflow.com/questions/2830827/powershell-remoting-using-imported-module-cmdlets-in-a-remote-pssession]
+    # see [https://serverfault.com/questions/454636/how-can-i-use-shared-functions-in-a-remote-powershell-session]
     #>
 
     & { #ensure that chocolatey is installed, and install other goodies
@@ -1428,40 +1436,48 @@ function runElevatedInActiveSession(){
         .SYNOPSIS
         This is a hack on several levels that gets the job done.  Given a powershell session (typically a remote session),
         this command runs psexec on the remote computer with the arguments passed to this function.
+
+        To run this in a remote session $s, do 
+        icm $s -ScriptBlock ${function:runElevatedInActiveSession} -ArgumentList @("foo", "bar", "baz")
+        icm $s -ScriptBlock ${function:runElevatedInActiveSession} @("foo", "bar", "baz")
+        icm $s { 
+            & ([ScriptBlock]::Create(${using:function:runElevatedInActiveSession})) foo bar baz
+        } 
+        This command relies on the psexec program included in sysinternals.
     #>
     
     Param(
-        [System.Management.Automation.Runspaces.PSSession] $session,
+        # [System.Management.Automation.Runspaces.PSSession] $session,
+
         [parameter(ValueFromRemainingArguments = $true)]
         [String[]] $remainingArguments
+    )          
+    & PsExec @(
+        # -accepteula This flag suppresses the display of the license dialog.
+        "-accepteula"
+
+        # -nobanner   Do not display the startup banner and copyright message.
+        "-nobanner"
+        
+        # -d         Don't wait for process to terminate (non-interactive).
+        "-d"
+
+        # -h         If the target system is Vista or higher, has the
+        # process run with the account's elevated token, if available.
+        "-h"
+
+        # -i         Run the program so that it interacts with the desktop
+        # of the specified session on the remote system. If no session is
+        # specified the process runs in the console session.
+        "-i",((query session | select-string '(?i)^.*\s+(\d+)\s+active(\s|$)').Matches[0].Groups[1].Value)
+        
+        # -s         Run the remote process in the System account.
+        "-s"
+
+        #command and arguments: 
+        $remainingArguments
     )
-    Invoke-Command $session {             
-        & PsExec @(
-            # -accepteula This flag suppresses the display of the license dialog.
-            "-accepteula"
-
-            # -nobanner   Do not display the startup banner and copyright message.
-            "-nobanner"
-            
-            # -d         Don't wait for process to terminate (non-interactive).
-            "-d"
-
-            # -h         If the target system is Vista or higher, has the
-            # process run with the account's elevated token, if available.
-            "-h"
-
-            # -i         Run the program so that it interacts with the desktop
-            # of the specified session on the remote system. If no session is
-            # specified the process runs in the console session.
-            "-i",((query session | select-string '(?i)^.*\s+(\d+)\s+active(\s|$)').Matches[0].Groups[1].Value)
-            
-            # -s         Run the remote process in the System account.
-            "-s"
-
-            #command and arguments: 
-            $using:remainingArguments
-        )
-    }
+    
 }
 
 function addEntryToSystemPathPersistently($pathEntry){
@@ -1550,5 +1566,55 @@ function reportDrives(){
         format-table -autosize | 
         # out-string |
         write-output
+
+}
+
+function Disable-UserAccessControl {
+    Set-ItemProperty "HKLM:\SOFTWARE\Microsoft\Windows\CurrentVersion\Policies\System" -Name "ConsentPromptBehaviorAdmin" -Value 00000000
+    Write-Host "User Access Control (UAC) has been disabled." -ForegroundColor Green    
+}
+
+function Get-NeilWindowsUpdateLog {
+    <#
+        .SYNOPSIS
+        The powershell function Get-WindowsUpdateLog that is built into Windows
+        dumps the results to a file and provides no straightforward way to write
+        the results to stdout.  This function is a wrapper around
+        Get-WindowsUpdateLog that writes the result to stdout.
+    #>
+    [OutputType([String])]
+    # I do not know what the proper OutputType declaration is for a function,
+    # like this one, that returns "multiple" strings (in the sense of the
+    # powershell pipeline).  I don't think String[] is quite the right type
+    # because we are not returning a single array of strings.  "returning" is
+    # almost the wrong word for the way that a powershell function generates
+    # pipeline output.  "Emitting" might be a better word.  At any rate, this
+    # confusion is probably at the heart of my chronic confusion in Powershell
+    # about arrays vs. single objects (vs. multiple objects "emitted" by a
+    # pipeline)
+
+    # see [https://superuser.com/questions/855285/how-can-i-find-out-what-windows-modules-installer-worker-is-doing]
+    # $pathOfLogDumpFile = (join-path $env:TEMP ((New-Guid).Guid))
+    $pathOfLogDumpFile = (join-path $env:TEMP "d2eeea30b50446219020a2380c237544.log")
+
+
+    # $(Get-WindowsUpdateLog -LogPath $pathOfLogDumpFile) *> $null
+    # re suppressing unwanted output from get-windowsupdatelog,  see [https://powershell.one/code/9.html]
+
+    # temporarily overwrite Out-Default (so that any calls to
+    # [Console]::WriteLine(), such as those issued by Get-WindowsUpdateLog, will
+    # not cause anything to appear on the console. see
+    # [https://powershell.one/code/9.html]
+    function Out-Default {}
+
+    Get-WindowsUpdateLog -LogPath $pathOfLogDumpFile
+    # restore Out-Default
+    Remove-Item -Path function:Out-Default
+
+    # & PsExec -accepteula -nobanner -d -h -s -i 1 "notepad++" "$($pathOfLogDumpFile)"
+    # write-host "$($pathOfLogDumpFile)"
+
+    # Get-Content $pathOfLogDumpFile -Tail 40
+    Get-Content $pathOfLogDumpFile 
 
 }

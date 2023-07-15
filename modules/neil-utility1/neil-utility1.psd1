@@ -22,31 +22,31 @@
     )
 
 
-    RequiredModules=@(
+    # RequiredModules=@(
         
-        @{
-            # [https://github.com/christaylorcodes/ConnectWiseControlAPI]
-            ModuleName = 'ConnectWiseControlAPI'
-            GUID = 'f94fa996-0f01-4c5c-9cd9-3227728ebacb'
-            ModuleVersion = '0.3.5.0'
-        }
+    #     @{
+    #         # [https://github.com/christaylorcodes/ConnectWiseControlAPI]
+    #         ModuleName = 'ConnectWiseControlAPI'
+    #         GUID = 'f94fa996-0f01-4c5c-9cd9-3227728ebacb'
+    #         ModuleVersion = '0.3.5.0'
+    #     }
 
-    )
+    # )
 
 
 
-    # ExternalModuleDependencies = @('ConnectWiseControlAPI')
-     PrivateData = @{
-         ExternalModuleDependencies = @('ConnectWiseControlAPI')
-         PSData = @{
-             ExternalModuleDependencies = @('ConnectWiseControlAPI')
-         } 
-     } 
+    # # ExternalModuleDependencies = @('ConnectWiseControlAPI')
+    #  PrivateData = @{
+    #      ExternalModuleDependencies = @('ConnectWiseControlAPI')
+    #      PSData = @{
+    #          ExternalModuleDependencies = @('ConnectWiseControlAPI')
+    #      } 
+    #  } 
     ###  
     ###  # damnit -- it looks like cross-repository dependencies are not well
     ###  # supported by the Powershell package management architecture.
     ###  #
     ###  # I don't know what the best workaround here is -- vendoring?  seems
-    ###  # heavy-handed and ahrd to maintain.
+    ###  # heavy-handed and hard to maintain.
     
 }
