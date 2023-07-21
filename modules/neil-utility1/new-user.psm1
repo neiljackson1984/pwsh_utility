@@ -569,9 +569,9 @@ function getDcSession {
 
         # my constructed "defaults":
         @{
-            ComputerName = (if($ComputerName){$ComputerName} else {$companyParameters['domainController']     })
+            ComputerName = $(if($ComputerName){$ComputerName} else {$companyParameters['domainController']     })
 
-            Credential = (if($Credential){$Credential} else { (
+            Credential = $(if($Credential){$Credential} else { (
                 @{
                     TypeName = "System.Management.Automation.PSCredential"
                     ArgumentList =  @(
@@ -582,7 +582,7 @@ function getDcSession {
             ) })
             
             # ConfigurationName="Powershell.7.1.5";
-            ConfigurationName = (if($ConfigurationName){$ConfigurationName} else  {"microsoft.powershell"})
+            ConfigurationName = $(if($ConfigurationName){$ConfigurationName} else  {"microsoft.powershell"})
             # run Get-PSSessionConfiguration  to see a complete list of available configurations
             
             # SessionOption=@{
