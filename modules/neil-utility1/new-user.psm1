@@ -489,6 +489,13 @@ function getDcSession {
         # This confuses me because I do not know how to declare the OutputType to indicate that a function might return multiple objects,
         # so I am going to specify my ComputerName argument as having type String.  Probably not ideal, but good enough for my application.
         $ComputerName,
+        
+        [Parameter(
+            Mandatory=$False,
+            HelpMessage="disable the automatic vpn connection behavior"            
+        )]
+        [Switch] 
+        $DisableAutomaticVpnConnection = $False,
 
         [Parameter(
             Mandatory=$False,
@@ -552,17 +559,19 @@ function getDcSession {
     )
     $password=$bitwardenItemContainingActiveDirectoryCredentials.login.password
 
-    if ($companyParameters['nameOfSoftetherVpnConnectionNeededToTalkToDomainController']){
-        connectVpn $companyParameters['nameOfSoftetherVpnConnectionNeededToTalkToDomainController'] | out-null
+    if (-not $DisableAutomaticVpnConnection){
+        if ($companyParameters['nameOfSoftetherVpnConnectionNeededToTalkToDomainController']){
+            connectVpn $companyParameters['nameOfSoftetherVpnConnectionNeededToTalkToDomainController'] | out-null
+        }
     }
 
     $argumentsForNewPsSession = (
 
         # my constructed "defaults":
         @{
-            ComputerName = $ComputerName ?? $companyParameters['domainController']     
+            ComputerName = (if($ComputerName){$ComputerName} else {$companyParameters['domainController']     })
 
-            Credential = $Credential ?? (
+            Credential = (if($Credential){$Credential} else { (
                 @{
                     TypeName = "System.Management.Automation.PSCredential"
                     ArgumentList =  @(
@@ -570,10 +579,10 @@ function getDcSession {
                         (ConvertTo-SecureString $password -AsPlainText -Force)
                     )
                 } | % { New-Object @_ }
-            )
+            ) })
             
             # ConfigurationName="Powershell.7.1.5";
-            ConfigurationName = $ConfigurationName ?? "microsoft.powershell"
+            ConfigurationName = (if($ConfigurationName){$ConfigurationName} else  {"microsoft.powershell"})
             # run Get-PSSessionConfiguration  to see a complete list of available configurations
             
             # SessionOption=@{

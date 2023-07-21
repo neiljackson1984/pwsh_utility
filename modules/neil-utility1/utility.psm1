@@ -1351,6 +1351,49 @@ function downloadAndExpandArchiveFile([String] $url, [String] $pathOfDirectoryIn
 
 }
 
+function downloadFileAndReturnPath {
+    <#
+    .SYNOPSIS
+    Downloads the file from the specified url, to an arbitrary local path
+    (perhaps in a unique-named-folder in the downloads folder?) Returns the path
+    of the downloaded file.
+
+    #>
+    
+    Param(
+        [parameter()]
+        [String] $urlOfFile
+    ) 
+
+    [OutputType([String])]
+    $filenameOfDownloadedFile = (split-path -leaf $urlOfFile )
+    # todo: deal with the case where the above expression produces an invalid
+    # file name. one strategy would be to extract a reasonable filename from the
+    # metadata returned by the web request.
+
+    $pathOfDedicatedDirectoryToContainDownloadedFile = (join-path $env:temp (new-guid).Guid)
+    New-Item -ItemType Directory $pathOfDedicatedDirectoryToContainDownloadedFile -ErrorAction SilentlyContinue | out-null
+
+        
+    $localPathOfDownloadedFile = (join-path $pathOfDedicatedDirectoryToContainDownloadedFile $filenameOfDownloadedFile)
+    New-Item -ItemType "directory" -Path (Split-Path $localPathOfDownloadedFile -Parent) -ErrorAction SilentlyContinue | out-null
+
+    # $downloadJobScriptBlock = ([Scriptblock]::Create("pwsh -c `"```$ProgressPreference = 'SilentlyContinue'; Invoke-WebRequest -UserAgent 'Mozilla' -Uri '$($urlOfFile)'  -OutFile '$($localPathOfDownloadedFile)' `"  "))
+    $downloadJobScriptBlock = ([Scriptblock]::Create("pwsh -c `"```$ProgressPreference = 'SilentlyContinue'; Invoke-WebRequest -Uri '$($urlOfFile)'  -OutFile '$($localPathOfDownloadedFile)' `"  "))
+    
+    Write-Host "localPathOfDownloadedFile: $localPathOfDownloadedFile"
+    # Write-Host "downloadJobScriptBlock: $downloadJobScriptBlock"
+
+    $downloadJob = (Start-Job -ScriptBlock $downloadJobScriptBlock)
+
+    while ( -not ((Get-Job -InstanceId $downloadJob.InstanceId).JobStateInfo.State -eq [System.Management.Automation.JobState]::Completed) ) {
+        write-host "$(get-date): size of $($localPathOfDownloadedFile): $(if(Test-Path -Path $localPathOfDownloadedFile -PathType leaf){(get-item $localPathOfDownloadedFile).Length}else{ "(file does not exist)" })"
+        start-sleep 6
+    }
+
+    return $localPathOfDownloadedFile
+}
+
 function installGoodies_deprecated([System.Management.Automation.Runspaces.PSSession] $session){
     Invoke-Command $session {  #ensure that chocoloatey is installed, and install other goodies
         & { #ensure that chocoloatey is installed
@@ -1438,11 +1481,22 @@ function runElevatedInActiveSession(){
         this command runs psexec on the remote computer with the arguments passed to this function.
 
         To run this in a remote session $s, do 
+        
         icm $s -ScriptBlock ${function:runElevatedInActiveSession} -ArgumentList @("foo", "bar", "baz")
-        icm $s -ScriptBlock ${function:runElevatedInActiveSession} @("foo", "bar", "baz")
+        OR
         icm $s { 
             & ([ScriptBlock]::Create(${using:function:runElevatedInActiveSession})) foo bar baz
         } 
+        OR
+        icm $s {
+            & ([Scriptblock]::Create(${using:function:runElevatedInActiveSession})) @(
+                "foo"
+                "bar"
+                "baz"
+            )
+        }
+        #%%
+
         This command relies on the psexec program included in sysinternals.
     #>
     
@@ -1451,32 +1505,55 @@ function runElevatedInActiveSession(){
 
         [parameter(ValueFromRemainingArguments = $true)]
         [String[]] $remainingArguments
-    )          
-    & PsExec @(
-        # -accepteula This flag suppresses the display of the license dialog.
-        "-accepteula"
+    ) 
+    
+    # the business with errorActionPreference and the "2>&1" redirect is to
+    # prevent from powershell from emitting confusing error messages when the
+    # PsExec executable emits characters to stderr (empty lines seemt o be
+    # specifically problematic).
+    #
+    # #see [https://stackoverflow.com/questions/2095088/error-when-calling-3rd-party-executable-from-powershell-when-using-an-ide]
+    #
+    # I am putting the setting of $errorActionPreference inside its own script
+    # block in hopes that my setting of errorActionPreference will have effect
+    # only within that script block.  Of course this isn;t so simple. see
+    # [https://github.com/PowerShell/PowerShell/issues/4568]. Actually, in my
+    # case, Powershell does seem to be behaving correctly with respect to the
+    # preference variable assignment within a script block.
+    & {
+        $ErrorActionPreference = "SilentlyContinue"
+        # $ErrorActionPreference = "Continue"
 
-        # -nobanner   Do not display the startup banner and copyright message.
-        "-nobanner"
-        
-        # -d         Don't wait for process to terminate (non-interactive).
-        "-d"
+        $argumentsForPsExec = @(
+            # -accepteula This flag suppresses the display of the license dialog.
+            "-accepteula"
 
-        # -h         If the target system is Vista or higher, has the
-        # process run with the account's elevated token, if available.
-        "-h"
+            # -nobanner   Do not display the startup banner and copyright message.
+            "-nobanner"
 
-        # -i         Run the program so that it interacts with the desktop
-        # of the specified session on the remote system. If no session is
-        # specified the process runs in the console session.
-        "-i",((query session | select-string '(?i)^.*\s+(\d+)\s+active(\s|$)').Matches[0].Groups[1].Value)
-        
-        # -s         Run the remote process in the System account.
-        "-s"
+            # -d         Don't wait for process to terminate (non-interactive).
+            "-d"
 
-        #command and arguments: 
-        $remainingArguments
-    )
+            # -h         If the target system is Vista or higher, has the
+            # process run with the account's elevated token, if available.
+            "-h"
+
+            # -i         Run the program so that it interacts with the desktop
+            # of the specified session on the remote system. If no session is
+            # specified the process runs in the console session.
+            "-i",((query session | select-string '(?i)^.*\s+(\d+)\s+active(\s|$)').Matches[0].Groups[1].Value)
+
+            # -s         Run the remote process in the System account.
+            "-s"
+
+            #command and arguments: 
+            $remainingArguments
+        )
+
+        # PsExec @argumentsForPsExec 2>&1 |% {"$_"}
+        PsExec @argumentsForPsExec 2>&1 | out-string -stream
+        # PsExec @argumentsForPsExec
+    }
     
 }
 
