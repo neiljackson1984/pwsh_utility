@@ -1556,6 +1556,153 @@ function runElevatedInActiveSession(){
     }
     
 }
+  
+
+function runWithPerpetuallyOpenStandardInput(){
+    <#
+        .SYNOPSIS
+        Runs an exeutable file in such a way that the executable file will see its
+        stdin stream be perpetually open, as it would be if the executable were run
+        in an interactive shell.
+
+        .DESCRIPTION
+        In some cases, notably when running native executables in a remote
+        powershell session, when the native executable expects to receive or to wait
+        for input on stdin, Powershell runs the executable in such a way that the
+        native executable exits as soon as it starts to wait for input on stdin.  I
+        presume that this happens because the executable sees that the stdin stream
+        is closed.  Conceivably, I think, it could also happen because the
+        executable receives a posix kill signal, or similar, causing it to exit. The
+        motivation for writing this function was trying to run SoftEther's
+        vpncmd.exe executable in a way that vpncmd.exe would wait for a key to be
+        pressed on the console (or waiting for the stdin stream to be closed) and
+        would then exit.  I wanted to keep vpncmd.exe in the waiting-for-key state
+        indefinitely.  This function allowed me to do that.
+
+        .PARAMETER fileName
+        A string corresponding to the fileName argument of the
+        System.Diagnostics.ProcessStartInfo class's constructor's fileName argument.
+        The path of the executable file to be run.
+
+        .PARAMETER arguments
+        A single string. -- not an array of strings -- corresponding to the
+        System.Diagnostics.ProcessStartInfo class's constructor's arguments
+        argument.
+
+        .EXAMPLE
+        runWithPerpetuallyOpenStandardInput -fileName (get-command vpncmd).Path -arguments "/TOOLS /CMD TrafficServer"
+
+        $sl = New-PSSession -ComputerName LocalHost   -ConfigurationName "PowerShell.7"  
+        Invoke-Command `
+            -Session $sl `
+            -ScriptBlock {
+                & ([Scriptblock]::Create(${using:function:runWithPerpetuallyOpenStandardInput})) @(
+                    (get-command vpncmd).Path 
+                    "/TOOLS /CMD TrafficServer"
+                )
+            }
+
+        Invoke-Command `
+            -Session $sl `
+            -ScriptBlock ${function:runWithPerpetuallyOpenStandardInput} `
+            -ArgumentList @(
+                (get-command vpncmd).Path 
+                "/TOOLS /CMD TrafficServer"
+            )
+            
+
+        # .NOTES
+
+    #>  
+    
+    [OutputType([String])]
+    # [CmdletBinding()]
+
+    Param(
+        [parameter()]
+        [string] $fileName,
+
+        [parameter()]
+        [string] $arguments = ""
+    ) 
+
+    $processStartInfo = New-Object -TypeName "System.Diagnostics.ProcessStartInfo" -ArgumentList @(
+        ## string fileName 
+        [string] $fileName 
+
+        ## string arguments 
+        # damn -- this is not geared toward an array of  arguments, but rather
+        # one big string.  Welcome to escape hell.
+        [string]  ""
+    )
+    $processStartInfo.RedirectStandardOutput = $True
+    $processStartInfo.RedirectStandardError = $True
+    $processStartInfo.RedirectStandardInput = $True
+    $process = [System.Diagnostics.Process]::Start($processStartInfo)
+
+    $standardOutputLineReadingTask = $process.StandardOutput.ReadLineAsync()
+    $standardErrorLineReadingTask = $process.StandardError.ReadLineAsync()
+
+    # while( -not ( $process.HasExited  -and $standardOutputLineReadingTask.IsCompleted -and $standardErrorLineReadingTask.IsCompleted )){
+    while( $True ){
+        # Write-Output "$($process.HasExited)    $($standardOutputLineReadingTask.IsCompleted)    $($standardErrorLineReadingTask.IsCompleted)"
+        
+        # wait a beat to allow the pending lineReadingTasks to complete if they
+        # want to. This is a bit of a hack to work around (my lack of knowledge
+        # and) the fact that the line reading tasks can remain uncompoleted
+        # indefinitely after the task exits. Ideally, I would like to have line
+        # reading tasks that completed unsucessfully when the task had ended and
+        # there were no more bytes to read.  Maybe the ReadLineAsync() function
+        # relies on a newline character to finish each line, and so remains
+        # waiting unless and until that final newline comes, even if the
+        # underlying stream is closed.  Not sure.  this is all a hack.  Perhaps
+        # some of the other reading functions, other than ReadLine, would have
+        # the desired behavior, or perhaps my confusion is related to the
+        # behavior of asynchronous tasks in .NET.
+        #
+        # I notice that the class System.Diagnostics.Process has methods named
+        # BeginErrorReadLine, BeginOutputReadLine, CancelErrorRead,
+        # CancelOutputRead -- maybe these could be helpful here.
+        #
+        # Also a method named WaitForInputIdle.  Maybemy problems have been
+        # solved before.
+        #
+        #
+
+        # TODO: We are currently potentially missing final output emitted by the
+        # executable perimortem.  Also, waiting for a whole line is not quite
+        # right.  BAsically, the buffering strategy needs to be rethought.
+
+        if( $process.HasExited ) { Start-Sleep 1 }
+        
+        if($standardOutputLineReadingTask.IsCompleted){
+            if($standardOutputLineReadingTask.IsCompletedSuccessfully){
+                # Write-Output "$(Get-Date): received a line from StandardOutput: $($standardOutputLineReadingTask.Result)"
+                Write-Output $standardOutputLineReadingTask.Result
+            } else {
+                Write-Output "$(Get-Date):Hmmm.  Our standardOutputLineReadingTask did not complete succesfully."
+            }
+            $standardOutputLineReadingTask = $process.StandardOutput.ReadLineAsync()
+        }
+
+        if($standardErrorLineReadingTask.IsCompleted){
+            if( $standardErrorLineReadingTask.IsCompletedSuccessfully ){
+                # Write-Output "$(Get-Date):received a line from StandardError: $($standardErrorLineReadingTask.Result)"
+                Write-Output $standardErrorLineReadingTask.Result
+            } else {
+                Write-Output "$(Get-Date):Hmmm.  Our standardErrorLineReadingTask did not complete succesfully."
+            }
+            $standardErrorLineReadingTask = $process.StandardError.ReadLineAsync()
+        }
+
+        # Start-Sleep 1
+
+        if( $process.HasExited ) {break}
+        # Write-Output "$(Get-Date): iterating."
+    }
+}
+
+
 
 function addEntryToSystemPathPersistently($pathEntry){
     $existingPathEntries = @(([System.Environment]::GetEnvironmentVariable('PATH', [System.EnvironmentVariableTarget]::Machine)) -Split ([IO.Path]::PathSeparator) | Where-Object {$_})
