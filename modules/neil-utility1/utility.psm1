@@ -1612,7 +1612,32 @@ function runWithPerpetuallyOpenStandardInput(){
                 (get-command vpncmd).Path 
                 "/TOOLS /CMD TrafficServer"
             )
-            
+
+        .EXAMPLE
+        $sl = New-PSSession -ComputerName LocalHost   -ConfigurationName "PowerShell.7"  
+        Invoke-Command `
+            -Session $sl `
+            -ScriptBlock {
+                @(
+                    Get-Process -ErrorAction SilentlyContinue   -Name vpncmd
+                    Get-Process -ErrorAction SilentlyContinue   -Name vpncmd_x64
+                ) | Stop-Process 
+
+                $function:runWithPerpetuallyOpenStandardInput = [Scriptblock]::Create(${using:function:runWithPerpetuallyOpenStandardInput})
+
+                Start-Job {
+                    @{
+                        fileName  = (get-command vpncmd).Path
+                        arguments = "/TOOLS /CMD TrafficServer"
+                    } | % { & ([Scriptblock]::Create(${using:function:runWithPerpetuallyOpenStandardInput})) @_ }
+                }
+                Start-Sleep 3
+                Get-Job | Receive-Job
+
+                # running with the function within a job has the 
+                # benefit that the death of the job will cause the death of the 
+                # process.
+            }
 
         # .NOTES
 
