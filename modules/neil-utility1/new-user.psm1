@@ -679,7 +679,8 @@ function connectVpn {
         (
             $(
                 vpncmd @(
-                    "/client", "localhost"
+                    "localhost"
+                    "/client"
                     "/cmd", "AccountStatusGet"
                     $nameOfSoftetherVpnConnection
                 ) | 
@@ -689,7 +690,7 @@ function connectVpn {
         )
     ) {
         $result = $(
-            vpncmd /client localhost /cmd AccountConnect $nameOfSoftetherVpnConnection | 
+            vpncmd localhost /client  /cmd AccountConnect $nameOfSoftetherVpnConnection | 
                 Out-Null
 
             $LASTEXITCODE 
@@ -706,7 +707,7 @@ function connectVpn {
             # VPN Connection Setting that is using the same Virtual Network
             # Adapter, disconnect that VPN Connection Setting.
             # Write-Host "disconnecting from all existing softether vpn connections"
-            vpncmd /client localhost /cmd AccountList |
+            vpncmd localhost /client  /cmd AccountList |
                 % { 
                     if($_ -match '^\s*VPN Connection Setting Name\s*\|(.*)$'){
                         $Matches[1].Trim()
@@ -714,7 +715,7 @@ function connectVpn {
                 } |
                 % { 
                     # Write-Host "disconnecting from `"$($_)`""
-                    vpncmd /client localhost /cmd AccountDisconnect "$($_)" | Out-Null
+                    vpncmd localhost /client  /cmd AccountDisconnect "$($_)" | Out-Null
                 } 
         }
 
