@@ -1592,16 +1592,19 @@ function runWithPerpetuallyOpenStandardInput(){
         .EXAMPLE
         runWithPerpetuallyOpenStandardInput -fileName (get-command vpncmd).Path -arguments "/TOOLS /CMD TrafficServer"
 
+        .EXAMPLE
         $sl = New-PSSession -ComputerName LocalHost   -ConfigurationName "PowerShell.7"  
         Invoke-Command `
             -Session $sl `
             -ScriptBlock {
-                & ([Scriptblock]::Create(${using:function:runWithPerpetuallyOpenStandardInput})) @(
-                    (get-command vpncmd).Path 
-                    "/TOOLS /CMD TrafficServer"
-                )
+                @{
+                    fileName  = (get-command vpncmd).Path
+                    arguments = "/TOOLS /CMD TrafficServer"
+                } | % { & ([Scriptblock]::Create(${using:function:runWithPerpetuallyOpenStandardInput})) @_ }
             }
 
+        .EXAMPLE
+        $sl = New-PSSession -ComputerName LocalHost   -ConfigurationName "PowerShell.7"  
         Invoke-Command `
             -Session $sl `
             -ScriptBlock ${function:runWithPerpetuallyOpenStandardInput} `
@@ -1619,10 +1622,15 @@ function runWithPerpetuallyOpenStandardInput(){
     # [CmdletBinding()]
 
     Param(
-        [parameter()]
+        [parameter(
+            Mandatory = $True
+
+        )]
         [string] $fileName,
 
-        [parameter()]
+        [parameter(
+            Mandatory = $False
+        )]
         [string] $arguments = ""
     ) 
 
