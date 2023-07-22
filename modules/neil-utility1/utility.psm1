@@ -1641,7 +1641,7 @@ function runWithPerpetuallyOpenStandardInput(){
         ## string arguments 
         # damn -- this is not geared toward an array of  arguments, but rather
         # one big string.  Welcome to escape hell.
-        [string]  ""
+        [string]  $arguments
     )
     $processStartInfo.RedirectStandardOutput = $True
     $processStartInfo.RedirectStandardError = $True
