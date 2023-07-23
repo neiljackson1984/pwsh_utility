@@ -1875,3 +1875,27 @@ function Get-NeilWindowsUpdateLog {
     Get-Content $pathOfLogDumpFile 
 
 }
+
+function Start-ScriptingJournalTranscript {
+    <#
+    .SYNOPSIS
+    Starts a transcript in a specific way.  This function is expected to be called from
+    a Powershell script, so that $MyInvocation.PSScriptRoot is defined.
+    #>
+
+
+    # $MyInvocation | fl | out-string | write-host
+    # write-host "=============="
+    # Write-Host "(Get-Location): $((Get-Location))"
+    # Write-Host "PSCommandPath: $PSCommandPath"
+    # Write-Host "psScriptRoot: $psScriptRoot"
+
+
+    $pathOfTranscriptDirectory = (Join-Path $MyInvocation.PSScriptRoot "transcripts")
+    New-Item -ItemType Directory -Path $pathOfTranscriptDirectory -ErrorAction SilentlyContinue | out-null
+    $pathOfTranscriptFile = (Join-Path $pathOfTranscriptDirectory "$(split-path $PsCommandPath -leaf)--$(get-date -format yyyyMMdd_HHmmss).transcript")
+    @{
+        Path = $pathOfTranscriptFile
+        IncludeInvocationHeader=$True
+    } | % { Start-Transcript @_ }
+}
