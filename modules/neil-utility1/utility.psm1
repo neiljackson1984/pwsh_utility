@@ -1880,7 +1880,7 @@ function Start-ScriptingJournalTranscript {
     <#
     .SYNOPSIS
     Starts a transcript in a specific way.  This function is expected to be called from
-    a Powershell script, so that $MyInvocation.PSScriptRoot is defined.
+    a Powershell script, so that $MyInvocation.PsCommandPath is defined.
     #>
 
 
@@ -1891,9 +1891,9 @@ function Start-ScriptingJournalTranscript {
     # Write-Host "psScriptRoot: $psScriptRoot"
 
 
-    $pathOfTranscriptDirectory = (Join-Path $MyInvocation.PSScriptRoot "transcripts")
+    $pathOfTranscriptDirectory = (Join-Path (Split-Path -Parent $MyInvocation.PsCommandPath) "transcripts")
     New-Item -ItemType Directory -Path $pathOfTranscriptDirectory -ErrorAction SilentlyContinue | out-null
-    $pathOfTranscriptFile = (Join-Path $pathOfTranscriptDirectory "$(split-path $PsCommandPath -leaf)--$(get-date -format yyyyMMdd_HHmmss).transcript")
+    $pathOfTranscriptFile = (Join-Path $pathOfTranscriptDirectory "$(split-path $MyInvocation.PsCommandPath -leaf)--$(get-date -format yyyyMMdd_HHmmss).transcript")
     @{
         Path = $pathOfTranscriptFile
         IncludeInvocationHeader=$True
