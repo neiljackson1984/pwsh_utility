@@ -1899,3 +1899,34 @@ function Start-ScriptingJournalTranscript {
         IncludeInvocationHeader=$True
     } | % { Start-Transcript @_ }
 }
+
+function getStronglyNamedPath {
+    <#
+    .SYNOPSIS
+    Given a path to an existing, openable file, we return a new path in which
+    the filename contains the hash of the file.
+    #>
+
+    
+    Param(
+        [parameter(
+            Mandatory = $True
+        )]
+        [string] $path
+
+    ) 
+    [OutputType([String])]
+
+
+    $strongNameOfFile = (@(
+        [System.IO.Path]::GetFileNameWithoutExtension($path)
+        
+        "--"
+        
+        (Get-FileHash -Algorithm "SHA256" -Path $path).Hash.Trim().ToLower()
+
+        [System.IO.Path]::GetExtension($path)
+    ) -join "")
+
+    return (join-path (split-path -parent $path) $strongNameOfFile)
+}
