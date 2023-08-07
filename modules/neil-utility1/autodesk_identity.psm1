@@ -28,37 +28,45 @@ function Set-ActiveAutodeskIdentity {
     $pathOfLogFile                      = (join-path $pathOfAutodeskAppdataFolder "identity_swap.log")
     $pathOfIdentitiesRepositoryFolder   = (join-path $pathOfAutodeskAppdataFolder "identity_repository")
     $pathOfIdentityFolder               = (join-path $pathOfIdentitiesRepositoryFolder $identity)
-    $pathOfActiveWebServicesFolder      = (join-path $pathOfAutodeskAppdataFolder "Web Services")
-    $pathOfIdentityFile                 = (join-path $pathOfIdentitiesRepositoryFolder "identity.json")
-    $robocopyOptions=(
-        @(
-            
-            "/S"
-            # copy subfolders
-
-            "/E" 
-            # copy empty subfolders
-
-            "/MOVE" 
-            
-            "/R:3" 
-            # retry 3 times
-
-            "/W:3" 
-            # wait 3 seconds between retries
-
-            "/MIR" 
-            # mirror - equivalent to /PURGE plus all subfolders (/E)
-
-            "/XF"; "*.log"; "*.log.lock";
-            # /XF - exclude files
-
-            "/XD"; "Log" ;
-            # /XD - exclude directories
-            
-            # /NJS /NJH /NDL /NFL /NP -- suppress the output report
-        )
+    
+    
+    # $pathOfActiveWebServicesFolder      = (join-path $pathOfAutodeskAppdataFolder "Web Services")
+    
+    $pathsOfFoldersConstitutingTheActiveIdentity = @(
+        (join-path $pathOfAutodeskAppdataFolder "Web Services")
+        (join-path $pathOfAutodeskAppdataFolder "Identity Services")
     )
+    
+    
+    
+    $pathOfIdentityFile                 = (join-path $pathOfIdentitiesRepositoryFolder "identity.json")
+    $robocopyOptions=@(
+        "/S"
+        # copy subfolders
+
+        "/E" 
+        # copy empty subfolders
+
+        "/MOVE" 
+        
+        "/R:3" 
+        # retry 3 times
+
+        "/W:3" 
+        # wait 3 seconds between retries
+
+        "/MIR" 
+        # mirror - equivalent to /PURGE plus all subfolders (/E)
+
+        "/XF"; "*.log"; "*.log.lock";
+        # /XF - exclude files
+
+        "/XD"; "Log" ;
+        # /XD - exclude directories
+        
+        # /NJS /NJH /NDL /NFL /NP -- suppress the output report
+    )
+
 
 
     $existingIdentity = $(
@@ -77,59 +85,111 @@ function Set-ActiveAutodeskIdentity {
         #ensure that the identities repository folder exists
         New-Item -ItemType "directory" -Path $pathOfIdentitiesRepositoryFolder -Force | Out-Null
 
-        # ensure that a named folder within the identities repository exists for $identity, creating such a folder from scratch if needed.
+        # ensure that a named folder within the identities repository exists for
+        # $identity, creating such a folder from scratch if needed.
         if(-not (Test-Path -PathType Container -LiteralPath $pathOfIdentityFolder)){
             New-Item -ItemType "directory" -Path $pathOfIdentityFolder -Force  | Out-Null
         }
 
         & { # kill potentially-open autodesk processes.
-            net stop AdAppMgrSvc                         2>&1 | Out-Null                           
-            net stop AdskLicensingService                2>&1  | Out-Null                                    
-            net stop AdAppMgrSvc                         2>&1  | Out-Null                           
-            net stop AdskLicensingService                2>&1  | Out-Null                                    
+            # net stop "Autodesk Access Service Host"      2>&1  | Out-Null                                    
+            # net stop AdAppMgrSvc                         2>&1  | Out-Null                           
+            # net stop AdAppMgrSvc                         2>&1 | Out-Null                           
+            # net stop AdskLicensingService                2>&1  | Out-Null                                    
+            # net stop AdskLicensingService                2>&1  | Out-Null                                    
 
-            taskkill /f /t /im AutodeskDesktopApp.exe    2>&1  | Out-Null                                                
-            taskkill /f /im AdAppMgrSvc.exe              2>&1  | Out-Null                                      
-            taskkill /f /im AdskLicensingService.exe     2>&1  | Out-Null                                               
-            taskkill /f /im AutodeskDesktopApp.exe       2>&1  | Out-Null                                             
-            taskkill /f /im AdAppMgrSvc.exe              2>&1  | Out-Null                                      
-            taskkill /f /im AdskLicensingService.exe     2>&1  | Out-Null                                               
-            taskkill /f /im AdSSO.exe                    2>&1  | Out-Null                                
-            taskkill /f /im ADPClientService.exe         2>&1  | Out-Null                                           
+            # taskkill /f /t /im AutodeskDesktopApp.exe    2>&1  | Out-Null                                                
+            # taskkill /f /t /im AdskAccessUIHost.exe      2>&1  | Out-Null                                                
+            # taskkill /f /t /im AdskAccessCore.exe        2>&1  | Out-Null                                                
+            # taskkill /f /t /im AdskIdentityManager.exe   2>&1  | Out-Null                                                
+            # taskkill /f /im AdAppMgrSvc.exe              2>&1  | Out-Null                                      
+            # taskkill /f /im AdskLicensingService.exe     2>&1  | Out-Null                                               
+            # taskkill /f /im AutodeskDesktopApp.exe       2>&1  | Out-Null                                             
+            # taskkill /f /im AdAppMgrSvc.exe              2>&1  | Out-Null                                      
+            # taskkill /f /im AdskLicensingService.exe     2>&1  | Out-Null                                               
+            # taskkill /f /im AdSSO.exe                    2>&1  | Out-Null                                
+            # taskkill /f /im ADPClientService.exe         2>&1  | Out-Null    
+            
+                        
+            $namesOfServicesToKill = @(
+                "AdAppMgrSvc"
+                "AdskLicensingService"
+                "AdskLicensingAgent"
+                "AdskAccessServiceHost"
+                "Autodesk Access Service Host"
+            )
+            $namesOfProcessesToKill = @(
+                "revit"
+                "autodeskaccess"
+                "AdskAccessCore"
+                "AdskAccessServiceHost"
+                "AdskIdentityManager"
+                "AdskLicensingService"
+                "AdSSO"
+                "ADPClientService"
+                "AdskAccessUIHost"
+                "AdAppMgrSvc"
+            )
+            $namesOfServicesToKill  | % {Stop-Service -Name $_ -confirm:$false -force:$true -ErrorAction SilentlyContinue}
+            $namesOfProcessesToKill | % {Stop-Process -Name $_ -confirm:$false -force:$true -ErrorAction SilentlyContinue}
+            $namesOfServicesToKill  | % {Stop-Service -Name $_ -confirm:$false -force:$true -ErrorAction SilentlyContinue}
+            $namesOfProcessesToKill | % {Stop-Process -Name $_ -confirm:$false -force:$true -ErrorAction SilentlyContinue}
+
+
+
+
         }
         
-        # get rid of the existing identity, either by deleting it entirely (if it is not named), or by moving it back into its named 
-        # repository folder if it is named.
+
         if($existingIdentity) {
+            # in this case, the existing identity is named, so we will move it "back" to its named repository folder
+            
             $pathOfIdentityFolderForExistingIdentity = (join-path $pathOfIdentitiesRepositoryFolder $existingIdentity)
             if(-not (Test-Path -PathType Container -LiteralPath $pathOfIdentityFolderForExistingIdentity)){
                 New-Item -ItemType "directory" -Path $pathOfIdentityFolderForExistingIdentity -Force  | Out-Null
             }
 
-            $robocopyArgs = @(
-                "$pathOfActiveWebServicesFolder"
-                #source 
+            Write-Host "Stashing existing identity '$existingIdentity' to '$pathOfIdentityFolderForExistingIdentity'."
+            
+            foreach($pathOfFolderConstitutingTheActiveIdentity in $pathsOfFoldersConstitutingTheActiveIdentity){              
+                robocopy @(
+                    #source: 
+                    "$pathOfFolderConstitutingTheActiveIdentity"
+                    
 
-                "$(join-path $pathOfIdentityFolderForExistingIdentity (split-path  -Path $pathOfActiveWebServicesFolder -leaf ))"
-                #destination
+                    #destination:
+                    # "$(join-path $pathOfIdentityFolderForExistingIdentity (split-path  -Path $pathOfActiveWebServicesFolder -leaf ))"
+                    "$(join-path $pathOfIdentityFolderForExistingIdentity (
+                        [System.IO.Path]::GetRelativePath([System.IO.Path]::GetPathRoot($pathOfFolderConstitutingTheActiveIdentity),$pathOfFolderConstitutingTheActiveIdentity)
+                    ))"
 
-                $robocopyOptions
-            ); robocopy @robocopyArgs
+                    $robocopyOptions
+                )
+            }
         } else {
+            # in this case the active identity is not named, so we will delete it
             Write-Host "deleting the currently-active (unnamed) profile".
-            Get-ChildItem -LiteralPath $pathOfActiveWebServicesFolder |
-                Remove-Item -Force -Recurse -Confirm:$false -ErrorAction:"Continue"
+            foreach($pathOfFolderConstitutingTheActiveIdentity in $pathsOfFoldersConstitutingTheActiveIdentity){
+                Get-ChildItem -LiteralPath $pathOfFolderConstitutingTheActiveIdentity -ErrorAction SilentlyContinue |
+                    Remove-Item -Force -Recurse -Confirm:$false -ErrorAction:"Continue"
+            }
         }
 
-        $robocopyArgs = @(
-            "$(join-path $pathOfIdentityFolder (split-path $pathOfActiveWebServicesFolder -leaf))"
-            #source 
-            
-            "$pathOfActiveWebServicesFolder"
-            #destination
+        Write-Host "restoring the profile '$identity' from '$pathOfIdentityFolder'."
+        foreach($pathOfFolderConstitutingTheActiveIdentity in $pathsOfFoldersConstitutingTheActiveIdentity){
+            robocopy @(
+                #source :
+                (join-path $pathOfIdentityFolder ([System.IO.Path]::GetRelativePath(
+                    [System.IO.Path]::GetPathRoot($pathOfFolderConstitutingTheActiveIdentity),
+                    $pathOfFolderConstitutingTheActiveIdentity
+                )))
 
-            $robocopyOptions
-        ); robocopy @robocopyArgs
+                #destination:
+                $pathOfFolderConstitutingTheActiveIdentity
+
+                $robocopyOptions
+            )
+        }
 
         #todo: error handling -- the above moves might fail.
 
@@ -137,10 +197,10 @@ function Set-ActiveAutodeskIdentity {
 
         #restart some of the services that we killed above
                 
-        net start AdAppMgrSvc
+        Start-Service AdAppMgrSvc -ErrorAction SilentlyContinue
         # "Autodesk Desktop App Service"
 
-        net start AdskLicensingService
+        Start-Service AdskLicensingService -ErrorAction SilentlyContinue
         # "Autodesk Desktop Licensing Service"
 
 
