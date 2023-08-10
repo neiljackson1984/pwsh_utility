@@ -1366,7 +1366,9 @@ function downloadFileAndReturnPath {
     ) 
 
     [OutputType([String])]
-    $filenameOfDownloadedFile = (split-path -leaf $urlOfFile )
+    
+    
+    # $filenameOfDownloadedFile = (split-path -leaf $urlOfFile )
     # todo: deal with the case where the above expression produces an invalid
     # file name. one strategy would be to extract a reasonable filename from the
     # metadata returned by the web request.
@@ -1374,22 +1376,64 @@ function downloadFileAndReturnPath {
     $pathOfDedicatedDirectoryToContainDownloadedFile = (join-path $env:temp (new-guid).Guid)
     New-Item -ItemType Directory $pathOfDedicatedDirectoryToContainDownloadedFile -ErrorAction SilentlyContinue | out-null
 
+    # $temporaryPathOfDownloadedFile = (join-path $env:temp (new-guid).Guid)
+    # New-Item -ItemType "directory" -Path (Split-Path $temporaryPathOfDownloadedFile -Parent) -ErrorAction SilentlyContinue | out-null
+
+
+  
+
+    # # $downloadJobScriptBlock = ([Scriptblock]::Create("pwsh -c `"```$ProgressPreference = 'SilentlyContinue'; Invoke-WebRequest -UserAgent 'Mozilla' -Uri '$($urlOfFile)'  -OutFile '$($localPathOfDownloadedFile)' `"  "))
+    # # $downloadJobScriptBlock = ([Scriptblock]::Create("pwsh -c `"```$ProgressPreference = 'SilentlyContinue'; Invoke-WebRequest -Uri '$($urlOfFile)'  -OutFile '$($localPathOfDownloadedFile)' `"  "))
+    # $downloadJobScriptBlock = {
+    #     $result = @{
+    #         uri = $args[0].urlOfFile
+    #         OutFile = $args[0].temporaryPathOfDownloadedFile
+    #         PassThru = $True
+    #     } | % { Invoke-WebRequest @_ }
+
+    #     $FileName = [Net.Http.Headers.ContentDispositionHeaderValue]::Parse($result.Headers.'Content-Disposition').FileName
+    #     Write-Output "FileName is $FileName"
+
+    #     New-Item -ItemType "directory" -Path ($args[0].pathOfDedicatedDirectoryToContainDownloadedFile) -ErrorAction SilentlyContinue | out-null
         
-    $localPathOfDownloadedFile = (join-path $pathOfDedicatedDirectoryToContainDownloadedFile $filenameOfDownloadedFile)
-    New-Item -ItemType "directory" -Path (Split-Path $localPathOfDownloadedFile -Parent) -ErrorAction SilentlyContinue | out-null
+    #     $source = $args[0].temporaryPathOfDownloadedFile
+    #     $destination = (join-path ($args[0].pathOfDedicatedDirectoryToContainDownloadedFile) $FileName)
+        
+    #     Write-Output "source: $source"
+    #     Write-Output "destination: $destination"
 
-    # $downloadJobScriptBlock = ([Scriptblock]::Create("pwsh -c `"```$ProgressPreference = 'SilentlyContinue'; Invoke-WebRequest -UserAgent 'Mozilla' -Uri '$($urlOfFile)'  -OutFile '$($localPathOfDownloadedFile)' `"  "))
-    $downloadJobScriptBlock = ([Scriptblock]::Create("pwsh -c `"```$ProgressPreference = 'SilentlyContinue'; Invoke-WebRequest -Uri '$($urlOfFile)'  -OutFile '$($localPathOfDownloadedFile)' `"  "))
+    #     Move-Item $source $destination 
+    # }
+    # Write-Host "temporaryPathOfDownloadedFile: $temporaryPathOfDownloadedFile"
+    # # Write-Host "downloadJobScriptBlock: $downloadJobScriptBlock"
+    # $downloadJob = @{
+    #     ScriptBlock = $downloadJobScriptBlock
+    #     ArgumentList = @(
+    #         @{
+    #             urlOfFile = $urlOfFile
+    #             temporaryPathOfDownloadedFile = $temporaryPathOfDownloadedFile
+    #             pathOfDedicatedDirectoryToContainDownloadedFile = $pathOfDedicatedDirectoryToContainDownloadedFile
+    #         }
+    #     )
+    # } | % { Start-Job  @_ }
     
-    Write-Host "localPathOfDownloadedFile: $localPathOfDownloadedFile"
-    # Write-Host "downloadJobScriptBlock: $downloadJobScriptBlock"
 
-    $downloadJob = (Start-Job -ScriptBlock $downloadJobScriptBlock)
+    # while ( -not ((Get-Job -InstanceId $downloadJob.InstanceId).JobStateInfo.State -eq [System.Management.Automation.JobState]::Completed) ) {
+    #     write-host "$(get-date): size of $($temporaryPathOfDownloadedFile): $(if(Test-Path -Path $temporaryPathOfDownloadedFile -PathType leaf){(get-item $temporaryPathOfDownloadedFile).Length}else{ "(file does not exist)" })"
+    #     start-sleep 6
+    # }
 
-    while ( -not ((Get-Job -InstanceId $downloadJob.InstanceId).JobStateInfo.State -eq [System.Management.Automation.JobState]::Completed) ) {
-        write-host "$(get-date): size of $($localPathOfDownloadedFile): $(if(Test-Path -Path $localPathOfDownloadedFile -PathType leaf){(get-item $localPathOfDownloadedFile).Length}else{ "(file does not exist)" })"
-        start-sleep 6
-    }
+
+    curl @(
+        # "--progress-bar"
+        "--remote-name"
+        "--output-dir",$pathOfDedicatedDirectoryToContainDownloadedFile
+        $urlOfFile
+    )
+
+    # $localPathOfDownloadedFile = (join-path $pathOfDedicatedDirectoryToContainDownloadedFile $filenameOfDownloadedFile)
+    $localPathOfDownloadedFile = Get-ChildItem -File $pathOfDedicatedDirectoryToContainDownloadedFile | select -first 1 | select -expand FullName
+
 
     return $localPathOfDownloadedFile
 }
