@@ -1427,6 +1427,12 @@ function downloadFileAndReturnPath {
     curl @(
         # "--progress-bar"
         "--remote-name"
+        # "--verbose"
+
+        # follow redirects:
+        "--location"
+
+
         "--output-dir",$pathOfDedicatedDirectoryToContainDownloadedFile
         $urlOfFile
     )

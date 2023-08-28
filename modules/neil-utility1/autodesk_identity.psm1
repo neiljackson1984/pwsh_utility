@@ -13,6 +13,14 @@ function Set-ActiveAutodeskIdentity {
         of those processes after the folders have been moved.
 
         This function will unceremoniously kill most running Autodesk processes.
+
+        The trial sign-up urls are:
+        [https://www.autodesk.com/products/revit/trial-intake]
+        [https://www.autodesk.com/products/autocad/trial-intake]
+
+        the account creation url is:
+        [https://accounts.autodesk.com/register]
+
     #>
         
     [CmdletBinding()]
