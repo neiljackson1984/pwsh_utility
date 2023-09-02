@@ -1314,8 +1314,29 @@ function sendTestMessage([String] $recipient){
 }
 
 
-function downloadAndExpandArchiveFile([String] $url, [String] $pathOfDirectoryInWhichToExpand){
-    $localPathOfArchiveFile = (join-path $env:temp (New-Guid).Guid)
+function downloadAndExpandArchiveFile{
+    <#
+    .SYNOPSIS
+    returns the path of the directory in which the arcvhie file was expanded.
+    
+    .PARAMETER url
+    Parameter description
+    
+    .PARAMETER pathOfDirectoryInWhichToExpand
+    Parameter description
+    #>
+    
+    Param(
+        [parameter()]
+        [string] $url,
+
+        [parameter(Mandatory=$false)]
+        [string] $pathOfDirectoryInWhichToExpand = [string] (join-path $env:temp (new-guid).guid)
+    ) 
+    
+    [OutputType([String])]
+    
+    # $localPathOfArchiveFile = (join-path $env:temp (New-Guid).Guid)
     # Invoke-WebRequest -Uri $url  -OutFile $localPathOfArchiveFile
 
     # #hack to avoid redownloading:
@@ -1325,10 +1346,12 @@ function downloadAndExpandArchiveFile([String] $url, [String] $pathOfDirectoryIn
     #     Invoke-WebRequest -Uri $url  -OutFile $localPathOfArchiveFile
     # }
 
-    New-Item -ItemType "directory" -Path (Split-Path $localPathOfArchiveFile -Parent) -ErrorAction SilentlyContinue 
-    Invoke-WebRequest -Uri $url  -OutFile $localPathOfArchiveFile
+    # New-Item -ItemType "directory" -Path (Split-Path $localPathOfArchiveFile -Parent) -ErrorAction SilentlyContinue 
+    # Invoke-WebRequest -Uri $url  -OutFile $localPathOfArchiveFile
     
-    New-Item -ItemType "directory" -Path $pathOfDirectoryInWhichToExpand -ErrorAction SilentlyContinue
+    $localPathOfArchiveFile = downloadFileAndReturnPath $url
+    
+    New-Item -ItemType "directory" -Path $pathOfDirectoryInWhichToExpand -ErrorAction SilentlyContinue | out-null
     7z @(
         # eXtract files with full paths    
         "x"
@@ -1347,8 +1370,9 @@ function downloadAndExpandArchiveFile([String] $url, [String] $pathOfDirectoryIn
         
         # <file_names>...
         "*"
-    )
+    ) | write-host
 
+    return ([string] $pathOfDirectoryInWhichToExpand)
 }
 
 function downloadFileAndReturnPath {
