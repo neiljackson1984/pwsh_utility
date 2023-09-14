@@ -707,21 +707,50 @@ function connectVpn {
             # VPN Connection Setting that is using the same Virtual Network
             # Adapter, disconnect that VPN Connection Setting.
             # Write-Host "disconnecting from all existing softether vpn connections"
-            vpncmd localhost /client  /cmd AccountList |
-                % { 
-                    if($_ -match '^\s*VPN Connection Setting Name\s*\|(.*)$'){
-                        $Matches[1].Trim()
-                    }
-                } |
-                % { 
-                    # Write-Host "disconnecting from `"$($_)`""
-                    vpncmd localhost /client  /cmd AccountDisconnect "$($_)" | Out-Null
-                } 
+            disconnectAllVpnConnections
         }
 
         Start-Sleep 5
     }
     # write-host "attemptsCount: $($attemptsCount)"
 
+}
+
+
+function disconnectAllVpnConnections {
+    <#
+    .SYNOPSIS
+    Disconnects all existing Softether VPN connections
+    #>
+    
+    [CmdletBinding()]
+    [OutputType([void])]
+    Param(
+    )
+
+    
+
+
+    ## vpncmd localhost /client  /cmd AccountList |
+    ## % { 
+    ##     if($_ -match '^\s*VPN Connection Setting Name\s*\|(.*)$'){
+    ##         $Matches[1].Trim()
+    ##     }
+    ## } |
+    ## % { 
+    ##     Write-Host "disconnecting from `"$($_)`""
+    ##     vpncmd localhost /client  /cmd AccountDisconnect "$($_)" | Out-Null
+    ## }
+
+
+    @( 
+        vpncmd localhost /client  /cmd AccountList |
+        % { 
+            if($_ -match '^\s*VPN Connection Setting Name\s*\|(.*)$'){
+                $Matches[1].Trim()
+            }
+        } | 
+        % {"AccountDisconnect `"$($_)`""}
+    ) | vpncmd localhost /client  2>$null | out-null
 
 }
