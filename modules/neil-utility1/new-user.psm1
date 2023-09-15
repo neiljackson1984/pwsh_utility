@@ -744,13 +744,83 @@ function disconnectAllVpnConnections {
 
 
     @( 
-        vpncmd localhost /client  /cmd AccountList |
-        % { 
-            if($_ -match '^\s*VPN Connection Setting Name\s*\|(.*)$'){
-                $Matches[1].Trim()
-            }
-        } | 
+        Get-SoftEtherConnectionNames | 
         % {"AccountDisconnect `"$($_)`""}
     ) | vpncmd localhost /client  2>$null | out-null
 
+}
+
+function Get-SoftEtherNicNames {
+    <#
+    .SYNOPSIS
+    gets the names of all existing SoftEther virtual nics.
+    #>
+    
+    [CmdletBinding()]
+    [OutputType([string])]
+    Param(
+    )
+
+    vpncmd localhost /client /cmd  NicList | 
+    out-string -stream | 
+    select-string '(?<=^\s*Virtual Network Adapter Name\s*\|\s*)\b.*\b(?=\s*$)' | 
+    % {$_.Matches[0].ToString()}
+}
+
+function Get-SoftEtherNextAvailableNicName {
+    <#
+    .SYNOPSIS
+    Gets the next valid softether nic name that is not already assigned to an existing softether nic.
+    #>
+    
+    [CmdletBinding()]
+    [OutputType([string])]
+    Param(
+    )
+
+    $allowedNicNames = @(""; 2..127) |% {"VPN$($_)"} 
+    $existingNicNames = @(Get-SoftEtherNicNames)
+    $nextAvailableNicName = ($allowedNicNames |? {-not ($existingNicNames -contains $_)} | select -first 1)
+    return $nextAvailableNicName
+}
+
+function Get-SoftEtherNetAdapterFromSoftEtherNicName {
+    <#
+    .SYNOPSIS
+    returns the
+    Microsoft.Management.Infrastructure.CimInstance#ROOT/StandardCimv2/MSFT_NetAdapter
+    object corresponding to the given softetherNicName, or nothing if no such object exists.
+    exists.
+    #>
+    
+    [CmdletBinding()]
+    # [OutputType([Microsoft.Management.Infrastructure.CimInstance#ROOT/StandardCimv2/MSFT_NetAdapter])]
+    [OutputType([Microsoft.Management.Infrastructure.CimInstance])]
+    Param(
+        [Parameter(
+            Mandatory=$True    
+        )]
+        [String] 
+        $softetherNicName
+    )
+
+    $nicGuid = (vpncmd localhost /client /cmd NicGetSetting $softetherNicName | out-string -stream | select-string '(?<=^\s*GUID\s*\|\s*).*(?=\s*$)' | % {$_.Matches[0].ToString()})
+    Get-NetAdapter -IncludeHidden |? {$_.InterfaceGuid -eq $nicGuid}
+}
+
+function Get-SoftEtherConnectionNames {
+    <#
+    .SYNOPSIS
+    gets the names of all existing SoftEther connections.
+    #>
+    
+    [CmdletBinding()]
+    [OutputType([string])]
+    Param(
+    )
+
+    vpncmd localhost /client /cmd  AccountList | 
+    out-string -stream | 
+    select-string '(?<=^\s*VPN Connection Setting Name\s*\|\s*)\b.*\b(?=\s*$)' | 
+    % {$_.Matches[0].ToString()}
 }
