@@ -93,9 +93,11 @@ function getFieldMapFromBitwardenItem {
     [OutputType([HashTable])]
     [CmdletBinding()]
     Param (
-        [Parameter(HelpMessage=  "The bitwarden item id of the bitwarden item containing the configuration data.")]
-        # [String]$pathOfTheConfigurationFile = "config.json" # (Join-Path $PSScriptRoot "config.json")
-        [String]$bitwardenItemId 
+        [Parameter(
+            HelpMessage=  "The bitwarden item id of the bitwarden item whose field map we want",
+            Mandatory = $True
+        )]
+        [String] $bitwardenItemId 
     )
 
     [HashTable] $bitwardenItem = Get-BitwardenItem -bitwardenItemId $bitwardenItemId
@@ -107,6 +109,133 @@ function getFieldMapFromBitwardenItem {
     }
 
     return $fieldMap
+}
+
+function getSshPrivateKeyFromBitwardenItem {
+    [OutputType([string])]
+    [CmdletBinding()]
+    Param (
+        [Parameter(
+            HelpMessage=  {@(
+                "The bitwarden item id of the bitwarden item "
+                "from which we want to get the private key.  "
+                "If the bitwarden item has a field named "
+                "`"ssh_private_key_reference`" containing the "
+                "id of another bitwarden item, then"
+                "we retrieve the contents of the file named "
+                "`"id_rsa`" that is attached to that other "
+                "bitwarden item.  Otherewise, we retrieve the "
+                "contents of the file named `"id_rsa`" that is "
+                "attached to this btiwarden item."
+            ) -join ""},
+            Mandatory = $True
+        )]
+        [String] $bitwardenItemId 
+    )
+
+    [HashTable] $bitwardenItem = Get-BitwardenItem -bitwardenItemId $bitwardenItemId
+    
+    $sshPrivateKey = bw --raw get attachment id_rsa --itemid (
+        (
+            $bitwardenItem.fields |
+            ? {$_.name -ceq "ssh_private_key_reference"} | 
+            select -first 1 |
+            % {$_.value} |
+            ? {$_}
+        ) ?? (
+            $bitwardenItem.id
+        )
+    ) 
+
+    return $sshPrivateKey
+}
+
+function getSshOptionArgumentsFromBitwardenItem {
+    [OutputType([System.Collections.Generic.IEnumerable[string]])]
+    [CmdletBinding()]
+    Param (
+        [Parameter(
+            HelpMessage=  {@(
+                "The bitwarden item id of the bitwarden item "
+                "from which we want to get the ssh configuration option args. "
+            ) -join ""},
+            Mandatory = $True
+        )]
+        [String] $bitwardenItemId 
+    )
+
+    [HashTable] $bitwardenItem = Get-BitwardenItem -bitwardenItemId $bitwardenItemId
+    
+
+    $sshHost = @(
+        @(
+            $bitwardenItem.fields |
+            ? {$_.name -ceq "ssh_host"} | 
+            select -first 1 |% {$_.value}
+    
+    
+            $bitwardenItem.login.uris |
+            % { ([System.Uri] $_.uri ).Host } 
+        ) |
+        ? {$_}
+    ) | select -first 1
+    
+    $sshUsername = (
+        (
+            $bitwardenItem.fields |
+            ? {$_.name -ceq "ssh_username"} | 
+            select -first 1 | % {$_.value} | 
+            ? {$_}
+        ) ?? (
+            $bitwardenItem.login.username
+        )
+    )
+    
+    $sshPort = $bitwardenItem.fields |? {$_.name -ceq "ssh_port"} | select -first 1 |% {$_.value} |? {$_}
+
+    $sshConfigurationOptionArgs=@(
+        "-o";"StrictHostKeyChecking=no"
+    
+        # "-o"; "PubkeyAcceptedKeyTypes=+ssh-rsa"
+        # "-o"; "HostKeyAlgorithms=+ssh-rsa"
+        #temporary work-around for sophos router (I might need to replace my
+        # favorite keypair  with a new one that does not rely on the now-deprecated
+        # SHA-1 hash algorithm (although I am not entirely sure how the key pair
+        # depends on the hash algorithm) -- the source of the dependency might be
+        # the hash that is stored by the server in the authorized keys list.
+        # possibly, I merely need to recompute a different hash of my public key and
+        # store this different hash in the the server. see
+        # https://www.openssh.com/txt/release-8.2
+    
+        # evidently, if we have multiple "-o HostKeyAlgorithms..." options, only the
+        # first one is attended to, even when we are using the "+" notation to say
+        # "add this item to the existing list". hence, I have combined the sophos
+        # router workaround (+ssh-rsa) and the ILO3 workaround (+ssh-dss) into one
+        # option argument for each property.  We ought to figure ought a way to
+        # encode these options for exceptional cases in bitwarden.
+        "-o"; "HostKeyAlgorithms=+ssh-rsa,ssh-dss"
+        "-o"; "PubkeyAcceptedKeyTypes=+ssh-rsa,ssh-dss"
+        "-o"; "KexAlgorithms=+diffie-hellman-group1-sha1"
+        # this is a workaround for ssh'ing into an ILO3 controller on an HP Proliant
+        # Gen7 server. allowing this key exchange algorithm constitutes a reduction
+        # in security, and probably shouldn't be left here for all time.
+        # see [https://unix.stackexchange.com/questions/340844/how-to-enable-diffie-hellman-group1-sha1-key-exchange-on-debian-8-0]
+        # see [http://www.openssh.com/legacy.html]
+    
+        "-o"; "ServerAliveInterval=5"
+    
+        if($sshPort){"-o"; "Port=${sshPort}" }
+        
+        "-o"; "User=${sshUsername}"
+    
+        "-o"; "HostName=${sshHost}"
+    )
+
+    # instead of hardcoding, above, the options for special-case workarounds, it
+    # would be better to allow the bitwarden item to specify special workaround
+    # options.
+
+    return $sshConfigurationOptionArgs
 }
 
 function putFieldMapToBitwardenItem {
