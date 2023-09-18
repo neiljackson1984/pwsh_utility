@@ -706,8 +706,12 @@ function connectVpn {
             # used by another VPN Connection Setting. If there is another
             # VPN Connection Setting that is using the same Virtual Network
             # Adapter, disconnect that VPN Connection Setting.
+
             # Write-Host "disconnecting from all existing softether vpn connections"
             disconnectAllVpnConnections
+
+            # we might, alternatively, consider creating a new softether virtual
+            # nic and setting the connection to use that nic.
         }
 
         Start-Sleep 5
