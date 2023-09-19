@@ -238,6 +238,168 @@ function getSshOptionArgumentsFromBitwardenItem {
     return $sshConfigurationOptionArgs
 }
 
+function initializeSshAgentFromBitwardenItem {
+    [OutputType([void])]
+    [CmdletBinding()]
+    Param (
+        [Parameter(
+            HelpMessage=  {@(
+                "The bitwarden item id of the bitwarden item "
+                " that describes the ssh connection."
+            ) -join ""},
+            Mandatory = $True
+        )]
+        [String] $bitwardenItemId 
+    )
+
+    # ssh-agent pwsh 
+    #
+    # I would rather set up the environment variables than spawn a new shell
+    # process, but at the moment this is easier.  all that matters is that we
+    # get the environment variabls populated (I think) -- I don't think there is
+    # anything special per se about being a child process of the ssh-agent
+    # process.
+    #
+    # actually, simply jumping into a new shell here is no good, because then
+    # none of our below commands run.  Unfortunately, getting the necessary
+    # variable values from the output of ssh-agent is a bit of a kludge (and
+    # always was -- the standard way to do this within bash is to do 
+    #
+    # ```
+    # eval $(ssh-agent)
+    # ```
+    #
+    # ssh-agent is designed to emit valid bash code (or valid csh code, if you
+    # pass the -c option).  We'll pile on another layer of kludge by parsing,
+    # with regex, the emitted bash code, to extract the variable values.
+    #
+
+   
+    
+
+    # $bashCode = "$(ssh-agent -s)"
+    # will look something like:
+    # ```
+    # SSH_AUTH_SOCK=/tmp/ssh-AO9HkgjpqTvL/agent.1545; export SSH_AUTH_SOCK;
+    # SSH_AGENT_PID=1546; export SSH_AGENT_PID;
+    # echo Agent pid 1546;
+    # ```
+    #
+    # this scheme is slightly non-ideal in that it leaves the ssh-agent process
+    # running even after we have exited from the shell. this is the intended
+    # behavior of ssh-agent, I think, but I would prefer to have our instance of
+    # ssh-agent die when we exit.
+
+    $processStartInfo = New-Object "System.Diagnostics.ProcessStartInfo" @((get-command ssh-agent).Path; "-s -D")
+    $processStartInfo.RedirectStandardOutput = $True
+    $processStartInfo.RedirectStandardError = $True
+    $process = [System.Diagnostics.Process]::Start($processStartInfo)
+
+    # this achieves the desired effect of having the ssh-agent process be a
+    # child process of the shell (so that the ssh-agent process dies with the
+    # shell).  Notice the -D option to ssh-agent, which tells ssh-agent to run
+    # in the foreground and not fork.  
+
+    # Curiously, when we run ssh-agent with the -D option, ssh-agent does not
+    # spit out the SSH_AGENT_PID value -- only the SSH_AUTH_SOCK value.
+    # ssh-agent does still emit "echo Agent pid 1476;" (for example), so the
+    # information about the pid is still extractable, but why wouldn't it just
+    # go ahead and emit the line to set the SSH_AGENT_PID environment variable?
+    # Admittedly, if we are launching ssh-agent in non-forking mode (by using
+    # the - -D option), we probably can figure out the pid of the ssh-agent
+    # process by means other than looking at the bash code that ssh-agent emits
+    # on stdout, but still, what could be the harm in ssh-agent emitting the
+    # "SSH_AGENT_PID=..." code?  There must be some intentional reason for this
+    # behavior.
+    #
+    # Is the SSH_AGENT_PID variable really needed in all cases?  Perhaps
+    # SSH_AUTH_SOCK is sufficient for the main funciton of ssh-agent and the
+    # realted tools (ssh-add, ssh, etc.).  Maybe the reason the
+    # "SSH_AGENT_PID=..." code is emitted at all by ssh-agent is to give us the
+    # pid of the agent so that we can kill the ssh-agent process when we want
+    # (much like I am wanting to have ssh-agent die with the shell).
+
+
+    $bashCode = "$($process.StandardOutput.ReadLine())$($process.StandardOutput.ReadLine())"
+
+    # the first ReadLine() returns something like
+    # "SSH_AUTH_SOCK=/tmp/ssh-rzPpdq0sEjBX/agent.185; export SSH_AUTH_SOCK;" the
+    # second ReadLine() returns something like "echo Agent pid 185;" no further
+    # characters are emitted on stdout, and no characters whatsoever are
+    # emitted on stderr. 
+
+    $bashStatements = $bashCode -split ";"
+    $doExtractSshAgentPidFromEchoCode = $True
+    # $doExtractSshAgentPidFromEchoCode = $False
+    # it doesn't actually seem to be necessary to have the SSH_AGENT_PID
+    # environemtn variable defined.
+
+    foreach($bashStatement in $bashStatements) {
+        if($bashStatement -match '^\s*(?<name>\w+)=(?<value>.*)$'){
+            Set-Item "env:$($Matches['name'])" -Value $Matches['value']
+        } elseif (
+            ($bashStatement -match '^\s*echo\s+Agent\s+pid\s+(?<sshAgentPid>\d+)\s*$')
+        ) {
+            # this case handles the case where we are running ssh-agent with the
+            # -D option (i.e. in the foreground, i.e. not forking), in which
+            # case ssh-agent does not emit the "SSH_AGENT_PID=..." code.
+
+            if($doExtractSshAgentPidFromEchoCode){
+                Set-Item "env:SSH_AGENT_PID" -Value $Matches['sshAgentPid']
+            }
+
+            # $sshAgentPid = $Matches['sshAgentPid']
+            # this is just for debugging
+        }
+    }
+
+    <# 
+        ```
+        ssh-add -l
+        ```
+        >>>
+
+
+        see
+        [https://github.com/joaojacome/bitwarden-ssh-agent/blob/master/bw_add_sshkeys.py#L154].
+        Evidently, ssh-add can be made to read the key from stdin by specifying
+        the magic filename "-".  This is not documented in the ssh-add man page
+        (although maybe its a broader convention among all the openssh utilities
+        or in posix?) . I discovered it by looking at
+        [https://github.com/joaojacome/bitwarden-ssh-agent/blob/master/bw_add_sshkeys.py#L154].
+
+
+
+
+        
+        see [https://superuser.com/questions/1059781/what-exactly-is-in-bash-and-in-zsh]
+        
+        see [https://serverfault.com/questions/688645/powershells-equivalent-to-bashs-process-substitution]
+
+
+        ```
+        getSshPrivateKeyFromBitwardenItem -bitwardenItemId $bitwardenItemId | ssh-add -
+        ```
+        >>>    Identity added: (stdin) ((stdin)) 
+
+
+        ```
+        ssh-add -l
+        ```
+        >>>    4096 SHA256:LOy8rbkAXKQCFTtRntAUImYCoL2+HXhUgR0nvKf2mmE (stdin)
+        >>>    (RSA)
+
+        Hmmm. ssh-add treats "stdin" as the name of this key when you add it via
+        stdin rather than a real file name.  Presumably, you could specify a
+        meaningful name using command line arguments to ssh-add or maybe with
+        specially-crafetd content of the private key string.
+
+        # see [https://man7.org/linux/man-pages/man1/ssh-add.1.html]
+    #>
+    
+    getSshPrivateKeyFromBitwardenItem -bitwardenItemId $bitwardenItemId | ssh-add - | write-host
+}
+
 function putFieldMapToBitwardenItem {
     [OutputType([Void])]
     [CmdletBinding()]
