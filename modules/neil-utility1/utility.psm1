@@ -400,6 +400,286 @@ function initializeSshAgentFromBitwardenItem {
     getSshPrivateKeyFromBitwardenItem -bitwardenItemId $bitwardenItemId | ssh-add - | write-host
 }
 
+
+
+function runInSshSession {
+    <#
+    .SYNOPSIS
+    as of 2023-09-19: expects global variable $sshOptionArguments to exist,
+    having been assigned for instance by running something like
+    ```
+        $bitwardenItemId = "e2e86ca2-0933-4e15-b84e-b3967873b49b" 
+        $sshOptionArguments = getSshOptionArgumentsFromBitwardenItem -bitwardenItemId $bitwardenItemId 
+    ```
+
+    and, for maximum usefullness, you might also want to do:
+    ```
+    initializeSshAgentFromBitwardenItem -bitwardenItemId $bitwardenItemId 
+    ```
+
+    I would like to not have to always pass the sshOptionArguments on the
+    commnand line to make the command very short and readable (we typically set
+    a two-letter alias for this command).
+
+    One way to do this, which is maybe not quite the most elegant, but at least
+    serves the purpose, is to make a closure that captures the value of
+    $sshOptionArguments.  Still not the most elegant answer probably, but
+    probably better than having runInSshSession depend on a global variable.  In
+    the script where we have created the global variable $sshOptionArguments, we
+    define the following function ("rr" is just an example of a short
+    abbreviation that might be useful for interactive programming and
+    readability):
+    ```
+    function rr { $input | runInSshSession -sshOptionArguments $sshOptionArguments @args }
+    ```
+
+    #>
+    
+    [OutputType([string])]
+    [CmdletBinding(
+        PositionalBinding=$False
+
+    )]
+    Param (
+        
+        [Parameter(
+            ValueFromPipeline=$True,
+            Mandatory = $False
+        )]
+        # [string] 
+        # [object]
+        [string]
+        $inputObject,
+        # in spirit, $inputObject should be a string, but, in order to allow a
+        # workaround to the powersehll behavior of always appending a newline
+        # (and a "\r\n" newline at that) to the end of the last string (or maybe
+        # every string) piped into a native program, we want to allow
+        # $inputObject to be a byte-like thing (because the workaround is to
+        # convert the string to an enmumerable of bytes, and then pipe each byte
+        # one at a time into the powershell pipeline.  setting the type here to
+        # object serves the purpose.
+        #
+        # perhaps we should force $inputObject top be a string after all and
+        # then do the conversion to an enumerable of bytes within this function.
+        #
+        # As of 2023-09-19, the latest non-beta release of powershell (version
+        # 7.3.6) does not support the byte piping behavior, but the preview
+        # version (version 7.4.0-preview.5) does support the byte piping
+        # behavior.
+        #
+
+                
+        [Parameter()]
+        [string[]] 
+        $sshOptionArguments,
+       
+        # # idea:
+        # [Parameter()][string] $bitwardenItemId,
+        
+        [Parameter(
+            ValueFromRemainingArguments=$True,
+            Mandatory = $True 
+        )]
+        [string[]] $argumentList
+    )
+
+    <#
+        # runInSshSession runs the specified command on the router, using ssh.
+        # Think of the name as an abbreviation of RunOnRouTer or,
+        # perhaps RunOnRemoTe
+
+        # we only run the ssh command in case some argument was given,
+        # because if we run the ssh command without a command argument,
+        # ssh launches an interactive shell, which is not what we want.
+
+        if (( \\\${#@} > 0 )); then : ;
+            ssh \$sshOptions '' "\\\$@"
+        else : ;
+            echo "runInSshSession received no command therefore will not do anything." >2
+        fi;
+    #>
+
+    <#
+        You have to be a bit careful about arguments that happen to look like powershell function parameters, because powershell won't put them in $argumentList.
+        To get powershell to include them in $argumentList, wrap them in quotes.
+
+        ```
+        runInSshSession echo blarg yarg -ErrorAction SilentlyContinue
+        ```
+        >>>     blarg yarg
+
+
+        ```
+        runInSshSession echo blarg yarg -ErrorgggAction SilentlyContinue
+        ```
+        >>>   blarg yarg -ErrorgggAction SilentlyContinue  
+
+
+        ```
+        runInSshSession echo blarg yarg "-ErrorAction" SilentlyContinue
+        ```
+        >>>     blarg yarg -ErrorAction SilentlyContinue
+
+
+        ```
+        runInSshSession "echo blarg yarg -ErrorAction SilentlyContinue"
+        ```
+        >>>     blarg yarg -ErrorAction SilentlyContinue
+
+
+
+    #>
+
+    begin {
+        
+        # Write-Warning "inputObject: $inputObject"
+        # Write-Warning "argumentList.Count: $($argumentList.Count)"
+        # Write-Warning "argumentList: $($argumentList)"
+
+        # Write-Warning "within begin: `$inputObject: $inputObject"
+        # Write-Warning "within begin: `$PSBoundParameters.Keys: $($PSBoundParameters.Keys)"
+        $inputObjects = @()
+    }
+
+    # process {
+    #     Write-Warning "processing an inputObject: $inputObject"
+    #     Write-Warning "`$inputObject.GetType().FullName: $($inputObject.GetType().FullName)"
+    #     Write-Warning "`$null -eq `$inputObject: $($null -eq $inputObject)"
+
+    #     $inputObjects += $inputObject
+    
+    # }
+
+    process {
+        # Write-Warning ("within process: `$input.GetType().FullName: " + $input.GetType().FullName)
+        # Write-Warning ("within process: `$inputObject.GetType().FullName: " + $inputObject.GetType().FullName)
+        # Write-Warning "within process: `$PSBoundParameters.Keys: $($PSBoundParameters.Keys)"
+
+        # Write-Warning "within process: `$input: $input"
+        # Write-Warning "within process: `$input.Count: $($input.Count)"
+        # Write-Warning "within process: `$inputObject: $inputObject"
+        # # Write-Warning "processing an inputObject: $inputObject"
+        # Write-Warning "within process: `$null -eq `$inputObject: $($null -eq $inputObject)"
+        # # # Write-Warning "within process: `$null -eq `$PSItem: $($null -eq $PSItem)"
+        # # $x = $input
+        
+        
+
+        # # Write-Warning "within process: `$input.GetType().FullName: $($input.GetType().FullName)"
+        # Write-Warning "within process: `$x.GetType().FullName: $($x.GetType().FullName)"
+        # Write-Warning "within process: `$null -eq `$x: $($null -eq $x)"
+        # # Write-Warning "within process: (@(`$input).Count: $(@($input).Count)"
+
+        if( $PSBoundParameters.Keys -contains "inputObject"){
+            # strangely, when you invoke a function not in a pipeline (or at
+            # the beginning of a pipeline) and when you do not pass the
+            # -inputObject parameter, powershell still runs the process
+            # block.  This makes no sense to me, because in this case there
+            # is no input; the number of input objects is zero.  I expect
+            # powershell to run the process block exactly as many times as
+            # there are input objects.  If there are zero input objects, I
+            # explect powershell to run the process block zero times, but it
+            # actually runs the process block exactly one times.
+
+            # the only reliable and specific way I have found to detect when
+            # the process block is being run in this special case (where it
+            # really shouldn't run) is to see whether
+            # $PSBoundParameters.Keys contains "inputObject".
+            
+            # Within the process block, $PSBoundParameters.Keys contains
+            # "inputObject" when, and only when, the process block is
+            # running due to an explicit -inputObject parameter having been
+            # passed or the process block is running due to an object having
+            # been received on the pipeline. 
+
+            # Looking at whether $inputObject is null as a way to detect
+            # when we are in the special "unexpected" case is no good in
+            # general because the user might want to actually pass $null as
+            # a pipeline object or as the value of the -inputObject
+            # parameter.  Also, in the case where I have declared the type
+            # of inputObject to be string (for instance), powershell will
+            # coerce $null to an empty string.  Well, I could look for empty
+            # strings, but the user might have wanted to pass an empty
+            # string as a first class input object and then we have the same
+            # problem.  checking for the presence of "inputObject" in
+            # $PSBoundParameters.Keys works regardless of whether the
+            # inputObject is null.
+
+            $inputObjects += $inputObject
+
+        }
+
+        
+    
+    }
+
+    # process {}
+    # the mere presence of a process block, even an empty one,
+    # causes $input to be empty in the end block.
+
+    end {
+        # Write-Warning "reached end"
+        # Write-Warning "within end: inputObjects.Count: $($inputObjects.Count)"
+        # $input.Reset()
+        # Write-Warning "within end: (@(`$input).Count: $(@($input).Count)"
+        # Write-Warning "within end: (@(`$input).Count: $(@($input).Count)"
+        # Write-Warning "within end: `$input.Count: $($input.Count)"
+        # Write-Warning "within end: `$input: $input"
+        # Write-Warning "within end: `$inputObject: $inputObject"
+        # # Write-Warning "within end: (@(`$input).Count: $(@($input).Count)"
+        # # $collectedInput = @($input)
+        # # $collectedInput = @($input)
+        
+        # # Write-Warning "within end: `$input.GetType().FullName: $($input.GetType().FullName)"
+        # Write-Warning "within end: `$PSCmdlet.GetType().FullName: $($PSCmdlet.GetType().FullName)"
+        # Write-Warning "within end: `$null -eq `$input: $($null -eq $input)"
+        # Write-Warning "within end: `$input.Count: $($input.Count)"
+        # Write-Warning "within end: `$inputObjects.Count: $($inputObjects.Count)"
+        # Write-Warning "within end: (@(`$input).Count: $(@($input).Count)"
+        # Write-Warning "within end: `$collectedInput.Count: $($collectedInput.Count)"
+
+
+        # $inputObjects | ssh @sshOptionArguments "" @argumentList
+        if($inputObjects.Count -gt 0){
+            # $inputObjects | ssh @sshOptionArguments "" @argumentList
+            # ( ,[byte[]] ($inputObjects | % { [System.Text.Encoding]::UTF8.GetBytes($_) })   ) | ssh @sshOptionArguments "" @argumentList
+            ( ,[byte[]] ([System.Text.Encoding]::UTF8.GetBytes(($inputObjects -join "`n")))) | ssh @sshOptionArguments "" @argumentList
+            # it is a bit of a hack to be specifying our line ending conventions
+            # hardcoded here, but for the application that I happen to be
+            # working on at the moment, I want unix-style line endings, and I
+            # don't care too much about a terminal newline (I would rather have
+            # no terminal newline sequence than a \r\n sequence, which is what I
+            # would get if I did not do the byte pipe workaround above.
+
+        } else {
+            # write-host "no inputObjects given"
+            ssh @sshOptionArguments "" @argumentList
+            # I was hoping that this would run in a way that is fully
+            # connected to the terminal, but it does not.
+        }
+        # we are specifying the "destination" (i.e. host name and port number)
+        # by means of the sshOptionArguments rather than with the "destination"
+        # positional command line argument to ssh.  Nevertheless, ssh still
+        # expects to see some argument in the "destination" position on the
+        # command line.  If we just slap on $argumentList without having
+        # anything in the "destination" position, ssh will assume that the first
+        # word in $argumentList is the destination and will therefore not treat
+        # that word as the first word of the command that we want to run within
+        # the ssh session.  To deal with this requirement, we pass an empty
+        # string in the "destination" position.  (would it also work to pass any
+        # arbitrary word (perhaps ssh ignores the destination argument when a
+        # destination is speciifed in the option arguments.)?  What about a
+        # hyphen?)
+
+
+    }
+
+}
+
+
+
+
+
 function putFieldMapToBitwardenItem {
     [OutputType([Void])]
     [CmdletBinding()]
@@ -1821,20 +2101,22 @@ function installGoodies(){
         choco upgrade --acceptlicense --confirm chocolatey  
 
         #ensure that 7zip is installed
-        choco install --acceptlicense -y 7zip  
-        choco upgrade --acceptlicense -y 7zip 
+        choco upgrade --acceptlicense --yes 7zip 
 
         #ensure that pwsh is installed
-        choco install --acceptlicense -y pwsh  
-        choco upgrade --acceptlicense -y pwsh  
+        choco upgrade --acceptlicense --yes pwsh  
 
-        choco install --acceptlicense -y --force "winmerge"
-        choco install --acceptlicense -y --force "spacesniffer"
-        choco install --acceptlicense -y --force "notepadplusplus"
-        choco install --acceptlicense -y --force "sysinternals"
-        # choco install --acceptlicense -y --force "cygwin"
+        choco upgrade --acceptlicense --yes --force "winmerge"
+        choco upgrade --acceptlicense --yes --force "spacesniffer"
+        choco upgrade --acceptlicense --yes --force "notepadplusplus"
+        choco upgrade --acceptlicense --yes --force "sysinternals"
         
-        choco install --acceptlicense -y --force "hdtune"
+        choco upgrade --acceptlicense --yes --force "hdtune"
+
+        # "upgrade" installs if it is not already installed, so we do not need
+        # to do both "install" and "upgrade"; "upgrade" on its own will ensure
+        # that we end up with the latest version installed regardless of the
+        # initial condition.
     }
 }
 
@@ -2102,13 +2384,35 @@ function runWithPerpetuallyOpenStandardInput(){
 
 
 
-function addEntryToSystemPathPersistently($pathEntry){
+function addEntryToSystemPathPersistently{
+    # perhaps this function would be better named "appendEntry..." to make it
+    # clear that we are sticking the new entries at the end of the path, so as
+    # to override any existing entries.  We ought to also provide a way to
+    # prepend.
+
+    Param(
+        [Parameter(
+            Mandatory=$True
+        )]
+        [string] $pathEntry,
+
+        [Parameter(
+            Mandatory=$False
+        )]
+        [Switch] $prepend = $False
+    )
+    
     $existingPathEntries = @(([System.Environment]::GetEnvironmentVariable('PATH', [System.EnvironmentVariableTarget]::Machine)) -Split ([IO.Path]::PathSeparator) | Where-Object {$_})
     # $desiredPathEntries = deduplicate($existingPathEntries + $pathEntry)
     $desiredPathEntries = @(
         @( 
-            @($existingPathEntries)
-            $pathEntry
+            if($prepend){
+                $pathEntry
+                @($existingPathEntries)
+            } else {
+                @($existingPathEntries)
+                $pathEntry
+            }
         ) | select-object -unique 
     )
 
@@ -2119,6 +2423,7 @@ function addEntryToSystemPathPersistently($pathEntry){
         [System.EnvironmentVariableTarget]::Machine
     )
 }
+
 
 function reportDrives(){
 
