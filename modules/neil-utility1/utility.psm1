@@ -238,8 +238,9 @@ function getSshOptionArgumentsFromBitwardenItem {
     return $sshConfigurationOptionArgs
 }
 
-function initializeSshAgentFromBitwardenItem {
-    [OutputType([void])]
+
+function initializeSshAgentFromBitwardenItemAndReturnSshAgentEnvironment {
+    [OutputType([System.Collections.Generic.IDictionary[[string],[string]]])]
     [CmdletBinding()]
     Param (
         [Parameter(
@@ -334,9 +335,11 @@ function initializeSshAgentFromBitwardenItem {
     # it doesn't actually seem to be necessary to have the SSH_AGENT_PID
     # environemtn variable defined.
 
+    $sshAgentEnvironment = @{}
     foreach($bashStatement in $bashStatements) {
         if($bashStatement -match '^\s*(?<name>\w+)=(?<value>.*)$'){
-            Set-Item "env:$($Matches['name'])" -Value $Matches['value']
+            # Set-Item "env:$($Matches['name'])" -Value $Matches['value']
+            $sshAgentEnvironment[$Matches['name']] = $Matches['value']
         } elseif (
             ($bashStatement -match '^\s*echo\s+Agent\s+pid\s+(?<sshAgentPid>\d+)\s*$')
         ) {
@@ -345,7 +348,8 @@ function initializeSshAgentFromBitwardenItem {
             # case ssh-agent does not emit the "SSH_AGENT_PID=..." code.
 
             if($doExtractSshAgentPidFromEchoCode){
-                Set-Item "env:SSH_AGENT_PID" -Value $Matches['sshAgentPid']
+                # Set-Item "env:SSH_AGENT_PID" -Value $Matches['sshAgentPid']
+                $sshAgentEnvironment["SSH_AGENT_PID"] = $Matches['sshAgentPid']
             }
 
             # $sshAgentPid = $Matches['sshAgentPid']
@@ -397,7 +401,53 @@ function initializeSshAgentFromBitwardenItem {
         # see [https://man7.org/linux/man-pages/man1/ssh-add.1.html]
     #>
     
-    getSshPrivateKeyFromBitwardenItem -bitwardenItemId $bitwardenItemId | ssh-add - | write-host
+    # getSshPrivateKeyFromBitwardenItem -bitwardenItemId $bitwardenItemId | ssh-add - | write-host
+    
+    # getSshPrivateKeyFromBitwardenItem -bitwardenItemId $bitwardenItemId | 
+    # ssh-add "-o" "IdentityAgent=$($sshAgentEnvironment['SSH_AUTH_SOCK'])" "-" | 
+    # write-host
+
+    getSshPrivateKeyFromBitwardenItem -bitwardenItemId $bitwardenItemId | 
+    & { 
+        $initialValues = @{}
+        foreach($key in $sshAgentEnvironment.Keys){
+            $initialValues[$key] = (get-item "env:$($key)" -errorAction SilentlyContinue).Value
+            Set-Item "env:$($key)" -Value $sshAgentEnvironment[$key]
+        }
+    
+        $input | ssh-add - 
+    
+        foreach($key in $initialValues.Keys){
+            Set-Item "env:$($key)" -Value $initialValues[$key]
+        }
+    } | 
+    write-host
+
+
+
+    return $sshAgentEnvironment;
+}
+
+
+
+function initializeSshAgentFromBitwardenItem {
+    [OutputType([void])]
+    [CmdletBinding()]
+    Param (
+        [Parameter(
+            HelpMessage=  {@(
+                "The bitwarden item id of the bitwarden item "
+                " that describes the ssh connection."
+            ) -join ""},
+            Mandatory = $True
+        )]
+        [String] $bitwardenItemId 
+    )
+    $sshAgentEnvironment = initializeSshAgentFromBitwardenItemAndReturnSshAgentEnvironment $bitwardenItemId
+    
+    foreach($key in $sshAgentEnvironment.Keys){
+        Set-Item "env:$($key)" -Value $sshAgentEnvironment[$key]
+    }
 }
 
 
@@ -468,6 +518,12 @@ function runInSshSession {
         # behavior.
         #
 
+                
+        [Parameter()]
+        # [System.Collections.Generic.Dictionary[[string],[string]]] 
+        # [System.Collections.Generic.IDictionary[[string],[string]]] 
+        [Hashtable] 
+        $sshAgentEnvironment,
                 
         [Parameter()]
         [string[]] 
@@ -643,7 +699,7 @@ function runInSshSession {
         if($inputObjects.Count -gt 0){
             # $inputObjects | ssh @sshOptionArguments "" @argumentList
             # ( ,[byte[]] ($inputObjects | % { [System.Text.Encoding]::UTF8.GetBytes($_) })   ) | ssh @sshOptionArguments "" @argumentList
-            ( ,[byte[]] ([System.Text.Encoding]::UTF8.GetBytes(($inputObjects -join "`n")))) | ssh @sshOptionArguments "" @argumentList
+            ( ,[byte[]] ([System.Text.Encoding]::UTF8.GetBytes(($inputObjects -join "`n")))) | ssh "-o" "IdentityAgent=$($sshAgentEnvironment['SSH_AUTH_SOCK'])" @sshOptionArguments "" @argumentList
             # it is a bit of a hack to be specifying our line ending conventions
             # hardcoded here, but for the application that I happen to be
             # working on at the moment, I want unix-style line endings, and I
@@ -653,7 +709,7 @@ function runInSshSession {
 
         } else {
             # write-host "no inputObjects given"
-            ssh @sshOptionArguments "" @argumentList
+            ssh "-o" "IdentityAgent=$($sshAgentEnvironment['SSH_AUTH_SOCK'])" @sshOptionArguments "" @argumentList
             # I was hoping that this would run in a way that is fully
             # connected to the terminal, but it does not.
         }
@@ -2501,6 +2557,11 @@ function Disable-UserAccessControl {
     Write-Host "User Access Control (UAC) has been disabled." -ForegroundColor Green    
 }
 
+function Enable-UserAccessControl {
+    Remove-ItemProperty "HKLM:\SOFTWARE\Microsoft\Windows\CurrentVersion\Policies\System" -Name "ConsentPromptBehaviorAdmin"  -force:$true
+    Write-Host "User Access Control (UAC) has been enabled (or more accurately: reset to default)." -ForegroundColor Green    
+}
+
 function Get-NeilWindowsUpdateLog {
     <#
         .SYNOPSIS
@@ -2599,4 +2660,21 @@ function getStronglyNamedPath {
     ) -join "")
 
     return (join-path (split-path -parent $path) $strongNameOfFile)
+}
+
+function getCommandPath {
+    <#
+    .SYNOPSIS
+    returns the path of the file containing the specified command, along with the relevant line number in that file.
+    Intended to be used for commands that are defined as a powershell function in a powershell acript module file.
+
+    #>
+    [OutputType([string])]
+    [CmdletBinding()]
+    Param(
+        [parameter(mandatory=$True)]
+        [string] $nameOfCommand
+    )
+
+    Get-Command $nameOfCommand | % { "$($_.ScriptBlock.File):$($_.ScriptBlock.StartPosition.StartLine)" }
 }
