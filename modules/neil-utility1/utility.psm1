@@ -291,7 +291,41 @@ function initializeSshAgentFromBitwardenItemAndReturnSshAgentEnvironment {
     # behavior of ssh-agent, I think, but I would prefer to have our instance of
     # ssh-agent die when we exit.
 
-    $processStartInfo = New-Object "System.Diagnostics.ProcessStartInfo" @((get-command ssh-agent).Path; "-s -D")
+    $processStartInfo = New-Object "System.Diagnostics.ProcessStartInfo" @(
+        (get-command ssh-agent).Path; 
+        (
+            @(
+
+                # -s      Generate Bourne shell commands on stdout.  This is the
+                # default if SHELL does not look like it’s a csh style of shell.
+                "-s" 
+
+                # -D      Foreground mode.  When this option is specified,
+                # ssh‐agent will not fork.
+                "-D"
+
+                # When we use the -D option, pressing Ctrl-C while a command is
+                # running causes ssh-agent to die (the ssh-agent process is a
+                # child of the shell process).  This is a bit annoying.
+
+                # On the other hand, when we don't use the -D option, ssh-agent
+                # becomes not a child process of the shell, which means that
+                # ssh-agent doesn't die even when the shell dies.  This is also
+                # a bit annoying.
+
+                # the trick is to set $processStartInfo.RedirectStandardInput to
+                # True.
+                #
+                # this way, ssh-agent is a child process of the shell, dies when
+                # the shell dies, and does not die when we press Ctrl-C during a
+                # long-running command within the shell.
+
+            ) -join " "
+        )
+        
+    )
+
+    $processStartInfo.RedirectStandardInput = $True
     $processStartInfo.RedirectStandardOutput = $True
     $processStartInfo.RedirectStandardError = $True
     $process = [System.Diagnostics.Process]::Start($processStartInfo)
