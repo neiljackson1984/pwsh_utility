@@ -2293,7 +2293,68 @@ function runElevatedInActiveSession(){
     }
     
 }
-  
+
+function runInActiveSession {
+    <#
+    .SYNOPSIS
+    Uses Scheduled Tasks to run the given command in the currently active
+    session. If there is no currently active session, we don't run the command
+    at all.
+
+    I created this command to overcome a mysterious (but known) problem with
+    psexec (see
+    [https://superuser.com/questions/361104/psexec-runs-remote-gui-as-black-screen-windows7])
+    where, wiht certain executables run by psexec, the window will not display
+    correctly, usually with some elements missing.
+
+    This function is mainly intended to be invoked in a psremoting session on a
+    remote (Windows) computer where a user is logged in and actively using a
+    Windows session, and you want to run some program that will interact with
+    the user.
+
+    I don't know what this function does in the case when there are multiple
+    simultaneously active windows sessions -- does it run  a separate instance
+    of the program in each session?
+
+    #>
+    [CmdletBinding()]
+    Param(
+        [parameter()]
+        [string] $pathOfExecutable,
+
+        [parameter(ValueFromRemainingArguments = $true)]
+        [string[]] $remainingArguments
+    )
+    $nameOfScheduledTask = (New-Guid).Guid
+    Unregister-ScheduledTask -Confirm:$false  -TaskName $nameOfScheduledTask -ErrorAction SilentlyContinue | Out-Null
+    
+    $registeredScheduledTask = $null
+    $registeredScheduledTask = (
+        @{
+            TaskName = $nameOfScheduledTask   
+            InputObject = (
+                @{
+                    Action=(
+                        (
+                            @{Execute=$pathOfExecutable} +
+                            (
+                                $remainingArguments ? 
+                                @{Argument=($remainingArguments -join " ")} :
+                                @{}
+                            )
+                        ) | % {New-ScheduledTaskAction @_}
+                    )
+                    # Trigger = @((New-ScheduledTaskTrigger -Once -At ((Get-Date).AddDays(-90))))
+                    Principal=(New-ScheduledTaskPrincipal -GroupId "BUILTIN\Users")
+                    # Principal= (New-ScheduledTaskPrincipal  -GroupId "BUILTIN\Administrators" -RunLevel Highest)
+                    Settings=(New-ScheduledTaskSettingsSet)
+                } |% {New-ScheduledTask @_}
+            )
+        }|%{Register-ScheduledTask  @_}
+    )
+    Start-ScheduledTask -InputObject $registeredScheduledTask
+    Unregister-ScheduledTask -Confirm:$false -InputObject $registeredScheduledTask
+}
 
 function runWithPerpetuallyOpenStandardInput(){
     <#
