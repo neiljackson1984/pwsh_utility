@@ -2316,6 +2316,18 @@ function runInActiveSession {
     simultaneously active windows sessions -- does it run  a separate instance
     of the program in each session?
 
+    To invoke this function in a remote powershell session $ss, do something like:
+    ```
+    icm $ss ${function:runInActiveSession} -args @("pwsh")
+    ```
+    or
+    ```
+    icm $ss ${function:runInActiveSession} -args @("pwsh -NoExit -c Get-Date")
+    ```
+    or
+    ```
+    icm $ss {    & ([Scriptblock]::Create(${using:function:runInActiveSession})) "pwsh" "-NoExit" "-c" "get-date"    }
+    ```
     #>
     [CmdletBinding()]
     Param(
