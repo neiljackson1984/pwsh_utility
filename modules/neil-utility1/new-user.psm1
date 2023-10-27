@@ -433,6 +433,16 @@ function initializeUser {
                 }
 
 
+                if ($userSpec.phoneMacAddress){
+
+                    ""
+
+                    "Your desk phone's MAC address is " + 
+                    "$($userSpec.phoneMacAddress).  "
+
+                }
+
+
                 ""
                 ""
                 "Sincerely,"
