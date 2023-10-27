@@ -2119,7 +2119,7 @@ function downloadFileAndReturnPath {
         "--remote-name"
         # "--verbose"
 
-        # "--remote-header-name"
+        "--remote-header-name"
 
         # follow redirects:
         "--location"
