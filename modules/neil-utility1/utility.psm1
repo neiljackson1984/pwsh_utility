@@ -1979,45 +1979,25 @@ function sendTestMessage([String] $recipient){
     } | % { sendMail @_ }
 }
 
-
-function downloadAndExpandArchiveFile{
-    <#
-    .SYNOPSIS
-    returns the path of the directory in which the arcvhie file was expanded.
-    
-    .PARAMETER url
-    Parameter description
-    
-    .PARAMETER pathOfDirectoryInWhichToExpand
-    Parameter description
-    #>
-    
+function expandArchiveFile {
+    [CmdletBinding()]
+    [OutputType([String])]
     Param(
         [parameter()]
-        [string] $url,
+        [string] $pathOfArchiveFile,
 
         [parameter(Mandatory=$false)]
-        [string] $pathOfDirectoryInWhichToExpand = [string] (join-path $env:temp (new-guid).guid)
-    ) 
+        [string] $pathOfDirectoryInWhichToExpand = $null
+    )
     
-    [OutputType([String])]
-    
-    # $localPathOfArchiveFile = (join-path $env:temp (New-Guid).Guid)
-    # Invoke-WebRequest -Uri $url  -OutFile $localPathOfArchiveFile
 
-    # #hack to avoid redownloading:
-    # $localPathOfArchiveFile = (join-path (join-path $env:temp "549b0588649a4cb19217ed6fe46c97e4") (split-path $url -leaf))
-    # New-Item -ItemType "directory" -Path (Split-Path $localPathOfArchiveFile -Parent) -ErrorAction SilentlyContinue 
-    # if(-not (Test-Path -Path $localPathOfArchiveFile -PathType leaf) ){
-    #     Invoke-WebRequest -Uri $url  -OutFile $localPathOfArchiveFile
-    # }
+    if( ($null -eq $pathOfDirectoryInWhichToExpand) -or ("" -ceq $pathOfDirectoryInWhichToExpand)  ){
+        $pathOfDirectoryInWhichToExpand = [string] (join-path $env:temp (new-guid).guid)
+    }
 
-    # New-Item -ItemType "directory" -Path (Split-Path $localPathOfArchiveFile -Parent) -ErrorAction SilentlyContinue 
-    # Invoke-WebRequest -Uri $url  -OutFile $localPathOfArchiveFile
+    New-Item -ItemType "directory" -Path $pathOfDirectoryInWhichToExpand -Force | out-null
+
     
-    $localPathOfArchiveFile = downloadFileAndReturnPath $url
-    
-    New-Item -ItemType "directory" -Path $pathOfDirectoryInWhichToExpand -ErrorAction SilentlyContinue | out-null
     7z @(
         # eXtract files with full paths    
         "x"
@@ -2032,13 +2012,77 @@ function downloadAndExpandArchiveFile{
         "-o$($pathOfDirectoryInWhichToExpand)" 
         
         # <archive_name>
-        "$localPathOfArchiveFile" 
+        "$pathOfArchiveFile" 
         
         # <file_names>...
         "*"
     ) | write-host
+    return $pathOfDirectoryInWhichToExpand
+}
 
-    return ([string] $pathOfDirectoryInWhichToExpand)
+
+function downloadAndExpandArchiveFile{
+    <#
+    .SYNOPSIS
+    returns the path of the directory in which the arcvhie file was expanded.
+    
+    .PARAMETER url
+    Parameter description
+    
+    .PARAMETER pathOfDirectoryInWhichToExpand
+    Parameter description
+    #>
+    [CmdletBinding()]
+    [OutputType([String])]
+    Param(
+        [parameter()]
+        [string] $url,
+
+        [parameter(Mandatory=$false)]
+        [string] $pathOfDirectoryInWhichToExpand = $null
+    ) 
+    
+    
+    
+    # $localPathOfArchiveFile = (join-path $env:temp (New-Guid).Guid)
+    # Invoke-WebRequest -Uri $url  -OutFile $localPathOfArchiveFile
+
+    # #hack to avoid redownloading:
+    # $localPathOfArchiveFile = (join-path (join-path $env:temp "549b0588649a4cb19217ed6fe46c97e4") (split-path $url -leaf))
+    # New-Item -ItemType "directory" -Path (Split-Path $localPathOfArchiveFile -Parent) -ErrorAction SilentlyContinue 
+    # if(-not (Test-Path -Path $localPathOfArchiveFile -PathType leaf) ){
+    #     Invoke-WebRequest -Uri $url  -OutFile $localPathOfArchiveFile
+    # }
+
+    # New-Item -ItemType "directory" -Path (Split-Path $localPathOfArchiveFile -Parent) -ErrorAction SilentlyContinue 
+    # Invoke-WebRequest -Uri $url  -OutFile $localPathOfArchiveFile
+    
+    # $localPathOfArchiveFile = downloadFileAndReturnPath $url
+    
+    # New-Item -ItemType "directory" -Path $pathOfDirectoryInWhichToExpand -ErrorAction SilentlyContinue | out-null
+    # 7z @(
+    #     # eXtract files with full paths    
+    #     "x"
+
+    #     #Recurse subdirectories for name search
+    #     "-r"
+
+    #     #-y : assume Yes on all queries
+    #     "-y" 
+        
+    #     # -o{Directory} : set Output directory
+    #     "-o$($pathOfDirectoryInWhichToExpand)" 
+        
+    #     # <archive_name>
+    #     "$localPathOfArchiveFile" 
+        
+    #     # <file_names>...
+    #     "*"
+    # ) | write-host
+
+    # return ([string] $pathOfDirectoryInWhichToExpand)
+
+    return (expandArchiveFile -pathOfArchiveFile (downloadFileAndReturnPath $url) -pathOfDirectoryInWhichToExpand $pathOfDirectoryInWhichToExpand)
 }
 
 function downloadFileAndReturnPath {
@@ -2414,7 +2458,7 @@ function runInActiveSession {
 function runWithPerpetuallyOpenStandardInput(){
     <#
         .SYNOPSIS
-        Runs an exeutable file in such a way that the executable file will see its
+        Runs an executable file in such a way that the executable file will see its
         stdin stream be perpetually open, as it would be if the executable were run
         in an interactive shell.
 
@@ -2828,18 +2872,26 @@ function getStronglyNamedPath {
     ) 
     [OutputType([String])]
 
+    [string] $hash = (Get-FileHash -Algorithm "SHA256" -Path $path).Hash.Trim().ToLower()
 
-    $strongNameOfFile = (@(
-        [System.IO.Path]::GetFileNameWithoutExtension($path)
-        
-        "--"
-        
-        (Get-FileHash -Algorithm "SHA256" -Path $path).Hash.Trim().ToLower()
+    $delimeter = "--"
+    $desiredNamePattern = "(?-i)^.*$($delimeter)$($hash)(\.[^\.]*)?`$"
+    $initialName = [System.IO.Path]::GetFileName($path)
 
-        [System.IO.Path]::GetExtension($path)
+    $naiveStrongName = (@(
+        [System.IO.Path]::GetFileNameWithoutExtension($initialName)
+        $delimeter
+        $hash
+        [System.IO.Path]::GetExtension($initialName)
     ) -join "")
 
-    return (join-path (split-path -parent $path) $strongNameOfFile)
+    $strongName = (
+        ($initialName -match $desiredNamePattern) ?
+        $initialName :
+        $naiveStrongName
+    )
+
+    return (join-path (split-path -parent $path) $strongName)
 }
 
 function getCommandPath {
@@ -3082,11 +3134,46 @@ function publishFile {
         # I don't know exactly what this will do yet
     )
 
-    $strongName = (split-path -leaf (getStronglyNamedPath $pathOfFile))
-    $pathOfDestinationDirectory = (join-path $env:OneDriveCommercial Attachments)
-    $pathOFDestinationFile = (join-path $pathOfDestinationDirectory $strongName)
-    Copy-Item $pathOfFile $pathOFDestinationFile | out-null
-    return $pathOFDestinationFile
+    $strongFilename = (split-path -leaf (getStronglyNamedPath $pathOfFile))
+    # $pathOfDestinationDirectory = (join-path $env:OneDriveCommercial Attachments)
+    # $pathOfDestinationFile = (join-path $pathOfDestinationDirectory $strongFilename)
+    # Copy-Item $pathOfFile $pathOfDestinationFile | out-null
+    # return $pathOfDestinationFile
 
-    ## THIS FUNCTION IS NOT COMPLETE AS OF 2023-10-14-1231
+
+
+    # AS OF 2023-11-01: WE ARE, OUT OF LAZINESS, NOT LOOKING AT THE BITWARDEN
+    # ITEM ID, but merely calling Connect-MgGraph and hoping for the best.
+    # Connect-MgGraph will do an interactive sign-in if it needs to, and tends
+    # to cache the credentials somewhere (and caches them in a way that survives
+    # the current shell process.  This caching behavior is slightly scary,
+    # particularly being the defaulkt behavior, but at the moment, this caching
+    # behavior is saving me from having to do an interactive login.,
+    #
+    # to do read credentials (private key) from Bitwarden.
+    Connect-MgGraph -Scopes Files.ReadWrite.All, Sites.ReadWrite.All | out-null
+
+    $x = @{
+        Method        = "PUT"
+        Uri           = "v1.0/drives/me/items/root:/Attachments/$($strongFilename):/content"
+        InputFilePath = $pathOfFile
+        ContentType   = 'multipart/form-data'
+    } | % {Invoke-MgGraphRequest @_}
+
+    $z = @{
+        Method = "POST"
+        Uri    = "v1.0/drives/me/items/root:/Attachments/$($strongFilename):/createLink"
+        Body   = @{
+            type="view"
+            scope="anonymous"
+        }
+    } |% { Invoke-MgGraphRequest @_}
+    $a = ([System.UriBuilder] $z.link.webUrl)
+    $a.Query += "$($a.Query ? '&' : '')download=1"
+
+    # perhaps see [https://learn.microsoft.com/en-us/microsoft-365/community/query-string-url-tricks-sharepoint-m365]
+
+    # $x.Name
+    return $a.Uri.AbsoluteUri
+
 }
