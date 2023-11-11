@@ -173,10 +173,15 @@ function Start-AutodeskPopupSlapdown(){
             "        Run, taskkill /t /f /im senddmp.exe, , Hide                                                                                                   "
             "    } else if WinExist(`"ahk_group acadSaveDrawing1WindowDefinition`") {                                                                              "
             "        writeToLog(`"slapping down acadSaveDrawing1 popup`")                                                                                          "
-            "        ControlClick,No,                                                                                                                              "
+            # "        ControlClick,No,                                                                                                                              "
+            "        ControlSend, , !n                                                                                                                             "  
             "    } else if WinExist(`"ahk_group acadSaveChangesWindowDefinition`") {                                                                               "
             "        writeToLog(`"slapping down acadSaveChanges popup`")                                                                                           "
-            "        ControlClick,No,                                                                                                                              "
+            # "        ControlClick,No,                                                                                                                              "
+            # as of 2023-11-10-1856, 'ControlClick,No' is not working -- it does
+            # cause the No button to become selected but the actual click never
+            # sinks in.  Sending an alt-n keystroke does seem to work.
+            "        ControlSend, , !n                                                                                                                             "
             "    } else if WinExist(`"ahk_group revitPrivacyWindowDefinition`") {                                                                                  "
             "        writeToLog(`"slapping down revitPrivacy`")                                                                                                    "
             "        ControlClick,Help develop,                                                                                                                    "
