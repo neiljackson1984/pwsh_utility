@@ -41,6 +41,7 @@ function Start-AutodeskPopupSlapdown(){
             "GroupAdd, acadSaveChangesWindowDefinition                   ,AutoCAD ahk_exe acad.exe,Save changes to .+\?                                            "
             "GroupAdd, fusion360ErrorReportWindowDefinition              ,Fusion 360 .*Error Report ahk_exe senddmp.exe                                            "
             "GroupAdd, revitPrivacyWindowDefinition                      ,Privacy Settings ahk_exe Revit.exe,We care about your privacy                            "
+            "GroupAdd, acadProxyGraphicsWindowDefinition                 ,Proxy Information ahk_exe acad.exe,The drawing object you have opened or referenced contains custom objects"
             "                                                                                                                                                      "
             "GroupAdd, anyPopupWindowDefinition                ,ahk_group lostSheetSetAssociationWindowDefinition                                                  "
             "GroupAdd, anyPopupWindowDefinition                ,ahk_group fatalError1WindowDefinition                                                              "
@@ -60,6 +61,7 @@ function Start-AutodeskPopupSlapdown(){
             "GroupAdd, anyPopupWindowDefinition                ,ahk_group acadSaveChangesWindowDefinition                                                          "
             "GroupAdd, anyPopupWindowDefinition                ,ahk_group fusion360ErrorReportWindowDefinition                                                     "
             "GroupAdd, anyPopupWindowDefinition                ,ahk_group revitPrivacyWindowDefinition                                                             "
+            "GroupAdd, anyPopupWindowDefinition                ,ahk_group acadProxyGraphicsWindowDefinition                                                        "
             
             "                                                                                                                                                      "
             "                                                                                                                                                      "
@@ -182,10 +184,15 @@ function Start-AutodeskPopupSlapdown(){
             # cause the No button to become selected but the actual click never
             # sinks in.  Sending an alt-n keystroke does seem to work.
             "        ControlSend, , !n                                                                                                                             "
+            
             "    } else if WinExist(`"ahk_group revitPrivacyWindowDefinition`") {                                                                                  "
             "        writeToLog(`"slapping down revitPrivacy`")                                                                                                    "
             "        ControlClick,Help develop,                                                                                                                    "
             "        ControlClick,Customize our,                                                                                                                   "
+            "        ControlClick,OK,                                                                                                                              "
+            "    } else if WinExist(`"ahk_group acadProxyGraphicsWindowDefinition`") {                                                                             "
+            "        writeToLog(`"slapping down acadProxyGraphicsWindow`")                                                                                         "
+            "        ControlClick,Show proxy graphics,                                                                                                              "
             "        ControlClick,OK,                                                                                                                              "
             "    } else {                                                                                                                                          "
             "        writeToLog(`"`"                                                                                                                               "
