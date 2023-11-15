@@ -8,6 +8,8 @@
     Description = "useful utilities and dependencies"
     GUID = '1e59d151-70ae-4cdc-9df3-83f6b7703ac1'
     NestedModules=@(
+        # no good way to do wildcards here, unfortunately
+    
         "ipv6-control.psm1"
         "Set-Owner.psm1"
         "utility.psm1"
@@ -18,7 +20,7 @@
         "autodesk_identity.psm1"
         "domain_controller_session.psm1"
         "autodesk_popup_slapdown.psm1"
-        # no good way to do wildcards here, unfortunately
+        "dump-attachments.psm1"
     )
 
 
