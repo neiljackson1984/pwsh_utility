@@ -41,7 +41,7 @@ function Start-AutodeskPopupSlapdown(){
             "GroupAdd, acadSaveChangesWindowDefinition                   ,AutoCAD ahk_exe acad.exe,Save changes to .+\?                                            "
             "GroupAdd, fusion360ErrorReportWindowDefinition              ,Fusion 360 .*Error Report ahk_exe senddmp.exe                                            "
             "GroupAdd, revitPrivacyWindowDefinition                      ,Privacy Settings ahk_exe Revit.exe,We care about your privacy                            "
-            "GroupAdd, acadProxyGraphicsWindowDefinition                 ,Proxy Information ahk_exe acad.exe,The drawing object you have opened or referenced contains custom objects"
+            "GroupAdd, acadProxyGraphicsWindowDefinition                 ,Proxy Information ahk_exe acad.exe                                                       "
             "                                                                                                                                                      "
             "GroupAdd, anyPopupWindowDefinition                ,ahk_group lostSheetSetAssociationWindowDefinition                                                  "
             "GroupAdd, anyPopupWindowDefinition                ,ahk_group fatalError1WindowDefinition                                                              "
