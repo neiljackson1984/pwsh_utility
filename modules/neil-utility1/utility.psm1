@@ -3177,3 +3177,13 @@ function publishFile {
     return $a.Uri.AbsoluteUri
 
 }
+
+function getInstalledAppsFromRegistry {
+    # This is the data that appwiz.cpl draws from:
+    return @(
+        Get-ItemProperty "registry::HKLM\SOFTWARE\Wow6432Node\Microsoft\Windows\CurrentVersion\Uninstall\*" # 32 Bit
+        Get-ItemProperty "registry::HKLM\SOFTWARE\Microsoft\Windows\CurrentVersion\Uninstall\*"             # 64 Bit
+        Get-ItemProperty "registry::HKCU\SOFTWARE\Wow6432Node\Microsoft\Windows\CurrentVersion\Uninstall\*" # 32 Bit
+        Get-ItemProperty "registry::HKCU\SOFTWARE\Microsoft\Windows\CurrentVersion\Uninstall\*"             # 64 Bit
+    )
+}
