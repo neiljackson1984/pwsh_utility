@@ -135,7 +135,7 @@ function getSshPrivateKeyFromBitwardenItem {
 
     [HashTable] $bitwardenItem = Get-BitwardenItem -bitwardenItemId $bitwardenItemId
     
-    $sshPrivateKey = bw --raw get attachment id_rsa --itemid (
+    $bitwardenItemIdOfItemContainingTheKeyAsAnAttachedFile = (
         (
             $bitwardenItem.fields |
             ? {$_.name -ceq "ssh_private_key_reference"} | 
@@ -146,6 +146,65 @@ function getSshPrivateKeyFromBitwardenItem {
             $bitwardenItem.id
         )
     ) 
+
+    # $sshPrivateKey = bw --raw get attachment id_rsa --itemid $bitwardenItemIdOfItemContainingTheKeyAsAnAttachedFile
+
+    # the above technique to get the $sshPrivateKey is problematic because of
+    # the powershell newline-handling problem.
+    #
+    # I am not sure how I ever used  getSshPrivateKeyFromBitwardenItem() and
+    # initializeSshAgentFromBitwardenItemAndReturnSshAgentEnvironment() without
+    # running into this newline problem before.  Was I perhaps using the
+    # built-in windows installation of OpenSSH and perhaps the built-in
+    # installation tolerates windows-style line endings?  That sounds familiar.
+    #
+    # see
+    # [https://stackoverflow.com/questions/59110563/different-behaviour-and-output-when-piping-in-cmd-and-powershell/59118502#59118502].
+    #
+    # the workaround is either to use the --ouput option to the bw command so
+    # that bw dumps the output to a file rather than stdout, and then read the
+    # file (which is not ideal becuase we would like to keep this sensitive
+    # plaintext off the disk) or to run the bw command with
+    # System.Diagnostics.Process, and capture stdout.
+    #
+    # CAUTION: In the case where the bw command is coming from the npm package
+    # @bitwarden/cli, bw might be a powershell script (bw.ps1) rather than a
+    # native executable, and, specifically, the powershell-script version of the
+    # bw command evidently subjects the output of the attachment getting command
+    # through powershell's chop-into-lines behavior, with the result that the
+    # stdout of the below $process might indeed contain windows-style newlines
+    # even if the file attached to the bitwarden item contained only linefeeds.
+    #
+    # This is arguable a failing of the @bitwarden/cli module.  An
+    # understandable failing, perhaps, but still.
+    #
+    # note: if we omit the --raw option, the bw command saves the attached file
+    # to the current working directory -- not what we want.
+
+
+    $process = New-Object "System.Diagnostics.Process" -Property @{
+        StartInfo = (
+            @{
+                TypeName = "System.Diagnostics.ProcessStartInfo"
+                ArgumentList = @(
+                    (Get-Command bw).Path
+                    ,@(
+                        "--raw" 
+                        "get"; "attachment"; "id_rsa"
+                        "--itemid"; $bitwardenItemIdOfItemContainingTheKeyAsAnAttachedFile
+                    )
+                )
+                Property = @{
+                    RedirectStandardOutput = $True
+                }
+            } | % { New-Object @_} 
+        )
+    }
+    
+    $process.Start() | Out-Null
+    # $process.WaitForExit() | Out-Null
+    $sshPrivateKey = $process.StandardOutput.ReadToEnd()
+
 
     return $sshPrivateKey
 }
@@ -450,7 +509,19 @@ function initializeSshAgentFromBitwardenItemAndReturnSshAgentEnvironment {
         }
     
         $input | ssh-add - 
-    
+        # even though we have (mostly) dealt with the newline problem by fixing
+        # the getSshPrivateKeyFromBitwardenItem -- it still might not be a bad
+        # idea to filter out any carriage returns that might have gotten into
+        # input one way or another.  It's annoying that OpenSSH is so sensitive
+        # about windows-style newlines in the key files.
+        #
+        # I suspect that Windows' built-in installation of OpenSSH might
+        # tolerate windows-style newlines -- that might be why I did not
+        # immediately encounter the newline problem (I think I only encountered
+        # the newline problem when I had my system path set up so as to favor
+        # the cygwin version of OpenSSH.
+
+
         foreach($key in $initialValues.Keys){
             Set-Item "env:$($key)" -Value $initialValues[$key]
         }
