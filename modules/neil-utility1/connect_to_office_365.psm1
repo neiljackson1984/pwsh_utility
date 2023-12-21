@@ -127,6 +127,99 @@ function forceGraphModuleToLoadItsVersionOf_System_IdentityModel_Tokens_Jwt(){
 }
 
 
+function forceLoadConflictingAssemblies(){
+    <#
+
+        2023-12-20-1653 : Loads several assemblies from the
+        Microsoft.Graph.Authentication module and ExchangeOnlineManagement that
+        must be loaded in a particular order in order not to cause a dll
+        hell/diamond problem.
+
+        2023-12-20-1653: There was some change to the order that was needed
+        after updating the Microsoft.Graph and ExchangeOnlineManagement modules
+        today to the latest version.
+
+
+    #>
+    [CmdletBinding()]
+    Param()
+
+    $rootAssembliesToForceSpecs = @(
+        # coming up with a working list of specs here is purely trial and error
+        # guided (sort of) by the error messages.
+        @{
+            nameOfModule                      = "Microsoft.Graph.Authentication"
+            relativePathOfRootAssemblyToForce = "Dependencies/Core/Microsoft.Identity.Client.dll"
+        }
+        @{
+            nameOfModule                      = "Microsoft.Graph.Authentication"
+            relativePathOfRootAssemblyToForce = "Dependencies/Core/Microsoft.Graph.Core.dll"
+        }
+        @{
+            nameOfModule                      = "Microsoft.Graph.Authentication"
+            relativePathOfRootAssemblyToForce = "Dependencies/Core/Azure.Core.dll"
+        }
+        @{
+            nameOfModule                      = "Microsoft.Graph.Authentication"
+            relativePathOfRootAssemblyToForce = "Dependencies/Microsoft.Kiota.Authentication.Azure.dll"
+        }
+        @{
+            nameOfModule                      = "ExchangeOnlineManagement"
+            relativePathOfRootAssemblyToForce = "netCore/System.IdentityModel.Tokens.Jwt.dll"
+        }
+        ## @{
+        ##     nameOfModule                      = "ExchangeOnlineManagement"
+        ##     relativePathOfRootAssemblyToForce = "netCore/Microsoft.Identity.Client.dll"
+        ## }
+        ## @{
+        ##     nameOfModule                      = "ExchangeOnlineManagement"
+        ##     relativePathOfRootAssemblyToForce = "netCore/Azure.Core.dll"
+        ## }
+        @{
+            nameOfModule                      = "ExchangeOnlineManagement"
+            relativePathOfRootAssemblyToForce = "netCore/Microsoft.Exchange.Management.ExoPowershellGalleryModule.dll"
+        }
+    )
+
+    foreach ($spec in $rootAssembliesToForceSpecs){
+        $pathOfRootFolderOfModule  = (Get-InstalledModule $spec.nameOfModule).InstalledLocation
+        $pathOfRootAssemblyToForce = join-path $pathOfRootFolderOfModule $spec.relativePathOfRootAssemblyToForce
+        
+        $assembliesToLoad = @(
+            @{
+                rootAssembly = [System.Reflection.Assembly]::LoadFile( $pathOfRootAssemblyToForce )
+                # filter = { Test-SubPath -ChildPath $_.Location -ParentPath $pathOfRootFolderOfModule }
+                filter = [ScriptBlock]::Create("Test-SubPath -ChildPath `$_.Location -ParentPath '$pathOfRootFolderOfModule' ")
+                pathHints = @(
+                    Split-Path $pathOfRootAssemblyToForce -Parent
+                )
+
+            } | % { getReferencedAssembliesRecursivelyForReflection @_ }
+        )
+
+        $pathsOfDllFilesToLoad = @(
+            $assembliesToLoad |
+            % {$_.Location}
+        )
+
+        Write-Debug "We will now attempt to load the following $($pathsOfDllFilesToLoad.Length) dll files: "
+        $pathsOfDllFilesToLoad | Write-Debug
+
+        foreach(
+            $pathOfDllFile in $pathsOfDllFilesToLoad
+        ){
+            try { 
+                $private:ErrorActionPreference = "Stop"
+                [System.Reflection.Assembly]::LoadFrom($pathOfDllFile) 1> $null
+            } catch {
+                Write-Debug "Catching an error: $_"
+            }
+        }
+    }
+}
+
+
+
 function doUglyHackToFixDependencyHellFor_System_IdentityModel_Tokens_Jwt(){
     # see https://stackoverflow.com/questions/72490964/powershell-core-resolving-assembly-conflicts
     # see https://stackoverflow.com/questions/68972925/powershell-why-am-i-able-to-load-multiple-versions-of-the-same-net-assembly-in
@@ -392,7 +485,9 @@ function connectToOffice365 {
     )
     
 
-    forceExchangeModuleToLoadItsVersionOf_System_IdentityModel_Tokens_Jwt
+    # forceExchangeModuleToLoadItsVersionOf_System_IdentityModel_Tokens_Jwt
+    forceLoadConflictingAssemblies
+
     # todo: think through and simplify all the possibilities of parameters.  We
     # have three parameters (namely: bitwardenItemIdOfTheConfiguration,
     # tenantIdHint, primaryDomainName)  that, at first glance, appear to be
