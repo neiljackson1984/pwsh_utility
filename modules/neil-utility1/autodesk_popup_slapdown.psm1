@@ -40,7 +40,7 @@ function Start-AutodeskPopupSlapdown(){
             "GroupAdd, acadSaveDrawing1WindowDefinition                  ,AutoCAD ahk_exe acad.exe,Save changes to Drawing1\.dwg\?                                 "
             "GroupAdd, acadSaveChangesWindowDefinition                   ,AutoCAD ahk_exe acad.exe,Save changes to .+\?                                            "
             "GroupAdd, fusion360ErrorReportWindowDefinition              ,Fusion 360 .*Error Report ahk_exe senddmp.exe                                            "
-            "GroupAdd, revitOrAutocadPrivacyWindowDefinition                      ,Privacy Settings ahk_exe Revit\.exe|acad\.exe,We care about your privacy        "
+            "GroupAdd, revitOrAutocadPrivacyWindowDefinition             ,Privacy Settings ahk_exe Revit\.exe|acad\.exe,We care about your privacy                 "
             "GroupAdd, acadProxyGraphicsWindowDefinition                 ,Proxy Information ahk_exe acad.exe                                                       "
             "                                                                                                                                                      "
             "GroupAdd, anyPopupWindowDefinition                ,ahk_group lostSheetSetAssociationWindowDefinition                                                  "
