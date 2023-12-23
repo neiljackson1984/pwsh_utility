@@ -1082,14 +1082,64 @@ function Send-TestMessage(){
     }
 }
 
-function setLicensesAssignedToMgUser($userId, $skuPartNumbers){
-    # $azureAdUser = Get-AzureADUser -ObjectId $objectIdOfAzureAdUser
-    # $mgUser = Get-MgUser -UserId  $userId
+
+function getEnabledServicePlansAssignedToUser{
+    [CmdletBinding()]
+    [OutputType([Microsoft.Graph.PowerShell.Models.MicrosoftGraphServicePlanInfo])]
+
+    Param(
+        [string] $userId
+    )
+
+    $mgUser = get-mguser -UserId $userId 
+    if (! $mgUser ){
+        Write-Host "No mgUser having id $userId exists."
+        return
+    } 
+
+
+    (get-mguser -UserId $mgUser.Id -Property @("AssignedLicenses")).AssignedLicenses | 
+    % {
+        $mgAssignedLicense = $_
+        Get-MgSubscribedSku -All  |
+        ? {$_.SkuId -ceq $mgAssignedLicense.SkuId} |
+        select -expand ServicePlans |
+        ? { -not ($_.ServicePlanId -in $mgAssignedLicense.DisabledPlans) } |
+        
+        # select -expand ServicePlanId |
+        # select -unique |
+
+
+        # this will return multiple identical servicePlans if the service plan
+        # is provided by more than one of the licenses assigned to the user.
+        write-output
+    }
+}
+
+
+function setLicensesAssignedToMgUser{
     
-    # $propertyNames = @(get-mguser -UserId $userId  | get-member -MemberType Property | foreach-object {$_.Name}) 
-    # $mgUser = get-mguser -UserId $userId -Property $propertyNames
+    [CmdletBinding()]
+    Param(
+        [string] $userId,
+        [string[]] $skuPartNumbers,
+
+        [parameter(mandatory=$False) ]
+        [string[]] $namesOfDisabledPlans = @()
+    )
     
-    # $mgUser = get-mguser -UserId $userId -Property @("UsageLocation", "AssignedLicenses") 
+    ##{ #  experiment about default values and casting:
+    ##    $x =  $null
+    ##    $y = ([string[]] $null)
+    ##    $z = ([string[]] @())
+    ##
+    ##    $null -ceq $x
+    ##    $null -ceq $y
+    ##    $null -ceq $z
+    ##    $y.GetType().FullName
+    ##    $z.GetType().FullName
+    ##}
+
     $mgUser = get-mguser -UserId $userId 
     if (! $mgUser ){
         Write-Host "No mgUser having id $userId exists."
@@ -1097,55 +1147,112 @@ function setLicensesAssignedToMgUser($userId, $skuPartNumbers){
     } 
 
     # to view the available sku part numbers, run the following command:
-    # # (Get-AzureADSubscribedSku).SkuPartNumber
-    # (Get-MgSubscribedSku).SkuPartNumber
-
-    $mgSubscribedSku = Get-MgSubscribedSku
+    ## Get-MgSubscribedSku -All | select -expand SkuPartNumber
 
     # assign licenses:
-    # annoyingly, there does not seem to be a good way to buy licenses programmatically 
+    #
+    # annoyingly, there does not seem to be a good way to buy licenses
+    # programmatically 
+    $allMgSubscribedSkus = Get-MgSubscribedSku -All
+
     $desiredSkuIds = @(
-        $mgSubscribedSku | 
-            where-object { $_.SkuPartNumber -in @($skuPartNumbers) } |
-            foreach-object { $_.SkuId }
+        $allMgSubscribedSkus | 
+        ?{ $_.SkuPartNumber -in @($skuPartNumbers) } |
+        select -expand SkuId |
+        select -unique
     )
-    $initialExistingSkuIds = @(
-        # Get-MgUserLicenseDetail -UserId $mgUser.Id | 
-        # $mgUser.AssignedLicenses | 
+
+    $initialSkuIds = @(
         (get-mguser -UserId $mgUser.Id -Property @("AssignedLicenses")).AssignedLicenses | 
-            where-object { $_ } | 
-            foreach-object {$_.SkuId}
+        select -expand SkuId |
+        select -unique
     )
+
+    $initialEnabledServicePlans = @( getEnabledServicePlansAssignedToUser $mgUser.Id )
+    $initialIdsOfEnabledServicePlans = ( $initialEnabledServicePlans | select -expand ServicePlanId | select -unique )
+    $desiredIdsOfEnabledServicePlans = @(
+        $allMgSubscribedSkus |
+        ? { $_.SkuId -in $desiredSkuIds } |
+        select -expand ServicePlans |
+        ? { -not ($_.ServicePlanName -in $namesOfDisabledPlans ) } | 
+        select -expand ServicePlanId |
+        select -unique
+    )
+
+
+
+    # Naively, you might think (or desire) that DisabledPlans is something that
+    # you would set for the user as a whole, rather than for each
+    # AssignedLicense, (or, maybe even better, that there would be non notion of
+    # a disabledPlan -- only an assigned plan.)
+    #
+    # But the API is geared towards having the DisabledPlans be a property of
+    # each AssignedLicense.
+    #
+    # We have to therefore be mindful as we construct as
+    # $initialIdsOfDisabledServicePlans -- the ids of the service plans that the
+    # user would have were it not for the effect of the DisabledPlans
+    # property(s) of the AssignedPlans. The user will have each plan that
+    # belongs any of the assigned licenses, unless the id of the plan appears in
+    # the DisabledPlans property of each assigned license where the license
+    # contains that plan.  It's a bit tricky to think about the any-vs.-all
+    # logic.
+    #
+    # We first construct $initialIdsOfEnabledServicePlans, which we use to help
+    # us construct $initialIdsOfDisabledServicePlans .
+
+
+
     Write-Host (
         @(
             "Initially, $($mgUser.UserPrincipalName) has the "
-            "following $($initialExistingSkuIds.Length) skuPartNumbers: " 
-            ( 
-                @( 
-                    # $mgSubscribedSku |
-                    # where-object { $_.SkuId -in $initialExistingSkuIds } |
-                    # foreach-object {$_.SkuPartNumber}
+            
+            "following $($initialSkuIds.Count) skuPartNumbers: " 
 
-                    $initialExistingSkuIds | % {skuIdToSkuPartNumber $_}
+            @( 
+                $initialSkuIds | % {skuIdToSkuPartNumber $_}
+            ) -Join ", "
+            
+        ) -join ""
+    )
 
+    Write-Host (
+        @(
+            "Initially, $($mgUser.UserPrincipalName) has the "
+            
+            "following $($initialEnabledServicePlans.Count) enabled service plans: " 
 
-                ) -Join ", "
-            )
+            @( 
+                $initialEnabledServicePlans | 
+                select -expand ServicePlanName
+            ) -Join ", "
+            
         ) -join ""
     )
     
     #ensure that licenses are assigned:
-    $skuIdsToRemoveFromUser = @($initialExistingSkuIds | where-object {-not ($_ -in $desiredSkuIds)});
-    $skuIdsToGiveToUser = @($desiredSkuIds | where-object {-not ($_ -in $initialExistingSkuIds)});
+    $skuIdsToRemoveFromUser = @($initialSkuIds | ? {-not ($_ -in $desiredSkuIds)})
+    $skuIdsToGiveToUser = @($desiredSkuIds | ? {-not ($_ -in $initialSkuIds)})
     
-    Write-Host ("skuIdsToRemoveFromUser ($($skuIdsToRemoveFromUser.Length)): ", $skuIdsToRemoveFromUser)
-    Write-Host ("skuIdsToGiveToUser ($($skuIdsToGiveToUser.Length)):", $skuIdsToGiveToUser)
     
-    if($skuIdsToRemoveFromUser -or $skuIdsToGiveToUser){
+    $idsOfServicePlansToGiveTheUser = @( $desiredIdsOfEnabledServicePlans |?{ -not ($_ -in $initialIdsOfEnabledServicePlans) } )
+    $idsOfServicePlansToRemoveFromUser = @( $initialIdsOfEnabledServicePlans |?{ -not ($_ -in $desiredIdsOfEnabledServicePlans) } )
+
+
+
+
+
+    Write-Host ("skuIdsToRemoveFromUser ($($skuIdsToRemoveFromUser.Count)): ", $skuIdsToRemoveFromUser)
+    Write-Host ("skuIdsToGiveToUser ($($skuIdsToGiveToUser.Count)):", $skuIdsToGiveToUser)
+    Write-Host ("idsOfServicePlansToGiveTheUser ($($idsOfServicePlansToGiveTheUser.Count)): ", $idsOfServicePlansToGiveTheUser)
+    Write-Host ("idsOfServicePlansToRemoveFromUser ($($idsOfServicePlansToRemoveFromUser.Count)):", $idsOfServicePlansToRemoveFromUser)
+    
+
+
+    if($skuIdsToRemoveFromUser -or $skuIdsToGiveToUser -or $idsOfServicePlansToGiveTheUser -or $idsOfServicePlansToRemoveFromUser){
         Write-Host "changing the user's license assignment to match the desired configuration"
         
         # make sure that the user has a UsageLocationn defined
-
         $intialUsageLocation = (get-mguser -UserId $mgUser.Id -Property @("UsageLocation")).UsageLocation
         if($intialUsageLocation){
             Write-Host (@(
@@ -1162,78 +1269,79 @@ function setLicensesAssignedToMgUser($userId, $skuPartNumbers){
             ) -join "")
 
             Update-MgUser -UserId $mgUser.Id -UsageLocation $newUsageLocation 1> $null
-            # $mgUser = get-mguser -UserId $userId -Property @("UsageLocation", "AssignedLicenses") 
         }
 
-        # if($skuIdsToRemoveFromUser){
-        #     # # $assignedLicenses.RemoveLicenses = @($skuIdsToRemoveFromUser | foreach-object {$x = New-Object -TypeName Microsoft.Open.AzureAD.Model.AssignedLicense; $x.SkuId = $_; $x })
-        #     $assignedLicenses = New-Object -TypeName Microsoft.Open.AzureAD.Model.AssignedLicenses
-        #     $assignedLicenses.RemoveLicenses = $skuIdsToRemoveFromUser
-        #     Set-AzureAdUserLicense -ObjectId $azureAdUser.ObjectId -AssignedLicenses $assignedLicenses
 
 
-        # }
-        
-        # foreach($skuIdToGiveToUser in $skuIdsToGiveToUser){
-        #     $assignedLicense = New-Object -TypeName Microsoft.Open.AzureAD.Model.AssignedLicense;
-        #     $assignedLicense.SkuId = $skuIdToGiveToUser;
-        #     $assignedLicenses = New-Object -TypeName Microsoft.Open.AzureAD.Model.AssignedLicenses;
-        #     $assignedLicenses.AddLicenses = $assignedLicense;
-        #     $azureAdUser | Set-AzureADUser -UsageLocation "US"
-        #     Set-AzureAdUserLicense -ObjectId $azureAdUser.ObjectId -AssignedLicenses $assignedLicenses
-        # }
-
-        # if($skuIdsToGiveToUser){
-            # $assignedLicenses = New-Object -TypeName Microsoft.Open.AzureAD.Model.AssignedLicenses
-            # $assignedLicenses.AddLicenses = $skuIdsToGiveToUser
-            # Set-AzureAdUserLicense -ObjectId $azureAdUser.ObjectId -AssignedLicenses $assignedLicenses
-        # }
-
-
-
-        $s = @{
+        @{
             UserId = $mgUser.Id
             RemoveLicenses = $skuIdsToRemoveFromUser
             AddLicenses = (
+                ## it doesn't hurt to have a license here that the user already has.  The 
+                ## DisabledPlans property will be updated to match whatever we give here.
+
                 # [IMicrosoftGraphAssignedLicense[]]
                 @(
-                    $skuIdsToGiveToUser | 
-                        foreach-object {
-                            (
-                                # [IMicrosoftGraphAssignedLicense] 
-                                @{
-                                    DisabledPlans = @()
-                                    SkuId = $_
-                                }
+                    $desiredSkuIds | 
+                    % {
+                        $skuId = $_
+                        $mgSubscribedSku = $allMgSubscribedSkus |? { $_.SkuId -eq  $skuId }
+                        
+                        # [IMicrosoftGraphAssignedLicense] 
+                        @{
+                            DisabledPlans = @(
+                                $mgSubscribedSku.ServicePlans |
+                                select -expand ServicePlanId |
+                                ? {-not ($_ -in $desiredIdsOfEnabledServicePlans)}
                             )
+                            SkuId = $mgSubscribedSku.SkuId
                         }
+
+                    }
                 )
             )
-        }; Set-MgUserLicense @s 1> $null
+        } | % { Set-MgUserLicense @_ } 1> $null
 
-        $finalExistingSkuIds = @(
-            # Get-MgUserLicenseDetail -UserId $mgUser.Id |
-            # $mgUser.AssignedLicenses | 
-            (get-mguser -UserId $mgUser.Id -Property @("AssignedLicenses")).AssignedLicenses |
-                where-object { $_ } | 
-                foreach-object {$_.SkuId}
+
+        $finalSkuIds = @(
+            (get-mguser -UserId $mgUser.Id -Property @("AssignedLicenses")).AssignedLicenses | 
+            select -expand SkuId |
+            select -unique
         )
+
+        $finalEnabledServicePlans = @( getEnabledServicePlansAssignedToUser $mgUser.Id )
+
         Write-Host (
             @(
-                "After making changes, $($mgUser.UserPrincipalName) "
-                "has these $($finalExistingSkuIds.Length) skuPartNumbers: " 
-                ( 
-                    @(
-                        # $mgSubscribedSku | 
-                        #     where-object { $_.SkuId -in $finalExistingSkuIds } | 
-                        #     foreach-object {$_.SkuPartNumber}
-
-                        $finalExistingSkuIds | % {skuIdToSkuPartNumber $_}
-
-                    ) -Join ", "
-                )
+                "After making changes, $($mgUser.UserPrincipalName) has the "
+                
+                "following $($finalSkuIds.Count) skuPartNumbers: " 
+    
+                @( 
+                    $finalSkuIds | % {skuIdToSkuPartNumber $_}
+                ) -Join ", "
+                
             ) -join ""
         )
+    
+        Write-Host (
+            @(
+                "After making changes, $($mgUser.UserPrincipalName) has the "
+                
+                "following $($finalEnabledServicePlans.Count) enabled service plans: " 
+    
+                @( 
+                    $finalEnabledServicePlans | 
+                    select -expand ServicePlanName
+                ) -Join ", "
+                
+            ) -join ""
+        )
+
+
+
+
+
     } else {
         Write-Host "no changes need to be made to the user's licenses."
     }
@@ -3257,4 +3365,26 @@ function getInstalledAppsFromRegistry {
         Get-ItemProperty "registry::HKCU\SOFTWARE\Wow6432Node\Microsoft\Windows\CurrentVersion\Uninstall\*" # 32 Bit
         Get-ItemProperty "registry::HKCU\SOFTWARE\Microsoft\Windows\CurrentVersion\Uninstall\*"             # 64 Bit
     )
+}
+
+function formattedObjectToClipboard {
+    <#
+        puts a string on the clipboard that is a valid powershell block comment 
+        that describes the piped-in object.  Useful for exploring classes (and recording the 
+        reports in-line with the exploratory code.
+    #>
+    
+    end {
+        $input | 
+        fl | 
+        out-string | 
+        % {
+            @(
+                $_ -split "`n" |
+                % { "    $_" }
+            ) -join "`n"
+        } |
+        % {"<#$_`n#>"} | 
+        set-clipboard
+    }
 }

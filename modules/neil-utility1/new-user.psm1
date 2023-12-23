@@ -90,7 +90,11 @@ function initializeUser {
 
         $mgUser = Get-MgUser -UserId  $userPrincipalName 
         
-        setLicensesAssignedToMgUser -userId $mgUser.Id -skuPartNumbers $userSpec.licenses
+        @{
+            userId               = $mgUser.Id
+            skuPartNumbers       = $userSpec.licenses
+            namesOfDisabledPlans = $userSpec.namesOfDisabledPlans
+        } | % { setLicensesAssignedToMgUser @_ }
         
    
         $mgUser = Get-MgUser -UserId  $mgUser.Id  
@@ -297,7 +301,12 @@ function initializeUser {
             Write-Host "No MgUser having id $($adUser.UserPrincipalName) exists.  Probably need to wait a few minutes for adsync to push changes to the cloud."
         } else {
             # assign licenses:
-            setLicensesAssignedToMgUser -userId $mgUser.Id -skuPartNumbers $userSpec.licenses
+            @{
+                userId               = $mgUser.Id
+                skuPartNumbers       = $userSpec.licenses
+                namesOfDisabledPlans = $userSpec.namesOfDisabledPlans
+            } | % { setLicensesAssignedToMgUser @_ }
+
         }
 
     }
