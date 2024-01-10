@@ -1,6 +1,9 @@
 #!pwsh
 <#
     commands for interacting with AutoCAD's COM automation interface.
+
+    As an example of a few ideas about how to use this, see
+    [https://gitlab.com/neiljackson1984/2020-08-13_219004_shaffer/-/raw/34d945d87f3c0c37408b5ddf39d569376283f79f/shaffer_process_notes.ps1].
 #>
 
 &{  # load several useful AutoCAD assemblies (dll files) into memory,
