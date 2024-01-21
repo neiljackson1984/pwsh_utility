@@ -2318,13 +2318,14 @@ function downloadFileAndReturnPath {
     of the downloaded file.
 
     #>
-    
+    [CmdletBinding()]
+    [OutputType([String])]
     Param(
         [parameter()]
         [String] $urlOfFile
     ) 
 
-    [OutputType([String])]
+    
     
     
     # $filenameOfDownloadedFile = (split-path -leaf $urlOfFile )
@@ -2495,20 +2496,17 @@ function installGoodies(){
         Set-ExecutionPolicy Bypass -Scope Process -Force  
         [System.Net.ServicePointManager]::SecurityProtocol = [System.Net.ServicePointManager]::SecurityProtocol -bor 3072 
         Invoke-Expression ((New-Object System.Net.WebClient).DownloadString('https://community.chocolatey.org/install.ps1'))  
-        choco upgrade --acceptlicense --confirm chocolatey  
-
-        #ensure that 7zip is installed
-        choco upgrade --acceptlicense --yes 7zip 
-
-        #ensure that pwsh is installed
-        choco upgrade --acceptlicense --yes pwsh  
-
-        choco upgrade --acceptlicense --yes --force "winmerge"
-        choco upgrade --acceptlicense --yes --force "spacesniffer"
-        choco upgrade --acceptlicense --yes --force "notepadplusplus"
-        choco upgrade --acceptlicense --yes --force "sysinternals"
         
-        choco upgrade --acceptlicense --yes --force "hdtune"
+        @(
+            "chocolatey"
+            "7zip"
+            "pwsh"
+            "winmerge"
+            "spacesniffer"
+            "notepadplusplus"
+            "sysinternals"
+            "hdtune"
+        ) | % {choco upgrade --acceptlicense --yes $_}
 
         # "upgrade" installs if it is not already installed, so we do not need
         # to do both "install" and "upgrade"; "upgrade" on its own will ensure
@@ -2518,7 +2516,7 @@ function installGoodies(){
 }
 
 
-function runElevatedInActiveSession(){
+function runElevatedInActiveSession{
     <#
         .SYNOPSIS
         This is a hack on several levels that gets the job done.  Given a powershell session (typically a remote session),
@@ -2543,10 +2541,8 @@ function runElevatedInActiveSession(){
 
         This command relies on the psexec program included in sysinternals.
     #>
-    
+    [CmdletBinding()]
     Param(
-        # [System.Management.Automation.Runspaces.PSSession] $session,
-
         [parameter(ValueFromRemainingArguments = $true)]
         [String[]] $remainingArguments
     ) 
@@ -3243,6 +3239,124 @@ function findFileInProgramFiles {
     Select -Expand FullName
 }
 
+function getCwcPwshWrappedCommand([string] $command){
+    # given a command (a string) that is a valid Powershell script block, we
+    # return a string that can be inserted into a command to be run via
+    # Screenconnect, which will (assuming the "#!ps" magic comment line appears
+    # earlier, and assuming that pwsh is installed) execute the command in pwsh.
+    
+    return -join @(
+        <#  ATTEMPT 1 (REJECTED) :
+
+            ##  "pwsh -c "; "{`n"
+            ##      $command
+            ##  "`n}"
+
+            This version of the wrapping function has a tendency to produce
+            a command line that is too long (produces the errer "Program
+            'pwsh.exe' failed to run: The filename or extension is too
+            long") and therefore does not run reliably.
+        #>
+
+
+        <#  ATTEMPT 2 (REJECTED) :
+            
+            ##  "pwsh -EncodedCommand "
+            ##  [System.Convert]::ToBase64String(
+            ##      [system.Text.Encoding]::Unicode.GetBytes(
+            ##          $command
+            ##      ) 
+            ##  )  
+
+            It makes no difference (in general) whether we do the base64
+            encoding trick or not -- there is still a trendency to produce
+            an overly-long command line that produces the error "Program
+            'pwsh.exe' failed to run: The filename or extension is too
+            long"
+        #>
+
+        <#  ATTEMPT 3 (REJECTED) :
+
+            ##  "[System.Text.Encoding]::UTF8.GetString("
+            ##      "[System.Convert]::FromBase64String(" 
+            ##          "`""
+            ##              [System.Convert]::ToBase64String(
+            ##                  [System.Text.Encoding]::UTF8.GetBytes(
+            ##                      # $command
+            ##  
+            ##                      # pwsh has a tendency to echo the command as it
+            ##                      # is executing.  by wrapping in a script block,
+            ##                      # at least the printout will occur all in one
+            ##                      # chunk before any results, rather than having
+            ##                      # commands interspersed with results in the
+            ##                      # output.
+            ##  
+            ##                      (
+            ##                          @(
+            ##                              "&{"
+            ##                                  $command
+            ##                              "}"
+            ##                              ""
+            ##                              # the terminal newline seems to be
+            ##                              # necessary to make powershell actually
+            ##                              # execute the command rather than wait
+            ##                              # endlessly for further input.
+            ##                          ) -join "`r`n"
+            ##                      )
+            ##                  ) 
+            ##              )  
+            ##          "`""
+            ##      ")"
+            ##  ")"
+            ##  "|"
+            ##  "pwsh -NoLogo"
+        
+            this version of the wrapping function overcomes the problem
+            of the overly-long command line but reveals a new potential
+            problem -- if the code in $command contains a Param() block
+            that contains a comment line followed by an empty line, the
+            pwsh parser detects this as a Parser Error (essentially a
+            syntax error).  Curiously, Powershell's parser only regards
+            this as a syntax error when the code is being piped into
+            pwsh's stdin, but not in any other case. See
+            [https://github.com/orgs/PowerShell/discussions/21109].  I
+            suspect that a comment line followed by an empty line is not
+            a syntax error according to the official PowerShell language
+            specification.
+
+        #>
+
+        "[System.Text.Encoding]::UTF8.GetString("
+            "[System.Convert]::FromBase64String(" 
+                "`""
+                    [System.Convert]::ToBase64String(
+                        [System.Text.Encoding]::UTF8.GetBytes(
+                            $command
+                        ) 
+                    )  
+                "`""
+            ")"
+        ")"
+        " | "
+        "pwsh -NoLogo -c '(@(`$input) -join ([char] 10)) | Invoke-Expression'"
+
+        <#  Instead of having pwsh read the code directly from standard
+            input, we instead run a little command that assembles the entire
+            contents of standard input into a single string, which we then
+            pipe into Invoke-Expression.  Invoke-Expression is
+            (inexplicably) immune from the aforementioned weird
+            sometimes-syntax-error of a comment lin e followed by an empty
+            line in a Param() block.
+
+            I am using "([char] 10)" rather than "`"``n`"" because the
+            latter (specifically, the double quotes, I think) tends to cause
+            problems.
+
+            The base64 encoding/decoding is probably not necessary.
+        #>
+    )
+}
+
 function runInCwcSession {
     [OutputType([string])]
     [CmdletBinding()]
@@ -3256,6 +3370,17 @@ function runInCwcSession {
         [Parameter(Mandatory=$False)] [int] $timeout
     )
     Import-Module ConnectWiseControlAPI
+    <#
+        We can't use version 0.3.5.0 of the ConnectWiseControlAPI module (whcih
+        is the latest version as of 2024-01-11-1118) because that version
+        assumes a newer version of the Screenconnect API than is running on our
+        screenconnect server.
+        ```
+        Uninstall-Module ConnectWiseControlAPI
+        Update-Module ConnectWiseControlAPI -MaximumVersion 0.3.1.0
+        ```
+    #>
+
 
     ## ensure connection to screenconnect:
     $bitwardenItem = Get-BitwardenItem -bitwardenItemId $bitwardenItemIdOfScreenconnectCredentials
@@ -3270,6 +3395,7 @@ function runInCwcSession {
         # Force       = $True
     } | % { Connect-CWC  @_ } | 
     Write-Host
+
     $screenconnectSearchString = "## NAME = '$($nameOfSession)'"
     ## retrieve the specified session
     
