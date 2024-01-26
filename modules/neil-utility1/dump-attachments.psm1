@@ -51,7 +51,7 @@ function dump-attachments {
             
             $pathOfTempFile = [System.IO.Path]::GetTempFileName()
             $attachedFile.SaveAsFile($pathOfStagedFile)
-            $hashOfAttachedFile = (Get-FileHash -Path $pathOfStagedFile -Algorithm SHA1).hash
+            $hashOfAttachedFile = (Get-FileHash -Path $pathOfStagedFile -Algorithm SHA256).hash
 
             if($appendHashToOutputFileNames) {
                 # $filenameOfDestinationFile = (Split-Path -LeafBase -Path $attachedFile.Filename ) + "--" + $hashOfAttachedFile + (Split-Path -Extension -Path $attachedFile.Filename ) 

@@ -2872,9 +2872,15 @@ function addEntryToSystemPathPersistently{
         )]
         [Switch] $prepend = $False
     )
+    $environmentVariableTarget = [System.EnvironmentVariableTarget]::Machine
     
-    $existingPathEntries = @(([System.Environment]::GetEnvironmentVariable('PATH', [System.EnvironmentVariableTarget]::Machine)) -Split ([IO.Path]::PathSeparator) | Where-Object {$_})
-    # $desiredPathEntries = deduplicate($existingPathEntries + $pathEntry)
+    $existingPathEntries = @(
+        [System.Environment]::GetEnvironmentVariable(
+            'PATH', 
+            $environmentVariableTarget
+        ) -Split [IO.Path]::PathSeparator | 
+        Where-Object {$_}
+    )
     $desiredPathEntries = @(
         @( 
             if($prepend){
@@ -2891,7 +2897,7 @@ function addEntryToSystemPathPersistently{
     [System.Environment]::SetEnvironmentVariable(
         'PATH', 
         ([String]::Join([IO.Path]::PathSeparator, $desiredPathEntries)),
-        [System.EnvironmentVariableTarget]::Machine
+        $environmentVariableTarget
     )
 }
 
@@ -3359,15 +3365,47 @@ function getCwcPwshWrappedCommand([string] $command){
 
 function runInCwcSession {
     [OutputType([string])]
-    [CmdletBinding()]
+    [CmdletBinding(PositionalBinding=$False)]
     Param(
-        [Parameter()] [string] $bitwardenItemIdOfScreenconnectCredentials, 
+        [Parameter()]
+        [string] $bitwardenItemIdOfScreenconnectCredentials, 
 
-        [Parameter(Mandatory=$False)] [string] $nameOfGroup, 
-        [Parameter()] [string] $nameOfSession,
+        [Parameter(Mandatory=$False)] 
+        [string] $nameOfGroup, 
+
+        [Parameter()] 
+        [string] $nameOfSession,
         
-        [Parameter()] [string] $command,
-        [Parameter(Mandatory=$False)] [int] $timeout
+        [Parameter(Mandatory=$False)] 
+        [int] $timeout,
+
+        ## [Parameter(Mandatory=$False)] 
+        ## [System.TimeSpan] $timeout,
+
+        [Parameter(
+            Position=0,
+            Mandatory=$False, 
+            HelpMessage="preambleCommand will be prepended to command (with a linefeed separator) before submitting the request to Screenconnect"
+        )] 
+        [string[]] $preambleCommand,
+
+        [Parameter(
+            Position=1,
+            Mandatory=$False
+        )] 
+        [string[]] $command,
+
+        [Parameter(
+            Position=2,
+            Mandatory=$False,
+            HelpMessage="postambleCommand will be appended to command (with a linefeed separator) before submitting the request to Screenconnect"
+        )] 
+        [string[]] $postambleCommand
+
+
+        # The only reason for having these three distinct parameters (rather
+        # than just a single (array) command parameter) is to facilitate
+        # splatting.
     )
     Import-Module ConnectWiseControlAPI
     <#
@@ -3447,7 +3485,9 @@ function runInCwcSession {
             Command =  (
                 @(
                     "#maxlength=1000000"
-                    $command
+                    if($preambleCommand){$preambleCommand}
+                    if($command){$command}
+                    if($postambleCommand){$postambleCommand}
                 ) -join "`n"
             )
         } +
@@ -3559,4 +3599,28 @@ function formattedObjectToClipboard {
         % {"<#$_`n#>"} | 
         set-clipboard
     }
+}
+
+function Send-SettingChange {
+    <#
+        copied with slight modification from
+        [https://gist.github.com/alphp/78fffb6d69e5bb863c76bbfc767effda].
+
+        see
+        [https://serverfault.com/questions/8855/how-do-you-add-a-windows-environment-variable-without-rebooting].
+        see
+        [https://gist.github.com/alphp/78fffb6d69e5bb863c76bbfc767effda].
+    #>
+    Add-Type -Namespace Win32 -Name NativeMethods -MemberDefinition (
+        @(
+            '[DllImport("user32.dll", SetLastError = true, CharSet = CharSet.Auto)]'
+            'public static extern IntPtr SendMessageTimeout(IntPtr hWnd, uint Msg, UIntPtr wParam, string lParam, uint fuFlags, uint uTimeout, out UIntPtr lpdwResult);'
+        ) -join "`n"
+    )
+
+    $HWND_BROADCAST = [IntPtr] 0xffff;
+    $WM_SETTINGCHANGE = 0x1a;
+    $result = [UIntPtr]::Zero
+
+    [void] ([Win32.Nativemethods]::SendMessageTimeout($HWND_BROADCAST, $WM_SETTINGCHANGE, [UIntPtr]::Zero, "Environment", 2, 5000, [ref] $result))
 }
