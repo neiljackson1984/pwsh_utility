@@ -3003,15 +3003,46 @@ function reportDrives(){
 
 }
 
-function Disable-UserAccessControl {
+function Disable-UserAccountControl {
     Set-ItemProperty "HKLM:\SOFTWARE\Microsoft\Windows\CurrentVersion\Policies\System" -Name "ConsentPromptBehaviorAdmin" -Value 00000000
-    Write-Host "User Access Control (UAC) has been disabled." -ForegroundColor Green    
+    Write-Host "User Account Control (UAC) has been disabled." -ForegroundColor Green    
 }
+# Set-Alias Disable-UserAccessControl Disable-UserAccountControl
+# ${function:Disable-UserAccessControl} = ${function:Disable-UserAccountControl}
+${function:Disable-UserAccessControl} = [Scriptblock]::Create(${function:Disable-UserAccountControl}) 
+<#  An alias, rather than defining ${function:...}, is probably the right way to
+    preserve backwards compatibility in cases like this where is a post-hoc
+    spelling correction (When I fisrt introduced this function, I mistakenly
+    thought that "UAC" stood for "User Access Control", and I named the function
+    accordingly.  In fact,  "UAC" stands for "User AccountControl".  I have now
+    updated the name of the function, but don't want to break existing scripts.
 
-function Enable-UserAccessControl {
+    However, I am defining ${function:...} in order to not break scripts that
+    might do ${function:Disable-UserAccountControl}.ToString().  If I set the
+    alias, these scripts would break.  (The larger fix is to use a more robust
+    way of moving functions around rather than converting the scriptblock into a
+    string - or doing such a conversion in a more automated controlled way than
+    I often currently (2024-01-26) do it.).
+
+    I am calling [Scriptblock]::Create(), especially, in an attempt to avoid
+    breaking scripts that do (get-command
+    Enable-UserAccessControl).ScriptBlock.Ast.ToString().  Unfortunately, using
+    [Scriptblock]::Create() to define ${function:Disable-UserAccessControl}
+    causes (get-command Enable-UserAccessControl).ScriptBlock.Ast.ToString() to
+    be just the script block instead of the whole function declaration, so this
+    isn't really any better than  simply doing
+    ${function:Disable-UserAccessControl} =
+    ${function:Disable-UserAccountControl}.
+#>
+
+function Enable-UserAccountControl {
     Remove-ItemProperty "HKLM:\SOFTWARE\Microsoft\Windows\CurrentVersion\Policies\System" -Name "ConsentPromptBehaviorAdmin"  -force:$true
-    Write-Host "User Access Control (UAC) has been enabled (or more accurately: reset to default)." -ForegroundColor Green    
+    Write-Host "User Account Control (UAC) has been enabled (or more accurately: reset to default)." -ForegroundColor Green    
 }
+# Set-Alias Enable-UserAccessControl Enable-UserAccountControl 
+# ${function:Enable-UserAccessControl} = ${function:Enable-UserAccountControl}
+${function:Enable-UserAccessControl} = [Scriptblock]::Create(${function:Enable-UserAccountControl})
+
 
 function Get-NeilWindowsUpdateLog {
     <#
