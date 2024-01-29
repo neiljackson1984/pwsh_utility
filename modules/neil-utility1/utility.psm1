@@ -2544,9 +2544,10 @@ function runElevatedInActiveSession{
     [CmdletBinding()]
     Param(
         [parameter(ValueFromRemainingArguments = $true)]
-        [String[]] $remainingArguments
+        [String[][]] $remainingArguments
     ) 
     
+    [string[]] $flattenedRemainingArguments = @($remainingArguments |% {$_})
     # the business with errorActionPreference and the "2>&1" redirect is to
     # prevent from powershell from emitting confusing error messages when the
     # PsExec executable emits characters to stderr (empty lines seemt o be
@@ -2562,7 +2563,6 @@ function runElevatedInActiveSession{
     # preference variable assignment within a script block.
     & {
         $ErrorActionPreference = "SilentlyContinue"
-        # $ErrorActionPreference = "Continue"
 
         $argumentsForPsExec = @(
             # -accepteula This flag suppresses the display of the license dialog.
@@ -2587,12 +2587,10 @@ function runElevatedInActiveSession{
             "-s"
 
             #command and arguments: 
-            $remainingArguments
+            $flattenedRemainingArguments
         )
 
-        # PsExec @argumentsForPsExec 2>&1 |% {"$_"}
         PsExec @argumentsForPsExec 2>&1 | out-string -stream
-        # PsExec @argumentsForPsExec
     }
     
 }
@@ -2638,8 +2636,48 @@ function runInActiveSession {
         [string] $pathOfExecutable,
 
         [parameter(ValueFromRemainingArguments = $true)]
-        [string[]] $remainingArguments
+        [string[][]] $remainingArguments
+        
+        <#
+            the reason for having the type of remainingArguments be [string[][]]
+            rather than the more sensible [string[]] is to work around the way
+            powershell unpacks arrays when parsing argument lists.
+
+            consider the three calls
+
+            1.
+            ```
+            runInActiveSession foo xxx yyy zzz
+            ```
+
+            2.
+            ```
+            runInActiveSession foo @("xxx"; "yyy"; "zzz")
+            ```
+
+            3.
+            ```
+            runInActiveSession foo xxx @("yyy"; "zzz") 
+            ```
+
+            If the type of $remainingArguments were [string[]], then calls 1 and
+            2 would result in $remainingArguments.Count being 3, as desired, but
+            call 3 would result in $remainingArguments.Count being 2 and the
+            elements of $remainingArguments being "xxx" and "yyy zzz".
+
+            By declaring the type of $remainingArguments to be [string[][]], and
+            then unpacking the element arrays explicitly within the function
+            body, we can achieve the desired results.  IDeally, Powershell would
+            have some built-in attribute that we could set for a parameter to
+            say, essentially, "please flatten this (possibly nested) array of
+            strings into a single flat array of strings).
+
+
+        #>
+
     )
+    [string[]] $flattenedRemainingArguments = @($remainingArguments |% {$_})
+
     $nameOfScheduledTask = (New-Guid).Guid
     Unregister-ScheduledTask -Confirm:$false  -TaskName $nameOfScheduledTask -ErrorAction SilentlyContinue | Out-Null
     
@@ -2653,11 +2691,11 @@ function runInActiveSession {
                         (
                             @{Execute=$pathOfExecutable} +
                             $(
-                                # $remainingArguments ? 
-                                # @{Argument=($remainingArguments -join " ")} :
+                                # $flattenedRemainingArguments ? 
+                                # @{Argument=($flattenedRemainingArguments -join " ")} :
                                 # @{}
-                                if($remainingArguments){ 
-                                    @{Argument=($remainingArguments -join " ")}
+                                if($flattenedRemainingArguments){ 
+                                    @{Argument=($flattenedRemainingArguments -join " ")}
                                 } else {
                                     @{}
                                 }
@@ -3655,3 +3693,35 @@ function Send-SettingChange {
 
     [void] ([Win32.Nativemethods]::SendMessageTimeout($HWND_BROADCAST, $WM_SETTINGCHANGE, [UIntPtr]::Zero, "Environment", 2, 5000, [ref] $result))
 }
+
+function Select-Enumerated {
+    <#
+        wraps each object in the pipeline in a KeyValuePair whose Value is the
+        input object and whose Key is a sequential integer starting from 0.
+
+        This function is intended to be similar to Python's Enumerate()
+        function.
+
+        It would seem natural for powershell to have a function like this built
+        in, but it does not.
+    #>
+    [CmdletBinding()]
+    [OutputType([System.Collections.Generic.KeyValuePair[int, object]])]
+    Param(
+        [Parameter(ValueFromPipeline=$true)]
+        [object] $InputObject
+    )
+
+    begin {
+        [int] $key = 0
+    }
+
+    process {
+        [System.Collections.Generic.KeyValuePair[int, object]]::New($key++, $InputObject)
+    }
+
+    end {
+
+    }
+}
+Set-Alias Enumerate Select-Enumerated
