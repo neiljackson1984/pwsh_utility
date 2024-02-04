@@ -2322,119 +2322,154 @@ function downloadFileAndReturnPath {
     [OutputType([String])]
     Param(
         [parameter()]
-        [String] $urlOfFile
+        [String] $urlOfFile,
+
+        [parameter(mandatory=$False)]
+        [string] $hash = "",
+
+        [parameter()]
+        [string] $hashAlgorithm = "SHA256",
+
+        [parameter(mandatory=$False)]
+        [string] $pathOfDestinationFile
     ) 
 
+    $hash = $hash.ToLower()
+    $nameOfDownloadCacheFolder = "3c3562b4c6e84f3a92d110d2da9e08aa"
+    $pathOfDownloadCacheFolder = (join-path $env:temp $nameOfDownloadCacheFolder)
+    $pathOfDedicatedInitialDirectoryToContainDownloadedFile = (join-path $env:temp (new-guid).Guid)
     
-    
-    
-    # $filenameOfDownloadedFile = (split-path -leaf $urlOfFile )
-    # todo: deal with the case where the above expression produces an invalid
-    # file name. one strategy would be to extract a reasonable filename from the
-    # metadata returned by the web request.
+    $finalPathOfDownloadedFile = $null
+    $hashOfDownloadedFile = $null
+    if($hash){  
+        Write-Host "checking for already-downloaded files having the specified hash ($hash)"
+        # attempt to find an already donwloaded file having the specified hash      
+        $finalPathOfDownloadedFile =  @(
+            if(Test-Path -PathType Container -Path (join-path $pathOfDownloadCacheFolder $hash)){
+                gci -file -force (join-path $pathOfDownloadCacheFolder $hash)
+            }
+        ) | 
+        select -expand FullName |
+        ? { (Get-FileHash -Algorithm $hashAlgorithm -Path $_).Hash.ToLower() -eq $hash } |
+        select -first 1
 
-    $pathOfDedicatedDirectoryToContainDownloadedFile = (join-path $env:temp (new-guid).Guid)
-    New-Item -ItemType Directory $pathOfDedicatedDirectoryToContainDownloadedFile -ErrorAction SilentlyContinue | out-null
+        if($finalPathOfDownloadedFile){
+            Write-Host "found an already-downloaded file ($finalPathOfDownloadedFile) having the specified hash ($hash)."
+            $hashOfDownloadedFile = $hash
+        } else {
+            Write-Host (-join @(
+                "Found no already-downloaded files having the specified hash ($hash).  "
+                "Therefore we will have to download anew."
+            ))
+        }
+    }
 
-    # $temporaryPathOfDownloadedFile = (join-path $env:temp (new-guid).Guid)
-    # New-Item -ItemType "directory" -Path (Split-Path $temporaryPathOfDownloadedFile -Parent) -ErrorAction SilentlyContinue | out-null
+    if(-not $finalPathOfDownloadedFile){
+        New-Item -Force -ItemType Directory $pathOfDedicatedInitialDirectoryToContainDownloadedFile  | out-null
+        curl @(
+            # "--progress-bar"
+            "--remote-name"
+            # "--verbose"
 
+            "--remote-header-name"
 
-  
+            # follow redirects:
+            "--location"
 
-    # # $downloadJobScriptBlock = ([Scriptblock]::Create("pwsh -c `"```$ProgressPreference = 'SilentlyContinue'; Invoke-WebRequest -UserAgent 'Mozilla' -Uri '$($urlOfFile)'  -OutFile '$($localPathOfDownloadedFile)' `"  "))
-    # # $downloadJobScriptBlock = ([Scriptblock]::Create("pwsh -c `"```$ProgressPreference = 'SilentlyContinue'; Invoke-WebRequest -Uri '$($urlOfFile)'  -OutFile '$($localPathOfDownloadedFile)' `"  "))
-    # $downloadJobScriptBlock = {
-    #     $result = @{
-    #         uri = $args[0].urlOfFile
-    #         OutFile = $args[0].temporaryPathOfDownloadedFile
-    #         PassThru = $True
-    #     } | % { Invoke-WebRequest @_ }
-
-    #     $FileName = [Net.Http.Headers.ContentDispositionHeaderValue]::Parse($result.Headers.'Content-Disposition').FileName
-    #     Write-Output "FileName is $FileName"
-
-    #     New-Item -ItemType "directory" -Path ($args[0].pathOfDedicatedDirectoryToContainDownloadedFile) -ErrorAction SilentlyContinue | out-null
-        
-    #     $source = $args[0].temporaryPathOfDownloadedFile
-    #     $destination = (join-path ($args[0].pathOfDedicatedDirectoryToContainDownloadedFile) $FileName)
-        
-    #     Write-Output "source: $source"
-    #     Write-Output "destination: $destination"
-
-    #     Move-Item $source $destination 
-    # }
-    # Write-Host "temporaryPathOfDownloadedFile: $temporaryPathOfDownloadedFile"
-    # # Write-Host "downloadJobScriptBlock: $downloadJobScriptBlock"
-    # $downloadJob = @{
-    #     ScriptBlock = $downloadJobScriptBlock
-    #     ArgumentList = @(
-    #         @{
-    #             urlOfFile = $urlOfFile
-    #             temporaryPathOfDownloadedFile = $temporaryPathOfDownloadedFile
-    #             pathOfDedicatedDirectoryToContainDownloadedFile = $pathOfDedicatedDirectoryToContainDownloadedFile
-    #         }
-    #     )
-    # } | % { Start-Job  @_ }
-    
-
-    # while ( -not ((Get-Job -InstanceId $downloadJob.InstanceId).JobStateInfo.State -eq [System.Management.Automation.JobState]::Completed) ) {
-    #     write-host "$(get-date): size of $($temporaryPathOfDownloadedFile): $(if(Test-Path -Path $temporaryPathOfDownloadedFile -PathType leaf){(get-item $temporaryPathOfDownloadedFile).Length}else{ "(file does not exist)" })"
-    #     start-sleep 6
-    # }
-    # $pathOfCookieJarFile = (join-path $env:temp (new-guid))
-
-    curl @(
-        # "--progress-bar"
-        "--remote-name"
-        # "--verbose"
-
-        "--remote-header-name"
-
-        # follow redirects:
-        "--location"
-
-        # "--header"; 'User-Agent: Mozilla/5.0 (Windows NT 10.0; Win64; x64; rv:109.0) Gecko/20100101 Firefox/118.0'
-        
-        # "--cookie-jar";$pathOfCookieJarFile
-        # "--cookie";$pathOfCookieJarFile  
-        # "--cookie"; "`"`""
-        # "--cookie"; "$(new-guid)" # a bogus filename guaranteed not to exist
-        # "--cookie"; "6fc3c91bf2da4921b775ce3406c549c3=643c8f63135847ee85c130555d3f2441" # a bogus filename guaranteed not to exist
-        
-        # this option causes curl to use its internal cookie engine to store and
-        # transmit cookies between requests.  
-        #
-        # I do not know how to 
-        #
-        # The --cookie option causes curl to use its internal cookie engine to
-        # store and transmit cookies between requests.  I added this option on
-        # 2023-10-26-1708 in order to allow curl to be able to download public
-        # files from sharing urls generated by sharepoint.
-        #
-        # I want to tell curl to use its cookie engine, but don't read from any
-        # cookie file.  Rather, start with an empty cache and fill it as you go.
-        #
-        # But unfortunately, there doesn;t seem to be a straightforward way to
-        # do this.  Curl's --cookie option expects to be a value.  If the value
-        # contains an equals sign, curl treats it as a literal cookie value,
-        # otherwise curl treats it as the ath of a file from which the cookie
-        # cache is to be read from (but not written to).
-        #
-        # I have settled on passing a randomly-generated fresh guid as the
-        # value.  This will hopefully be a file that never exists.
-        "--cookie"; "$(new-guid)"
+            # "--header"; 'User-Agent: Mozilla/5.0 (Windows NT 10.0; Win64; x64; rv:109.0) Gecko/20100101 Firefox/118.0'
+            
+            # "--cookie-jar";$pathOfCookieJarFile
+            # "--cookie";$pathOfCookieJarFile  
+            # "--cookie"; "`"`""
+            # "--cookie"; "$(new-guid)" # a bogus filename guaranteed not to exist
+            # "--cookie"; "6fc3c91bf2da4921b775ce3406c549c3=643c8f63135847ee85c130555d3f2441" # a bogus filename guaranteed not to exist
+            
+            # this option causes curl to use its internal cookie engine to store and
+            # transmit cookies between requests.  
+            #
+            # I do not know how to 
+            #
+            # The --cookie option causes curl to use its internal cookie engine to
+            # store and transmit cookies between requests.  I added this option on
+            # 2023-10-26-1708 in order to allow curl to be able to download public
+            # files from sharing urls generated by sharepoint.
+            #
+            # I want to tell curl to use its cookie engine, but don't read from any
+            # cookie file.  Rather, start with an empty cache and fill it as you go.
+            #
+            # But unfortunately, there doesn;t seem to be a straightforward way to
+            # do this.  Curl's --cookie option expects to be a value.  If the value
+            # contains an equals sign, curl treats it as a literal cookie value,
+            # otherwise curl treats it as the ath of a file from which the cookie
+            # cache is to be read from (but not written to).
+            #
+            # I have settled on passing a randomly-generated fresh guid as the
+            # value.  This will hopefully be a file that never exists.
+            "--cookie"; "$(new-guid)"
 
 
-        "--output-dir";$pathOfDedicatedDirectoryToContainDownloadedFile
-        $urlOfFile
-    )
+            "--output-dir";$pathOfDedicatedInitialDirectoryToContainDownloadedFile
+            $urlOfFile
+        )
 
-    # $localPathOfDownloadedFile = (join-path $pathOfDedicatedDirectoryToContainDownloadedFile $filenameOfDownloadedFile)
-    $localPathOfDownloadedFile = Get-ChildItem -File $pathOfDedicatedDirectoryToContainDownloadedFile | select -first 1 | select -expand FullName
+        # $initialPathOfDownloadedFile = (join-path $pathOfDedicatedInitialDirectoryToContainDownloadedFile $filenameOfDownloadedFile)
+        $initialPathOfDownloadedFile = Get-ChildItem -File $pathOfDedicatedInitialDirectoryToContainDownloadedFile | select -first 1 | select -expand FullName
 
+        $hashOfDownloadedFile = Get-FileHash -Algorithm $hashAlgorithm -Path $initialPathOfDownloadedFile | select -expand Hash |% {$_.ToLower()}
+        $finalPathOfDownloadedFile = (join-path (join-path $pathOfDownloadCacheFolder $hashOfDownloadedFile) (split-path -leaf $initialPathOfDownloadedFile) )
+        New-Item -ItemType Directory -Force (split-path -parent $finalPathOfDownloadedFile) | out-null
+        Move-Item -force $initialPathOfDownloadedFile $finalPathOfDownloadedFile
 
-    return $localPathOfDownloadedFile
+        if($hash -and (-not ($hashOfDownloadedFile -eq $hash))){
+            Write-Host "The hash of the downloaded file ($finalPathOfDownloadedFile) ($hashOfDownloadedFile) does not match the specified hash ($hash)."
+        }
+    }
+
+    if((-not $hash) -or ($hash -eq $hashOfDownloadedFile)){
+        return $finalPathOfDownloadedFile
+    } else {
+        # return $null
+    }
+}
+
+function getPathOfPossiblyNestedFileMatchingPattern{
+    <#
+        given a pathOfFile and a globPattern: if pathOfFile matches globPattern,
+        return pathOfFile.  Else, try to treat $pathOfFile as an archive file.
+        Extract the contents of the file and, if, among the contained files,
+        there is exactly one file whose name matches filenameRegex, then return
+        the path of that file (in its temporary location, extracted).
+
+        This function is useful in case we have a path of a file that might
+        itself be, for instance, an .iso file, or it might be an archive file
+        containing an iso file, and in either case, we want the path to the .iso
+        in our file system, extracting it from the archive file if necessary.)
+
+        TODO (maybe): allow arbitrarily deep nesting.
+    #>
+    [CmdletBinding()]
+    [OutputType([String])]
+    Param(
+        [parameter()]
+        [String] $pathOfFile,
+
+        [parameter()]
+        [string] $filenameRegex
+    ) 
+
+    if((split-path -leaf $pathOfFile) -match $filenameRegex){
+        return $pathOfFile
+    } else {
+        $pathsOfCandidateNestedFiles = @(
+            gci (expandArchiveFile $pathOfFile) -force -recurse -file |
+            select -expand FullName |
+            ? { (split-path -leaf $_) -match $filenameRegex }
+        )
+        if($pathsOfCandidateNestedFiles.Count -eq 1){
+            return $pathsOfCandidateNestedFiles[0]
+        }
+    }
+
 }
 
 function installGoodies_deprecated([System.Management.Automation.Runspaces.PSSession] $session){
@@ -3432,6 +3467,8 @@ function getCwcPwshWrappedCommand([string] $command){
     )
 }
 
+
+
 function runInCwcSession {
     [OutputType([string])]
     [CmdletBinding(PositionalBinding=$False)]
@@ -3562,6 +3599,26 @@ function runInCwcSession {
         } +
         $(if($timeout){@{Timeout = $timeout}} else {@{}})
     ) | % { Invoke-CWCCommand @_ }
+}
+
+function Get-EncodePowershellCommand {
+    <#
+        .SYNOPSIS
+        Generates a string suitable for passing to Powershell as the value of the "EncodedCommand" argument.
+    #>
+    [CmdletBinding()]
+    [OutputType([string])]
+    Param(
+        [parameter()]
+        [string]
+        $powershellCommand
+    )
+
+    [System.Convert]::ToBase64String( 
+        [system.Text.Encoding]::Unicode.GetBytes( 
+            ([string] $powershellCommand)
+        )
+    )
 }
 
 function Get-LastLoggedOnUserSID {
@@ -3725,3 +3782,41 @@ function Select-Enumerated {
     }
 }
 Set-Alias Enumerate Select-Enumerated
+
+function sendKeystrokesToVm {
+    <#
+        sends the string to the virtual machine in the form of keystrokes.
+    #>
+    # see [http://justanotheritblog.co.uk/send-keystrokestext-to-a-vm-through-the-host-os/]
+    # see [https://richardspowershellblog.wordpress.com/2014/03/23/discovering-cimwmi-methods-and-parameters/]
+
+    # (Get-CimClass Msvm_Keyboard -Namespace "root\virtualization\v2" ).CimClassMethods |? {$_.Name -eq "TypeText"} | select -expand Parameters
+    # (Get-CimClass Msvm_Keyboard -Namespace "root\virtualization\v2" ).CimClassMethods |? {$_.Name -eq "TypeKey"} | select -expand Parameters
+
+
+    [CmdletBinding()]
+    Param(
+        [Parameter(Mandatory=$True)]
+        [Alias("VM")]
+        $virtualMachine,
+
+        [Parameter(Mandatory=$True, ValueFromPipeline=$True)]
+        [string] $stringToSend
+    )
+
+    begin {
+        # $ComputerSystem = Get-WmiObject -Query "select * from Msvm_ComputerSystem where ElementName = '$($forkVm.Name)'" -Namespace "root\virtualization\v2"
+        $ComputerSystem = Get-CimInstance -ClassName Msvm_ComputerSystem -Namespace "root\virtualization\v2" -Filter "ElementName = '$($forkVm.Name)'"
+        
+        # $Keyboard = Get-WmiObject -Query "ASSOCIATORS OF {$($ComputerSystem.path.path)} WHERE resultClass = Msvm_Keyboard" -Namespace "root\virtualization\v2"           
+        $Keyboard = Get-CimAssociatedInstance -InputObject $ComputerSystem -ResultClassName Msvm_Keyboard -Namespace "root\virtualization\v2"
+        
+        # $Keyboard.InvokeMethod("TypeText","Hello world!") # Type 'Hello World!'
+        # $Keyboard.InvokeMethod("TypeKey","13") # Press enter
+    }
+
+    process {
+        Invoke-CimMethod -InputObject $Keyboard -MethodName "TypeText" -Arguments @{AsciiText=$stringToSend} | out-null
+        # Invoke-CimMethod -InputObject $Keyboard -MethodName "TypeKey" -Arguments @{KeyCode=13}
+    }
+}
