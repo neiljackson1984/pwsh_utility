@@ -1048,8 +1048,16 @@ function sendMail($emailAccount, $from, $to = @(), $cc = @(), $bcc = @(), $subje
     $explicitAppPassword=@($bitwardenItemContainingEmailCredentials.fields | Where-Object {$_.name -eq 'app_password'} | Foreach-object {$_.value})[0]
     $password="$(if($explicitAppPassword){$explicitAppPassword} else {$bitwardenItemContainingEmailCredentials.login.password})"
 
+    <#  TODO 2024-02-08: remove dependence on System.Net.Mail.SmtpClient, which is
+        somewhat obsolete.  See
+        [https://learn.microsoft.com/en-us/dotnet/api/system.net.mail.smtpclient?view=net-8.0#remarks],
+        [https://github.com/dotnet/platform-compat/blob/master/docs/DE0005.md],
+        [https://github.com/jstedfast/MailKit].
 
-    $SMTPClient = New-Object Net.Mail.SmtpClient(  
+    #>
+
+
+    $SMTPClient = New-Object System.Net.Mail.SmtpClient(  
         @($bitwardenItemContainingEmailCredentials.fields | Where-Object {$_.name -eq 'smtp_host'} | Foreach-object {$_.value})[0], 
         @($bitwardenItemContainingEmailCredentials.fields | Where-Object {$_.name -eq 'smtp_port'} | Foreach-object {$_.value})[0] 
     )   
@@ -2314,8 +2322,10 @@ function downloadFileAndReturnPath {
     <#
     .SYNOPSIS
     Downloads the file from the specified url, to an arbitrary local path
-    (perhaps in a unique-named-folder in the downloads folder?) Returns the path
-    of the downloaded file.
+    (arbitrary as far as the caller is concerned, although in fact there is some
+    logic to the choice of the destination path). Returns the path of the
+    downloaded file.
+
 
     #>
     [CmdletBinding()]
@@ -2327,15 +2337,14 @@ function downloadFileAndReturnPath {
         [parameter(mandatory=$False)]
         [string] $hash = "",
 
-        [parameter()]
-        [string] $hashAlgorithm = "SHA256",
-
         [parameter(mandatory=$False)]
-        [string] $pathOfDestinationFile
+        [string] $hashAlgorithm = "SHA256"
+
     ) 
 
     $hash = $hash.ToLower()
     $nameOfDownloadCacheFolder = "3c3562b4c6e84f3a92d110d2da9e08aa"
+    # this is a name intended to be specific to this function.
     $pathOfDownloadCacheFolder = (join-path $env:temp $nameOfDownloadCacheFolder)
     $pathOfDedicatedInitialDirectoryToContainDownloadedFile = (join-path $env:temp (new-guid).Guid)
     
@@ -2343,7 +2352,7 @@ function downloadFileAndReturnPath {
     $hashOfDownloadedFile = $null
     if($hash){  
         Write-Host "checking for already-downloaded files having the specified hash ($hash)"
-        # attempt to find an already donwloaded file having the specified hash      
+        # attempt to find an already downloaded file having the specified hash      
         $finalPathOfDownloadedFile =  @(
             if(Test-Path -PathType Container -Path (join-path $pathOfDownloadCacheFolder $hash)){
                 gci -file -force (join-path $pathOfDownloadCacheFolder $hash)
@@ -2356,6 +2365,9 @@ function downloadFileAndReturnPath {
         if($finalPathOfDownloadedFile){
             Write-Host "found an already-downloaded file ($finalPathOfDownloadedFile) having the specified hash ($hash)."
             $hashOfDownloadedFile = $hash
+            # this is a shortcut to avoid recomputing the hash, because, due to
+            # the test above, we are already guaranteed that $hash is the hash
+            # of the file whose path is $finalPathOfDownloadedFile
         } else {
             Write-Host (-join @(
                 "Found no already-downloaded files having the specified hash ($hash).  "
@@ -2428,6 +2440,10 @@ function downloadFileAndReturnPath {
     if((-not $hash) -or ($hash -eq $hashOfDownloadedFile)){
         return $finalPathOfDownloadedFile
     } else {
+        # in this case, the user has specified a hash, but the hash of the
+        # downloaded file is not equal to the specified hash.  This is a
+        # failure, so we do not return a value.
+
         # return $null
     }
 }
@@ -3438,13 +3454,21 @@ function getCwcPwshWrappedCommand([string] $command){
 
         "[System.Text.Encoding]::UTF8.GetString("
             "[System.Convert]::FromBase64String(" 
-                "`""
+                ## "`""
+                # single quote instead of double-quote doesn't have any effect
+                # on using this function to create strings to pass to
+                # screenconnect, but does gives slightly improved reliability in
+                # cases where double quotes are not properly escaped (I
+                # sometimes use this function to create the "Script" parameter
+                # for Invoke-WUJob.)
+                "'"
                     [System.Convert]::ToBase64String(
                         [System.Text.Encoding]::UTF8.GetBytes(
                             $command
                         ) 
                     )  
-                "`""
+                ## "`""
+                "'"
             ")"
         ")"
         " | "
@@ -3482,6 +3506,17 @@ function runInCwcSession {
         [Parameter()] 
         [string] $nameOfSession,
         
+
+        <#
+            if $pwsh is set, then we will attempt to run the command in pwsh, by
+            means of the somewhat baroque technique involving the
+            getCwcPwshWrappedCommand function.  We will blindly assume that pwsh
+            is installed and available on the path.
+        #>
+        [Parameter(Mandatory=$False)] 
+        [switch] $pwsh = $False,
+
+
         [Parameter(Mandatory=$False)] 
         [int] $timeout,
 
@@ -3582,6 +3617,15 @@ function runInCwcSession {
         )
     )
 
+    $augmentedCommand = @(
+        @(
+            $preambleCommand
+            $command
+            $postambleCommand
+        ) |
+        ? {$_}
+    ) -join "`n"
+
     ## run the command
     (
         @{
@@ -3591,9 +3635,7 @@ function runInCwcSession {
             Command =  (
                 @(
                     "#maxlength=1000000"
-                    if($preambleCommand){$preambleCommand}
-                    if($command){$command}
-                    if($postambleCommand){$postambleCommand}
+                    $pwsh ? (getCwcPwshWrappedCommand $augmentedCommand) : $augmentedCommand
                 ) -join "`n"
             )
         } +
@@ -3664,8 +3706,8 @@ function publishFile {
     # Connect-MgGraph will do an interactive sign-in if it needs to, and tends
     # to cache the credentials somewhere (and caches them in a way that survives
     # the current shell process.  This caching behavior is slightly scary,
-    # particularly being the defaulkt behavior, but at the moment, this caching
-    # behavior is saving me from having to do an interactive login.,
+    # particularly being the default behavior, but at the moment, this caching
+    # behavior is saving me from having to do an interactive login.
     #
     # to do read credentials (private key) from Bitwarden.
     Connect-MgGraph -Scopes Files.ReadWrite.All, Sites.ReadWrite.All | out-null
@@ -3689,6 +3731,12 @@ function publishFile {
     $a.Query += "$($a.Query ? '&' : '')download=1"
 
     # perhaps see [https://learn.microsoft.com/en-us/microsoft-365/community/query-string-url-tricks-sharepoint-m365]
+
+    <#
+        It would be nice to (optionally) return something that is not just the
+        raw url, but is something like some html that could be pasted into an
+        email message or similar, that would include a hyperlink, with filename.
+    #>
 
     # $x.Name
     return $a.Uri.AbsoluteUri
@@ -3819,4 +3867,45 @@ function sendKeystrokesToVm {
         Invoke-CimMethod -InputObject $Keyboard -MethodName "TypeText" -Arguments @{AsciiText=$stringToSend} | out-null
         # Invoke-CimMethod -InputObject $Keyboard -MethodName "TypeKey" -Arguments @{KeyCode=13}
     }
+}
+
+function New-Scratchpad {
+    <#
+        Creates (and opens) a new "scratchpad" - a Powershell script file with a
+        date-based file name, in a particular place in my filesystem (which I am
+        hardcoding here for lack of a more systematic method of specification),
+        with a little bit of boilerplate code at the beginning of the file.
+
+        TODO: get rid of (i.e. replace with a more general source) as much of
+        the hardcoded information below as possible.
+    #>
+
+    [CmdletBinding()]
+    [OutputType([void])]
+    Param(
+
+    )
+
+    $preamble = @(
+        "#!pwsh"
+        ". { #initialize"
+        "    import-module neil-utility1"
+        "    Start-ScriptingJournalTranscript"
+        "}; return"
+    ) -join "`n"
+
+    $pathOfScratchpadDirectory = "U:/scripting_journal/scratchpads"
+
+    $meaningfulPartOfNameOfScratchpadFile = "scratchpad"
+
+    $nameOfScratchpadFile = "$(get-date -format "yyyy-MM-dd-HHmm")_$($meaningfulPartOfNameOfScratchpadFile).ps1"
+
+    $pathOfScratchpadFile = (join-path $pathOfScratchpadDirectory $nameOfScratchpadFile)
+
+    #TODO (maybe): verify that the scratchpad file does not already exist.
+    #TODO (maybe): create parent directories file does not already exist.
+
+    Set-Content -Path $pathOfScratchpadFile -Value $preamble
+    # code $pathOfScratchpadFile
+    code --goto "$($pathOfScratchpadFile):9999999999" "U:/scripting_journal"
 }

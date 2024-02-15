@@ -53,3 +53,9 @@
     ###  # heavy-handed and hard to maintain.
     
 }
+
+<#
+    What's the best way to add a dependency on mailkit
+    (https://github.com/jstedfast/MailKit), or, for that matter, any other .NET
+    package available on nuget.org?
+#>
