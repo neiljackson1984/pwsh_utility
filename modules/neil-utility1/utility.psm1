@@ -3831,6 +3831,21 @@ function Select-Enumerated {
 }
 Set-Alias Enumerate Select-Enumerated
 
+##function getVmKeyboard {
+##    [OutputType([Microsoft.Management.Infrastructure.CimInstance])]
+##    [CmdletBinding()]
+##    Param(
+##        [Parameter(Mandatory=$True)]
+##        [Alias("VM")]
+##        [Microsoft.HyperV.PowerShell.VirtualMachine]
+##        $virtualMachine
+##    )  
+##    
+##    $ComputerSystem = Get-CimInstance -ClassName Msvm_ComputerSystem -Namespace "root\virtualization\v2" -Filter "ElementName = '$($virtualMachine.Name)'"        
+##    return (Get-CimAssociatedInstance -InputObject $ComputerSystem -ResultClassName Msvm_Keyboard -Namespace "root\virtualization\v2")
+##}
+
+
 function sendKeystrokesToVm {
     <#
         sends the string to the virtual machine in the form of keystrokes.
@@ -3838,36 +3853,57 @@ function sendKeystrokesToVm {
     # see [http://justanotheritblog.co.uk/send-keystrokestext-to-a-vm-through-the-host-os/]
     # see [https://richardspowershellblog.wordpress.com/2014/03/23/discovering-cimwmi-methods-and-parameters/]
 
+    # see [https://learn.microsoft.com/en-us/windows/win32/hyperv_v2/msvm-keyboard]
+    # see [https://learn.microsoft.com/en-us/windows/win32/inputdev/virtual-key-codes]
+    # see [https://learn.microsoft.com/en-us/windows/win32/hyperv_v2/typekey-msvm-keyboard]
+    # see [https://learn.microsoft.com/en-us/windows/win32/hyperv_v2/typetext-msvm-keyboard]
+
     # (Get-CimClass Msvm_Keyboard -Namespace "root\virtualization\v2" ).CimClassMethods |? {$_.Name -eq "TypeText"} | select -expand Parameters
     # (Get-CimClass Msvm_Keyboard -Namespace "root\virtualization\v2" ).CimClassMethods |? {$_.Name -eq "TypeKey"} | select -expand Parameters
-
 
     [CmdletBinding()]
     Param(
         [Parameter(Mandatory=$True)]
         [Alias("VM")]
+        [Microsoft.HyperV.PowerShell.VirtualMachine]
         $virtualMachine,
 
-        [Parameter(Mandatory=$True, ValueFromPipeline=$True)]
-        [string] $stringToSend
+        [Parameter(Mandatory=$False, ValueFromPipeline=$True)]
+        [string] $stringToSend,
+
+        [Parameter(Mandatory=$False)]
+        [uint32[]] $keyCodesToSend = @(),
+
+        [Parameter(Mandatory=$False)]
+        [Switch] $CtrlAltDel = $false
     )
 
     begin {
-        # $ComputerSystem = Get-WmiObject -Query "select * from Msvm_ComputerSystem where ElementName = '$($forkVm.Name)'" -Namespace "root\virtualization\v2"
-        $ComputerSystem = Get-CimInstance -ClassName Msvm_ComputerSystem -Namespace "root\virtualization\v2" -Filter "ElementName = '$($forkVm.Name)'"
-        
-        # $Keyboard = Get-WmiObject -Query "ASSOCIATORS OF {$($ComputerSystem.path.path)} WHERE resultClass = Msvm_Keyboard" -Namespace "root\virtualization\v2"           
-        $Keyboard = Get-CimAssociatedInstance -InputObject $ComputerSystem -ResultClassName Msvm_Keyboard -Namespace "root\virtualization\v2"
-        
-        # $Keyboard.InvokeMethod("TypeText","Hello world!") # Type 'Hello World!'
-        # $Keyboard.InvokeMethod("TypeKey","13") # Press enter
+        ## $Keyboard = getVmKeyboard $virtualMachine
+        $ComputerSystem = Get-CimInstance -ClassName Msvm_ComputerSystem -Namespace "root\virtualization\v2" -Filter "ElementName = '$($virtualMachine.Name)'"        
+        $Keyboard = (Get-CimAssociatedInstance -InputObject $ComputerSystem -ResultClassName Msvm_Keyboard -Namespace "root\virtualization\v2")
     }
 
     process {
-        Invoke-CimMethod -InputObject $Keyboard -MethodName "TypeText" -Arguments @{AsciiText=$stringToSend} | out-null
+        # $Keyboard.InvokeMethod("TypeText","Hello world!") # Type 'Hello World!'
+        # $Keyboard.InvokeMethod("TypeKey","13") # Press enter
         # Invoke-CimMethod -InputObject $Keyboard -MethodName "TypeKey" -Arguments @{KeyCode=13}
+
+
+        if($stringToSend){
+            Invoke-CimMethod -InputObject $Keyboard -MethodName "TypeText" -Arguments @{AsciiText=$stringToSend} | out-null
+        }
+
+        foreach($keyCode in $keyCodesToSend){
+            Invoke-CimMethod -InputObject $Keyboard -MethodName "TypeKey" -Arguments @{KeyCode=$keyCode}
+        }
+
+        if($CtrlAltDel){
+            Invoke-CimMethod -InputObject $Keyboard -MethodName "TypeCtrlAltDel" -Arguments @{}
+        }
     }
 }
+
 
 function New-Scratchpad {
     <#
@@ -3883,7 +3919,7 @@ function New-Scratchpad {
     [CmdletBinding()]
     [OutputType([void])]
     Param(
-
+        [string] $title="scratchpad"
     )
 
     $preamble = @(
@@ -3896,7 +3932,7 @@ function New-Scratchpad {
 
     $pathOfScratchpadDirectory = "U:/scripting_journal/scratchpads"
 
-    $meaningfulPartOfNameOfScratchpadFile = "scratchpad"
+    $meaningfulPartOfNameOfScratchpadFile = $title
 
     $nameOfScratchpadFile = "$(get-date -format "yyyy-MM-dd-HHmm")_$($meaningfulPartOfNameOfScratchpadFile).ps1"
 
