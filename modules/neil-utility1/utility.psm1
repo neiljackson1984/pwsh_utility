@@ -3692,13 +3692,14 @@ function publishFile {
         [string] $destination
         # I don't know exactly what this will do yet
     )
-
+    # $pathOfFile = "S:\Microsoft\Microsoft Office 2013\SW_DVD5_NTRL_Office_Professional_Plus_2013_W32_English_MSI_FPP_X18-65189.ISO"
     $strongFilename = (split-path -leaf (getStronglyNamedPath $pathOfFile))
     # $pathOfDestinationDirectory = (join-path $env:OneDriveCommercial Attachments)
     # $pathOfDestinationFile = (join-path $pathOfDestinationDirectory $strongFilename)
     # Copy-Item $pathOfFile $pathOfDestinationFile | out-null
     # return $pathOfDestinationFile
 
+    $totalLength = gi $pathOfFile | select -expand Length
 
 
     # AS OF 2023-11-01: WE ARE, OUT OF LAZINESS, NOT LOOKING AT THE BITWARDEN
@@ -3712,13 +3713,174 @@ function publishFile {
     # to do read credentials (private key) from Bitwarden.
     Connect-MgGraph -Scopes Files.ReadWrite.All, Sites.ReadWrite.All | out-null
 
-    $x = @{
-        Method        = "PUT"
-        Uri           = "v1.0/drives/me/items/root:/Attachments/$($strongFilename):/content"
-        InputFilePath = $pathOfFile
-        ContentType   = 'multipart/form-data'
-    } | % {Invoke-MgGraphRequest @_}
+    ## UPLOAD the FILE: 
 
+    #### $drive = @{
+    ####     Method        = "GET"
+    ####     Uri           = "v1.0/drives/me"
+    ####     ContentType   = 'multipart/form-data'
+    #### } | % {Invoke-MgGraphRequest @_} 
+
+
+    ## $x = @{
+    ##     Method        = "PUT"
+    ##     Uri           = "v1.0/drives/me/items/root:/Attachments/$($strongFilename):/content"
+    ##     InputFilePath = $pathOfFile
+    ##     ContentType   = 'multipart/form-data'
+    ## } | % {Invoke-MgGraphRequest @_}
+
+    ### $x = @{
+    ###     # DriveId = $drive.id
+    ###     DriveId = "me"
+    ###     InFile = $pathOfFile
+    ###     DriveItemId = "root:/Attachments/$($strongFilename):"
+    ### } | % {Set-MgDriveItemContent @_}
+
+    # neither of the above two techniques handle large files (but they both work for small files.
+
+
+    ## $attachmentsFolder = @{
+    ##     Method        = "GET"
+    ##     Uri           = "v1.0/drives/$($drive.id)/root:/Attachments"
+    ##     InputFilePath = $pathOfFile
+    ##     ContentType   = 'multipart/form-data'
+    ## } | % {Invoke-MgGraphRequest @_}
+    ## 
+    ## @{
+    ##     DriveId = $drive.id
+    ##     ContentInputFile = $pathOfFile
+    ##     Name = $strongFilename
+    ##     ParentReference = @{
+    ##         Id = $attachmentsFolder.Id
+    ##     }
+    ## } |% {New-MgDriveItem @_}
+
+    $sizeThresholdForSignlePut = 20
+    # the main point of this is to be able to handle zero-byte files, whcih the uploadsession technique can't handle.
+    
+
+    if($totalLength -lt $sizeThresholdForSignlePut){    
+        $x = @{
+            Method        = "PUT"
+            Uri           = "v1.0/drives/me/items/root:/Attachments/$($strongFilename):/content"
+            InputFilePath = $pathOfFile
+            ContentType   = 'multipart/form-data'
+        } | % {Invoke-MgGraphRequest @_}
+    } else {
+
+        $sliceSizeDivisor = (320 * 1024)
+        $maximumAllowedContentLengthPerRequest = 50 * [math]::pow(2,20)
+        # the real maximum allowed value is 60 mebibytes, according to [https://learn.microsoft.com/en-us/graph/api/driveitem-createuploadsession?view=graph-rest-1.0#create-an-upload-session]
+        # but I am setting mine a bit lower mainly in order to make the progress messages more frequent.
+        $sliceSize = $sliceSizeDivisor * [math]::floor($maximumAllowedContentLengthPerRequest/$sliceSizeDivisor)
+
+        ## $fileStream = [System.IO.File]::OpenRead($pathOfFile)
+        ##  $totalLength = $fileStream.Length
+        
+
+
+        # see [https://learn.microsoft.com/en-us/graph/api/driveitem-createuploadsession?view=graph-rest-1.0#create-an-upload-session]
+        $uploadSession = @{
+            DriveId = "me"
+            DriveItemId = "root:/Attachments/$($strongFilename):"
+        } | % {New-MgDriveItemUploadSession @_}
+
+        ## $uploadSession.GetType()
+
+        # see [https://learn.microsoft.com/en-us/graph/sdks/large-file-upload?tabs=csharp]
+
+        ##$lastByteIndexUploaded = -1
+        ##while($lastByteIndexUploaded -lt ($totalLength - 1)){
+        ##    $sliceStart = $lastByteIndexUploaded
+        ##    $sliceStop = [math]::min( $sliceStart + $sliceSize, $totalLength )
+        ##    # we will upload the bytes at indices $sliceStart, $sliceStart + 1, ..., $sliceStop - 1 .
+        ##
+        ##    
+        ##    $x = @{
+        ##        Method        = "PUT"
+        ##        Uri           = $uploadSession.UploadUrl
+        ##        # ContentType   = 'multipart/form-data'
+        ##        Headers = @{
+        ##            "Content-Length" = "$($sliceStop - $sliceStart)"
+        ##            "Content-Range" = "bytes $($sliceStart)-$($sliceStop - 1)/$($totalLength)"
+        ##        }
+        ##        Body = $fileStream.ReadExactly
+        ##    } | % {Invoke-MgGraphRequest @_}
+        ##
+        ##    $lastByteIndexUploaded = $sliceStop - 1
+        ##    Write-Host ("$(get-date): uploaded {0:}/{1:} bytes ({2:f1} %)" -f ($lastByteIndexUploaded + 1),($totalLength),(($lastByteIndexUploaded + 1)/($totalLength)))
+        ##}
+        ##$fileStream.Close()
+
+        $countOfBytesUploaded = 0
+        
+        # get-content is quite slow, I think compared to lower-level file stream operations.
+
+        Get-Content -AsByteStream -ReadCount $sliceSize $pathOfFile |
+        % {
+            
+            # $chunk = $_
+            [byte[]] $chunk = $_
+        
+            
+
+            ## $x = @{
+            ##     Method               = "PUT"
+            ##     Uri                  = $uploadSession.UploadUrl
+            ##     # ContentType          = 'application/octet-stream'
+            ##     ContentType          = 'application/octet-stream'
+            ##     # SkipHeaderValidation = $True
+            ##     Headers              = @{
+            ##         "Content-Range"  = "bytes $($countOfBytesUploaded)-$($countOfBytesUploaded + $chunk.Count - 1)/$($totalLength)"
+            ##         # "Content-Length" = "$($chunk.Count)"
+            ##         # "Content-Type"   = 'application/octet-stream'
+            ##     }
+            ##     Body = $chunk
+            ## } | % {Invoke-MgGraphRequest @_}
+
+            $x = @{
+                Method = "PUT"
+                ContentType          = 'application/octet-stream'
+                Headers              = @{
+                    "Content-Range"  = "bytes $($countOfBytesUploaded)-$($countOfBytesUploaded + $chunk.Count - 1)/$($totalLength)"
+                    # "Content-Length" = "$($chunk.Count)"
+                    # "Content-Type"   = 'application/octet-stream'
+                }
+                Uri = $uploadSession.UploadUrl
+                Body = $chunk
+            } |% {Invoke-WebRequest @_}
+        
+        
+            $countOfBytesUploaded += $chunk.Count
+        
+            Write-Host (
+                "$(get-date): uploaded {0:}/{1:} bytes ({2:f1} %)" -f @(
+                    $countOfBytesUploaded
+                    $totalLength
+                    100 * $countOfBytesUploaded/$totalLength
+                )
+            )
+        }
+
+        ## $x = @{
+        ##     Method        = "PUT"
+        ##     Uri           = $uploadSession.UploadUrl
+        ##     InputFilePath = $pathOfFile
+        ##     ContentType   = 'multipart/form-data'
+        ## } | % {Invoke-MgGraphRequest @_}
+
+        ## curl @(
+        ##     "--location"
+        ##     "--upload-file"; $pathOfFile
+        ##     ## "--data-binary"; "@$($pathOfFile)"
+        ##     ## "--header"; "Content-Type: application/octet-stream"
+        ##     ## "--request"; "PUT"
+        ##     $uploadSession.UploadUrl
+        ## )
+
+    }
+
+    ## CREATE the LINK:
     $z = @{
         Method = "POST"
         Uri    = "v1.0/drives/me/items/root:/Attachments/$($strongFilename):/createLink"
