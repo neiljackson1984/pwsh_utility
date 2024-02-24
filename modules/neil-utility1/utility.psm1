@@ -4107,3 +4107,25 @@ function New-Scratchpad {
     # code $pathOfScratchpadFile
     code --goto "$($pathOfScratchpadFile):9999999999" "U:/scripting_journal"
 }
+
+function grantEveryoneFullAccessToFile {
+    [outputType([void])]
+    [CmdletBinding()]
+    Param(
+        [parameter()]
+        [string]
+        $path
+    )
+
+    # Write-Host "now working on $pathOfFile"
+    if(-not (test-path -Path $path -PathType Leaf)){
+        Write-Error "'$($path)' is not a file."
+    } else {
+        $acl = Get-Acl -Path $path
+        $acl.SetAccessRule((New-Object System.Security.AccessControl.FileSystemAccessRule("Everyone", "FullControl", "Allow")))
+        Set-Acl  -Path "\\?\$($path)" -AclObject $acl
+        # The "\\?\" prefix is necessary to handle the case where
+        # $pathOfFile exceeds the 260-character path-length limit.
+        # see [https://github.com/PowerShell/PowerShell/issues/10805]
+    }
+}
