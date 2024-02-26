@@ -104,7 +104,16 @@ function getFieldMapFromBitwardenItem {
 
     $fieldMap = @{}
     
-    foreach($field in @($bitwardenItem['fields'])){
+
+    # ion the case where bitwardenItem has no fields, there will be no "fields"
+    # key in the hash table. in this case, $bitwardenItem['fields'] will be
+    # $null, and  @($bitwardenItem['fields'])) will not be an empty array (whcih
+    # we naively assumed), wut will rather be a single-element array whose one
+    # element is $null. Thus, we iterate over $bitwardenItem['fields'] instead
+    # of iterating over @($bitwardenItem['fields'])).
+
+    ## foreach($field in @($bitwardenItem['fields'])){
+    foreach($field in $bitwardenItem['fields']){
         $fieldMap[$field['name']] = $field['value']
     }
 
@@ -4127,5 +4136,7 @@ function grantEveryoneFullAccessToFile {
         # The "\\?\" prefix is necessary to handle the case where
         # $pathOfFile exceeds the 260-character path-length limit.
         # see [https://github.com/PowerShell/PowerShell/issues/10805]
+        #
+        # see [https://learn.microsoft.com/en-us/windows/win32/fileio/maximum-file-path-limitation?tabs=registry]
     }
 }
