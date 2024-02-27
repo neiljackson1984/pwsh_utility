@@ -4140,3 +4140,61 @@ function grantEveryoneFullAccessToFile {
         # see [https://learn.microsoft.com/en-us/windows/win32/fileio/maximum-file-path-limitation?tabs=registry]
     }
 }
+
+function Invoke-WUJob2 {
+    [CmdletBinding()]
+    [OutputType([object])]
+    Param(
+        ## [ScriptBlock] $Script
+        [string] $Script
+    )
+    
+    import-module PSWindowsUpdate
+    $taskName = "PSWindowsUpdate--$(new-guid)" 
+    $pathOfLogFile = (join-path $env:temp "$($taskName).log")
+    "" >> $pathOfLogFile
+    $innerScript = (
+        @(
+            "`$pathOfLogFile = '$($pathOfLogFile)'"
+            {"$(Get-Date): starting"  >> $pathOfLogFile}
+            "import-module '$( (Get-Module PSWindowsUpdate).Path )' *>&1 >> `$pathOfLogFile"
+            "`$("
+                $Script 
+            ") *>&1 >> `$pathOfLogFile"
+            {"$(Get-Date): finished" >> $pathOfLogFile}
+        ) -join "`n"
+    )
+    "=============================" >> $pathOfLogFile
+    $innerScript >> $pathOfLogFile
+    "=============================" >> $pathOfLogFile
+    
+
+    $result = @{
+        TaskName = $taskName
+        Confirm = $false 
+        verbose = $true
+        RunNow = $true 
+        Script = (
+            <#  getCwcPwshWrappedCommand is here to work around a quote-escaping
+                problem, probably within PSWindowsUpdate, that tends to cause
+                the task to fail when there are double quotes in the command.
+                Wrapping with getCwcPwshWrappedCommand ensures that there are no
+                double quotes in the command that Invoke-WUJob sees.
+            #>
+            getCwcPwshWrappedCommand $innerScript
+
+        )
+    
+    } | % { invoke-WUJob @_ } 
+
+    $logReaderJob = Start-Job -ScriptBlock ([ScriptBlock]::Create("gc -wait `$using:pathOfLogFile"))
+    while( (Get-WUJob -TaskName $taskName 2>$null).StateName -ceq "Running" ){
+        Receive-Job $logReaderJob
+        Start-Sleep 2
+    }
+    Start-Sleep 2
+    Stop-Job $logReaderJob
+    Receive-Job -Wait -AutoRemoveJob $logReaderJob
+    Remove-Item $pathOfLogFile
+    #TODO: delete the WUJob.
+}
