@@ -4142,6 +4142,18 @@ function grantEveryoneFullAccessToFile {
 }
 
 function Invoke-WUJob2 {
+    <#
+        .SYNOPSIS
+        This is a wrapper around the Invoke-WUJob command from the
+        PSWindowsUpdate module, which behaves like a synchronous command, and
+        hides the complexity of the scheduled task creation (actually, the
+        Invoke-WUJob command already goes a long way toward hiding that
+        complexity -- this command merely adds a few niceties.)
+
+        Because we are using getCwcPwshWrappedCommand, this requires having
+        powershell core installed and available on the path as "pwsh".
+    #>
+    
     [CmdletBinding()]
     [OutputType([object])]
     Param(
