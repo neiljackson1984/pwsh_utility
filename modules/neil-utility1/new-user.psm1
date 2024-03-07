@@ -482,6 +482,11 @@ function getDcSession {
     bitwarden item to set the default hostname to connect to and to control
     whether we attempt to connect to some vpn connection.
 
+    TODO (perhaps): somcehow automatically disconnect from the VPN at an
+    appropriate time, rather than leaving the VPN connection connected
+    indefintely in our wake.  This might be acheived by handling the kill
+    signal, or, perhaps more exotically, with a scheduled task or keepalive
+    mechanism, or maybe something built into softether vpn client?
     #>
     
     [CmdletBinding()]
@@ -536,6 +541,13 @@ function getDcSession {
         )]
         [Object] 
         $SessionOption
+        ,
+        [Parameter(
+            Mandatory=$False,
+            HelpMessage="Optionally, override the default Name argument"            
+        )]
+        [string] 
+        $Name
         ,
 
 
@@ -613,6 +625,9 @@ function getDcSession {
 
         } + $(
             if($SessionOption){@{SessionOption=$SessionOption}}
+            else {@{}}
+        ) + $(
+            if($Name){@{Name=$Name}}
             else {@{}}
         )
     )
