@@ -682,7 +682,13 @@ function New-Invoker {
         [ScriptBlock] $Initializer ,
 
         [parameter()]
-        [Object[]] $ArgumentListForInitializer
+        [Object[]] $ArgumentListForInitializer ,
+        
+        # really this is expected to be an array in which each member is either
+        # a System.Management.Automation.PSVariable or a
+        # System.Management.Automation.FunctionInfo
+        [parameter()]
+        [Object[]] $VariablesAndFunctionsToImport
     )
 
     $uniqueMagicStringForThisFunction = "517f7e13f0c84e1d96b729651fe06b48"
@@ -691,6 +697,66 @@ function New-Invoker {
         Write-Error "could not resolve ComputerName"
         return 
     }
+
+    $argumentListForInitializer = @(
+        @{
+            ## functionsToImport = (
+            ##     $namesOfFunctionsToImport |% {@{$_ = (get-command $_).ScriptBlock}} | Merge-HashTables
+            ## )
+            ## variablesToImport = (
+            ##     $namesOfVariablesToImport |% {@{$_ = (get-Variable $_).Value}} | Merge-HashTables
+            ## )
+            ####    itemsToImport = @(
+            ####        Get-Item -Path @(
+            ####            $namesOfFunctionsToImport |% {"function:$($_)"}
+            ####            $namesOfVariablesToImport |% {"variable:$($_)"}
+            ####        )
+            ####    )
+            itemsToImport = $VariablesAndFunctionsToImport
+        }
+    )
+    $initializer = {
+        #### $args[0].variablesToImport.GetEnumerator() |% { Set-Variable -Name $_.Name -Value $_.Value  }
+        ## $args[0].variablesToImport.GetEnumerator() |% { Set-Item -Path "variable:$($_.Name)"  -Value $_.Value  }
+        ## $args[0].functionsToImport.GetEnumerator() |% { Set-Item -Path "function:$($_.Name)"  -Value $_.Value  }
+        Write-Host "initializer is running"
+        foreach($item in $args[0].itemsToImport) { 
+            ## Write-Host "now processing $($item.PSPath )"
+            
+            # Set-Item -LiteralPath $item.PSPath  -Value $(switch($item.PSDrive){"Variable" {$item.Value}; "Function" {$item.ScriptBlock}}) 
+
+            switch($item.PSDrive){
+                "Variable" {
+                    Set-Variable -Scope "Global" -Name $item.Name -Value $item.Value
+                }
+                
+                "Function" {
+                    ## Set-Item -LiteralPath $item.PSPath  -Value $item.ScriptBlock
+                }
+            }
+        }
+
+        New-Module -ArgumentList @(@{itemsToImport = $args[0].itemsToImport}) -ScriptBlock {
+            foreach($item in $args[0].itemsToImport) { 
+                ## Write-Host "now processing $($item.PSPath )"
+                
+                # Set-Item -LiteralPath $item.PSPath  -Value $(switch($item.PSDrive){"Variable" {$item.Value}; "Function" {$item.ScriptBlock}}) 
+    
+                switch($item.PSDrive){
+                    "Variable" {
+                        ## Set-Variable -Scope "Global" -Name $item.Name -Value $item.Value
+                    }
+                    
+                    "Function" {
+                        Set-Item -LiteralPath $item.PSPath  -Value $item.ScriptBlock
+                    }
+                }
+            }
+        } | out-null
+
+    }
+
+
 
     return {
         [CmdletBinding()]
@@ -743,9 +809,7 @@ function New-Invoker {
                 ($session.State -eq  "Opened") -and 
                 ($session.Availability -eq "Available")
             ){
-                if($Initializer){
-                    icm -Session (Connect-PSSession $session ) -ScriptBlock $Initializer -ArgumentList $ArgumentListForInitializer
-                }
+                icm -Session (Connect-PSSession $session) -ScriptBlock $initializer -ArgumentList $argumentListForInitializer
             } else {
                 Write-Error "failed to obtain an open and available session"
                 $session = $null
