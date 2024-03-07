@@ -4315,7 +4315,7 @@ Function Merge-HashTables {
                 $returnValue[$key] = $hashtable[$key]
             }
         }
-        Write-Host "`$countOfAllHashtablesMerged: $($countOfAllHashtablesMerged)"
+        ## Write-Host "`$countOfAllHashtablesMerged: $($countOfAllHashtablesMerged)"
         return $returnValue
     }
 }
