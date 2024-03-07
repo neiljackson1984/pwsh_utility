@@ -4210,3 +4210,112 @@ function Invoke-WUJob2 {
     Remove-Item $pathOfLogFile
     #TODO: delete the WUJob.
 }
+
+Function Merge-HashTables {  
+    <#
+        .SYNOPSIS
+        Merges the specified hashtables, with the hashtables later in the list
+        taking precedence.  No recursive merging is attempted -- nameValue pairs
+        from the later hashtables overwrites a nameValue pair from an earlier
+        hashtable that has the same name.
+
+        Accepts input from the pipeline and input from unnamed arguments.  
+
+
+
+        .EXAMPLE
+        #%%
+        &{
+            $h1 = @{common="h1"; h1Unique=$True } + @{x=44; y=55        }
+            $h2 = @{common="h2"; h2Unique=$True } + @{x=66; y=77        } 
+            $h3 = @{common="h3"; h3Unique=$True } + @{z=3               } 
+            $h4 = @{common="h4"; h4Unique=$True } + @{x=55; y=999;      }
+            $h5 = @{common="h5"; h5Unique=$True } + @{w=-6; q=-4        }
+            $h6 = @{common="h6"; h6Unique=$True } + @{x=-6; y=-4        }
+            $h7 = @{common="h7"; h7Unique=$True } + @{x=-6; y=-4        }
+            $h8 = @{common="h8"; h8Unique=$True } + @{x=-6; y=-4        }
+            
+            @(
+                {   Merge-Hashtables                           }         
+                {   Merge-Hashtables     $h1                   }        
+                {   $h1 | Merge-Hashtables                     }         
+                {   Merge-Hashtables     $h1   $h2             }         
+                {   Merge-Hashtables     $h1   $h2  $h3        }         
+                {   Merge-Hashtables     $h1   $h2  $h3  $h4   }         
+                {   Merge-Hashtables     $h1 @($h2; $h3; $h4)  }         
+                {   Merge-Hashtables   @($h1;  $h2; $h3) $h4   }         
+            ) |
+            %{
+                $_
+                & $_ |% {$_.GetEnumerator()} | sort Name | select Name, Value | ft -auto
+            }
+        }
+        #%%
+
+        .NOTES
+
+        I would like to allow flexibility in passing any combination of zero or
+        more hashtables and enumerables thereof as any combination of pipeline
+        input and parameter input.  Achieving this requires some thought.  Not
+        all combinations are yet supported, but the simple ones are. 
+        
+
+        TODO: allow this function to ingest any combination of hashtables,
+        keyvalue pairs, DictionaryEntrys, and enumerables thereof.
+
+        See
+        [https://stackoverflow.com/questions/8800375/merging-hashtables-in-powershell-how].
+
+    #>
+
+    [CmdletBinding(PositionalBinding=$False)]
+    [OutputType([HashTable])]
+    Param(
+        [parameter(Position=0)]
+        [HashTable[]] $HashTablesToMerge,
+
+
+        [parameter(ValueFromRemainingArguments=$True)]
+        [HashTable[]] $HashTablesFromRemainingArguments,
+
+        
+        [parameter(ValueFromPipeline=$True)]
+        [HashTable] $InputObject
+    )
+
+
+    begin {
+        [HashTable[]] $allHashTablesToMerge = @()
+        $countOfAllHashtablesMerged = 0
+        $returnValue = @{}
+    }
+
+    process {
+        if(-not ($null -eq $InputObject)) {$countOfAllHashtablesMerged++}
+        ## if(-not ($null -eq $InputObject)) {Write-Host $InputeObject.GetType().FullName}
+        ForEach ($key in $InputObject.Keys) {
+            ## if($returnValue.Contains($key)){$returnValue.Remove($key)}
+            # the above if statement is only useful for debugging, where we
+            # return an ordered dictionary, to get an idea of the order in which
+            # the arguments are being processed.
+            $returnValue[$key] = $InputObject[$key]
+        }
+    }
+
+    end {
+        $allHashTablesToMerge += $HashTablesToMerge
+        ForEach ($hashtable in ($HashTablesToMerge + $HashTablesFromRemainingArguments)) {
+            if(-not ($null -eq $hashtable)) {$countOfAllHashtablesMerged++}
+            ## if(-not ($null -eq $hashtable)) {Write-Host $hashtable.GetType().FullName}
+            ForEach ($key in $hashtable.Keys) {
+                ## if($returnValue.Contains($key)){$returnValue.Remove($key)}
+                # the above if statement is only useful for debugging, where we
+                # return an ordered dictionary, to get an idea of the order in which
+                # the arguments are being processed.
+                $returnValue[$key] = $hashtable[$key]
+            }
+        }
+        Write-Host "`$countOfAllHashtablesMerged: $($countOfAllHashtablesMerged)"
+        return $returnValue
+    }
+}
