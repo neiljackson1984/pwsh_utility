@@ -667,6 +667,98 @@ function getDcSession {
     return $psSession
 }
 
+
+function New-Invoker {
+    [CmdletBinding()]
+    [OutputType([ScriptBlock])]
+    Param(
+        [parameter()]
+        [HashTable] $ArgumentsForGetDcSession ,
+
+        [parameter()]
+        [string] $ComputerName ,
+
+        [parameter()]
+        [ScriptBlock] $Initializer ,
+
+        [parameter()]
+        [Object[]] $ArgumentListForInitializer
+    )
+
+    $uniqueMagicStringForThisFunction = "517f7e13f0c84e1d96b729651fe06b48"
+    $ComputerName = $(if($ComputerName){$ComputerName}else{$argumentsForGetDcSession['ComputerName']})
+    if(-not $ComputerName){
+        Write-Error "could not resolve ComputerName"
+        return 
+    }
+
+    return {
+        [CmdletBinding()]
+        Param(
+            [parameter()]
+            [ScriptBlock] $ScriptBlock,
+
+            [parameter()]
+            [Object[]] $ArgumentList 
+        )
+
+        $uniqueNameOfSession = "$($uniqueMagicStringForThisFunction)--$([Runspace]::DefaultRunspace.InstanceId)--$($ComputerName)"
+        $session = $(Get-PSSession -Name $uniqueNameOfSession -ErrorAction SilentlyContinue)
+        
+        ## get-member -inputobject (Get-Runspace | select -first 1 )
+        ## Get-Runspace | select -first 1 | select *
+        ## Get-Runspace | select InstanceId, Id, RunspaceIsRemote, RunspaceStateInfo, RunspaceAvailability, {$_.ConnectionInfo.ComputerName}| ft -auto
+        ## [Runspace]::DefaultRunspace | select -expand InstanceID
+        ## code  --goto (getcommandpath getdcsession)
+
+        if(
+            $session -and
+            ($session.State -eq  "Opened") -and 
+            ($session.Availability -eq "Available")
+        ){
+            # do nothing, $session is already as desired
+            ## write-host "session is already as desired"
+        } else {
+            if($session){
+                write-host (-join @(
+                    "session exists, but is not both Open and Available "
+                    "(State is $($session.State), Availability is $($session.Availability)), "
+                    "so we will remove and recreate the session."
+                ))
+                Remove-PSSession -Session $session | out-null
+                ## TODO: attempt to reconnect before resorting to removal.
+            } else {
+                write-host "session does not exist"
+            }
+            $session = $(
+                Merge-Hashtables @( 
+                    $argumentsForGetDcSession 
+                    @{ ComputerName = $ComputerName }
+                    @{ Name = $uniqueNameOfSession  }
+                ) | % {getDCSession @_ }
+            )
+            Connect-PSSession $session | out-null
+            if(
+                $session -and
+                ($session.State -eq  "Opened") -and 
+                ($session.Availability -eq "Available")
+            ){
+                if($Initializer){
+                    icm -Session (Connect-PSSession $session ) -ScriptBlock $Initializer -ArgumentList $ArgumentListForInitializer
+                }
+            } else {
+                Write-Error "failed to obtain an open and available session"
+                $session = $null
+            }
+        }
+
+        if($session){
+            icm -Session $session -ScriptBlock $ScriptBlock -ArgumentList $ArgumentList
+        }
+    }.GetNewClosure()
+}
+
+
 function connectVpn {
     <#
     .SYNOPSIS
