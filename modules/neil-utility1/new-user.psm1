@@ -592,6 +592,7 @@ function getDcSession {
 
     if (-not $DisableAutomaticVpnConnection){
         if ($companyParameters['nameOfSoftetherVpnConnectionNeededToTalkToDomainController']){
+            write-host "ensuring connection to vpn '$($companyParameters['nameOfSoftetherVpnConnectionNeededToTalkToDomainController'])'. "
             connectVpn $companyParameters['nameOfSoftetherVpnConnectionNeededToTalkToDomainController'] | out-null
         }
     }
@@ -669,6 +670,164 @@ function getDcSession {
 
 
 function New-Invoker {
+    <#
+    .SYNOPSIS
+    Returns a function (a script block) that accepts a ScriptBlock and
+    ArgumentList, much like Invoke-Command does, but with canned connection
+    details with authentication based on Bitwarden, the ability to accept a
+    bitwarden item id as a reference to credentials (via ArgumentsForDcSession),
+    and the ability to make a set of variables and functions from the local
+    session available in the global scope of the remote session (via
+    serialization).  The returned function attempts to re-use the same session
+    from a previous calls, but checks to ensure that the session is open and
+    available and, if not, automatically attempts to create a new session and
+    reconnect.
+
+    .DESCRIPTION
+    Before I wrote New-Invoker, I was in the habit of creating, and connecting
+    to, all the various PsSession's that I needed at once at the beginning of a
+    session.  This process was slow (due in part to very slow bitwarden
+    lookups), and if even one of the PsSessions became invalid or disconnected
+    (due for example to restarting the remote computer), the most convenient way
+    to create a new valid session to replace the failed session was to re-run
+    the entire sequence to recreate and reconnect to all sessions.  This was
+    slow.  Often, I wouldn't immediately need some of the PsSessions -- I just
+    wanted to re-establish one failed session to run the next command that I
+    wanted to run.  New-Invoker (or, more accurately, the functions that
+    New-Invoker returns, imprvoe the situation).
+
+    TODO: consider the consequences of re-using the same remote session for
+    multiple calls to the function returned by New-Invoker.  Sometimes,
+    particulary while debugging, it is useful to have the session preserveds so
+    that we can inspect variables and run large sequences of commands
+    incrementally and in some sense interactively.  Re-using an already-used
+    session might avoid the overhead of creating a new session on every call.
+    However, eliminating the saved state of a re-used session could potentially
+    improve predictability, stability, and security.  Our current strategy, of
+    silently (except for a few Write-Host messages) recreating the session if it
+    has become disconnected or ceased to exist, could confuse the user, who
+    might be expecting the session state to be as he left it.  I can almost
+    imagine having a Switch argument (to the function returned by New-Invoker)
+    called -NeedPreviousState, that would cause the function to throw an error
+    (and not attempt to run the passed command) if the session had to be
+    recreated.  Maybe we also need a switch called "NeedFreshState" that would
+    force a new session to be created.  Such switch arguments are obviously ugly
+    and seem impractical at the moment, but we should try to be sensitive
+    (somehow) to the user's expectation about whether he is running one more
+    command in an existing session (with state leftover from previous commands)
+    or, alternatively, whether he is running the command in a virgin session
+    ("virgin" except, perhaps, for the imported VariablesAndFunctionsToImport).
+
+    TODO: clean up the authentication system.  I do not like relying on
+    getDcSession, which itself is a bit of a hack.  I would also prefer to use
+    asymmetric keys for authentication rather than usernames and passwords.
+
+    TODO:  think about the best way to share variables and functions with the
+    remote session.  It would be good to try to take advantage of Powershell's
+    "module" concept, and share an entire module.
+
+    TODO perhaps: if a session is merely disconnected, but still exists on the
+    remote computer, attempt to reconnect to the existing session on the remote
+    computer rather than creating an entirely new session.
+
+    TODO perhaps: provide a way to create multiple simultaneous sessions on a
+    remote computer, all with the same local session.  On the other hand, maybe
+    this is best handled within the one "master" remote session.  what I have in
+    mind is the case where I want to create a "long-running" session on the
+    remote computer that will persist and continue running and exising and
+    working even if I disconnect for a long time.  
+
+    .PARAMETER ArgumentsForGetDcSession
+    These arguments will be applied to a set of default arguments defined in
+    this function, and then splatted into getDcSession, which we use internally
+    to get the ps remoting session.  Relying on getDcSession, and the whole
+    getDcSession mechanism is all a bit of a hack to automate the use of
+    Bitwarden to store credentials for psremoting.  The whole thing needs to be
+    refactored, and ideally made to use public key infrastructure rather than
+    the current system of usernames and passwords.
+
+
+    .PARAMETER ComputerName
+    If present, this parameter overrides any ComputerName parameter that might
+    be in ArgumentsForGetDcSession.  The ComputerName, which is read from the
+    ComputerName parameter (if present) or from the ComputerName value in
+    ArgumentsForGetDcSession is used to form a name for the session that is
+    intended to be unique for each combination of local session and remote
+    computer.
+
+
+    .PARAMETER VariablesAndFunctionsToImport
+    Generate this parameter by doing something like:
+    ```
+    @(
+        Get-Item @(
+            "function:foo"
+            "function:bar"
+            "variable:x"
+            "variable:y"
+        )
+    )
+    ```
+
+    I am not sure this is the most elegant way to share variables and functions
+    with a remote session, but it is better than nothing.  One problem with this
+    function sharing mechanism is that there is no automatic check or guarantee
+    that an imported function will have the functions that it calls or the
+    module variables that it references available in the remote session.
+
+    .EXAMPLE
+    ```
+        $namesOfFunctionsToImport = @( "addEntryToSystemPathPersistently"
+            "Disable-UserAccountControl" "Enable-UserAccountControl"
+            "downloadAndExpandArchiveFile" "downloadFileAndReturnPath"
+            "Enable-UserAccountControl" "expandArchiveFile" "findFileInProgramFiles"
+        )
+
+        $namesOfVariablesToImport = @( "urlOfEnscapeInstallerFile"
+            "enscapeLicenseKey" "urlsOfOdisInstallerPackageFiles"
+        )
+
+        $commonNewInvokerArguments = @{ VariablesAndFunctionsToImport = @( Get-Item
+            -Path @( $namesOfFunctionsToImport |% {"function:$($_)"}
+            $namesOfVariablesToImport |% {"variable:$($_)"}
+                )
+            )
+
+            ArgumentsForGetDcSession   = @{
+                bitwardenItemIdOfCompanyParameters = $bitwardenItemIdOfCompanyParameters
+                ConfigurationName                  = "PowerShell.7"
+            }
+        }
+
+        ${function:rss} = New-Invoker @commonNewInvokerArguments -ComputerName "host1.contoso.com" 
+        ${function:rsd} = New-Invoker @commonNewInvokerArguments -ComputerName "host2.contoso.com"
+
+    ```
+    Now, you can invoke a command on host1.contoso.com and host2.contoso.com,
+    respectively, by doing:
+
+    ```
+        rss { Write-Host "hello from $($env:computername)" } 
+        rsd { Write-Host "hello from $($env:computername)" }
+    ```
+
+    .NOTES
+    It would be nice to integrate Screenconnect's remote command facility more
+    tightly into the PSRemoting paradigm.  I can imagine having Screenconnect be
+    just one more transport protocol ("transport protocol" is probably not the
+    official word for it, but you know what I mean) for Powershell remoting,
+    akin to WSMan and SSH and VMBus.  I wonder if anyone (other than Microsoft)
+    has implemented any third-party PSRemoting transport protocol What
+    Screenconnect provides natively (one string submitted, maybe one string
+    received as output) comes close to (and perhaps could serve as a basis for
+    an implementation of) the PSRemoting protocol.  the main thing that's
+    missing is the serialization and deserialization to and from the remote
+    session.  I imagine that many of the other Remote Machine Management (RMM)
+    systems (besides Screenconnect) probably have a remote command running
+    facility similar to Screenconnect's.
+
+    #>
+    
     [CmdletBinding()]
     [OutputType([ScriptBlock])]
     Param(
@@ -677,12 +836,6 @@ function New-Invoker {
 
         [parameter()]
         [string] $ComputerName ,
-
-        [parameter()]
-        [ScriptBlock] $Initializer ,
-
-        [parameter()]
-        [Object[]] $ArgumentListForInitializer ,
         
         # really this is expected to be an array in which each member is either
         # a System.Management.Automation.PSVariable or a

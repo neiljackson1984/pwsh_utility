@@ -2428,10 +2428,40 @@ function downloadFileAndReturnPath {
             # value.  This will hopefully be a file that never exists.
             "--cookie"; "$(new-guid)"
 
+            ## "--write-out"; @(
+            ##     @(
+            ##         "redirect_url"
+            ##         "url"
+            ##         "filename_effective"
+            ##         "urle.path"
+            ##     ) |% {"$($_): %{$($_)}"} 
+            ## ) -join "`n"
+
 
             "--output-dir";$pathOfDedicatedInitialDirectoryToContainDownloadedFile
             $urlOfFile
         )
+
+        <#  2024-03-10-1437: I notice that in the case where there is no
+            Content-Disposition header and there is a redirect, curl derives the
+            output filename not from the final url in the redirect chain, as you
+            might naively expect (and as I would have hoped), but rather derives
+            the output file name from the passed-in url.
+
+            This stack overflow post is, I think, complaining about this same
+            issue:
+            https://stackoverflow.com/questions/6881034/curl-to-grab-remote-filename-after-following-location.
+
+            We might consider a workaround to achieve the desired behavior by
+            using curl's --write-output option to have curl write, to stdout,
+            the "urle.path" value (see
+            [https://curl.se/docs/manpage.html#urlepath]), from which we could
+            compute a reasonable file name.  We would also need to do something
+            (probably involving more --write-output stuff) to detect when curl
+            has pulled the filename from the Content-Disposition header, because
+            in that case, in general, we would not want to derive the filename
+            from the final url in the redirct chain.
+        #>
 
         # $initialPathOfDownloadedFile = (join-path $pathOfDedicatedInitialDirectoryToContainDownloadedFile $filenameOfDownloadedFile)
         $initialPathOfDownloadedFile = Get-ChildItem -File $pathOfDedicatedInitialDirectoryToContainDownloadedFile | select -first 1 | select -expand FullName
@@ -3652,7 +3682,7 @@ function runInCwcSession {
     ) | % { Invoke-CWCCommand @_ }
 }
 
-function Get-EncodePowershellCommand {
+function Get-EncodedPowershellCommand {
     <#
         .SYNOPSIS
         Generates a string suitable for passing to Powershell as the value of the "EncodedCommand" argument.
