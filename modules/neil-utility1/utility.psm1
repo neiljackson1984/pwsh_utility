@@ -144,17 +144,31 @@ function getSshPrivateKeyFromBitwardenItem {
 
     [HashTable] $bitwardenItem = Get-BitwardenItem -bitwardenItemId $bitwardenItemId
     
-    $bitwardenItemIdOfItemContainingTheKeyAsAnAttachedFile = (
+    ##  $bitwardenItemIdOfItemContainingTheKeyAsAnAttachedFile = (
+    ##      (
+    ##          $bitwardenItem.fields |
+    ##          ? {$_.name -ceq "ssh_private_key_reference"} | 
+    ##          select -first 1 |
+    ##          % {$_.value} |
+    ##          ? {$_}
+    ##      ) ?? (
+    ##          $bitwardenItem.id
+    ##      )
+    ##  ) 
+
+    [HashTable] $bitwardenItemContainingTheKeyAsAnAttachedFile = (
         (
             $bitwardenItem.fields |
             ? {$_.name -ceq "ssh_private_key_reference"} | 
             select -first 1 |
             % {$_.value} |
-            ? {$_}
+            ? {$_} |
+            % {Get-BitwardenItem -bitwardenItemId $_}
         ) ?? (
-            $bitwardenItem.id
+            $bitwardenItem
         )
     ) 
+
 
     # $sshPrivateKey = bw --raw get attachment id_rsa --itemid $bitwardenItemIdOfItemContainingTheKeyAsAnAttachedFile
 
@@ -190,30 +204,44 @@ function getSshPrivateKeyFromBitwardenItem {
     # note: if we omit the --raw option, the bw command saves the attached file
     # to the current working directory -- not what we want.
 
+    $namesOfFilesToRegardAsPrivateKeyFiles = @(
+        "id_dsa"
+        "id_ecdsa"
+        "id_ecdsa_sk"
+        "id_ed25519"
+        "id_ed25519_sk"
+        "id_rsa"
+    )
 
-    $process = New-Object "System.Diagnostics.Process" -Property @{
-        StartInfo = (
-            @{
-                TypeName = "System.Diagnostics.ProcessStartInfo"
-                ArgumentList = @(
-                    (Get-Command bw).Path
-                    ,@(
-                        "--raw" 
-                        "get"; "attachment"; "id_rsa"
-                        "--itemid"; $bitwardenItemIdOfItemContainingTheKeyAsAnAttachedFile
-                    )
+    $sshPrivateKey = 
+        $bitwardenItemContainingTheKeyAsAnAttachedFile.attachments |
+        ? {$_.fileName -cin $namesOfFilesToRegardAsPrivateKeyFiles} |
+        select-object -first 1 |
+        % {
+
+            $process = New-Object "System.Diagnostics.Process" -Property @{
+                StartInfo = (
+                    @{
+                        TypeName = "System.Diagnostics.ProcessStartInfo"
+                        ArgumentList = @(
+                            (Get-Command bw).Path
+                            ,@(
+                                "--raw" 
+                                "get"; "attachment"; $_.fileName
+                                "--itemid"; $bitwardenItemContainingTheKeyAsAnAttachedFile.id
+                            )
+                        )
+                        Property = @{
+                            RedirectStandardOutput = $True
+                        }
+                    } | % { New-Object @_} 
                 )
-                Property = @{
-                    RedirectStandardOutput = $True
-                }
-            } | % { New-Object @_} 
-        )
-    }
-    
-    $process.Start() | Out-Null
-    # $process.WaitForExit() | Out-Null
-    $sshPrivateKey = $process.StandardOutput.ReadToEnd()
+            }
 
+            $process.Start() | Out-Null
+            # $process.WaitForExit() | Out-Null
+            $process.StandardOutput.ReadToEnd()
+        }
 
     return $sshPrivateKey
 }
