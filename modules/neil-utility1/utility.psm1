@@ -312,6 +312,8 @@ function getSshOptionArgumentsFromBitwardenItem {
             ? {$_.name -ceq "ssh_username"} | 
             select -first 1 | 
             % {$_.value}
+
+            $bitwardenItem.login.username
         ) |
         ? {$_} |
         select -first 1
