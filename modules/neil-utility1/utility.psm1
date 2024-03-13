@@ -211,7 +211,12 @@ function getSshPrivateKeyFromBitwardenItem {
         "id_ed25519"
         "id_ed25519_sk"
         "id_rsa"
+
+        # the entries that end "_sk" are, I think, the "authenticator-hosted"
+        # identites mentioned in [the documentation]
+        # (https://man.openbsd.org/ssh-keygen.1#FILES]).
     )
+    # see [https://man.openbsd.org/ssh-keygen.1#FILES]
 
     $sshPrivateKey = 
         $bitwardenItemContainingTheKeyAsAnAttachedFile.attachments |
@@ -261,7 +266,6 @@ function getSshOptionArgumentsFromBitwardenItem {
     )
 
     [HashTable] $bitwardenItem = Get-BitwardenItem -bitwardenItemId $bitwardenItemId
-    
 
     $sshHost = @(
         @(
