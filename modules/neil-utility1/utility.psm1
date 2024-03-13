@@ -274,6 +274,8 @@ function getSshOptionArgumentsFromBitwardenItem {
     # number is implicitly 22 if no explicit port number is given in the ssh
     # uri) and, optionally, the sshUsername.
 
+    # TODO: store public keys of hosts in bitwarden.
+
     [System.Uri] $sshUri = $(
         $bitwardenItem.login.uris |
         % {[System.Uri] $_.uri} |
