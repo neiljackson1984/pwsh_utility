@@ -320,10 +320,22 @@ function getSshOptionArgumentsFromBitwardenItem {
 
     $sshPort = $(
         if($sshUri){
-            ${sshUri}?.Port
-            # yes, even if ${sshUri}?.Port is null -- If the sshUri is non-null,
-            # it's port specification (even if the port sepcification is null) will completely override
-            # all other port specifications.
+            ${sshUri}?.Port | ? {$_ -gt 0}
+            # yes, even if ${sshUri}?.Port is null -- If sshUri is non-null, we
+            # want sshUri's port specification (even if the port specification
+            # is null) to override all other port specifications.
+            #
+            # the test for port being greater than zero is to work around the
+            # fact that System.Uri's port property is of type int, and
+            # System.Uri uses -1 as the "null-like" value -- to indicate an
+            # absence of a port specification in the original uri string.  
+            #
+            # this is a bit sloppy on the part of the designer of the System.Uri
+            # class.  Ideally, System.Uri would have a more obvious,
+            # self-documenting way of encoding the absence of a port
+            # specification. perhaps make the type of Port nullable, or have a
+            # boolean property named "hasPort" (or similar), or, perhaps, infer
+            # a real port number from the scheme defaults.
         }
         else {
             $bitwardenItem.fields |
