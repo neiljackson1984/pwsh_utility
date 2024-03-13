@@ -267,31 +267,72 @@ function getSshOptionArgumentsFromBitwardenItem {
 
     [HashTable] $bitwardenItem = Get-BitwardenItem -bitwardenItemId $bitwardenItemId
 
-    $sshHost = @(
+    # obtain the sshHost, sshUsername, and sshPort:
+
+    # find the first uri having the protocol "ssh://", or null if there is no
+    # such uri.  An ssh uri encodes the hostname and port number (the port
+    # number is implicitly 22 if no explicit port number is given in the ssh
+    # uri) and, optionally, the sshUsername.
+
+    [System.Uri] $sshUri = $(
+        $bitwardenItem.login.uris |
+        % {[System.Uri] $_.uri} |
+        ? {$_.Scheme -eq "ssh"}
+        select -first 1
+    )
+
+    $sshHost = $(
         @(
+            ${sshUri}?.Host
+        
+            # TODO: deprecate the ssh_host field -- the ssh_host field is entirely
+            # redundant with respect to sshUri.
             $bitwardenItem.fields |
             ? {$_.name -ceq "ssh_host"} | 
-            select -first 1 |% {$_.value}
-    
+            select -first 1 |
+            % {$_.value}
     
             $bitwardenItem.login.uris |
             % { ([System.Uri] $_.uri ).Host } 
         ) |
-        ? {$_}
-    ) | select -first 1
-    
-    $sshUsername = (
-        (
-            $bitwardenItem.fields |
-            ? {$_.name -ceq "ssh_username"} | 
-            select -first 1 | % {$_.value} | 
-            ? {$_}
-        ) ?? (
-            $bitwardenItem.login.username
-        )
+        ? {$_} |
+        select -first 1
     )
     
-    $sshPort = $bitwardenItem.fields |? {$_.name -ceq "ssh_port"} | select -first 1 |% {$_.value} |? {$_}
+    $sshUsername = $(
+        @(
+            ([System.UriBuilder] $sshUri)?.UserName
+            # Whereas System.Uri gives us only a UserInfo property, which
+            # contains the username and password (if present) separated by a
+            # colon, System.UriBuilder has separate properties for the username
+            # and the password.  Hence, the conversion to System.UriBuilder,
+            # above. 
+
+            $bitwardenItem.fields |
+            ? {$_.name -ceq "ssh_username"} | 
+            select -first 1 | 
+            % {$_.value}
+        ) |
+        ? {$_} |
+        select -first 1
+    )
+
+
+    $sshPort = $(
+        if($sshUri){
+            ${sshUri}?.Port
+            # yes, even if ${sshUri}?.Port is null -- If the sshUri is non-null,
+            # it's port specification (even if the port sepcification is null) will completely override
+            # all other port specifications.
+        }
+        else {
+            $bitwardenItem.fields |
+            ? {$_.name -ceq "ssh_port"} | 
+            select -first 1 |
+            % {$_.value} |
+            ? {$_}
+        }
+    )
 
     $sshConfigurationOptionArgs=@(
         "-o";"StrictHostKeyChecking=no"
