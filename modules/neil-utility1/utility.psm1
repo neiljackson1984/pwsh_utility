@@ -4139,17 +4139,21 @@ Set-Alias Enumerate Select-Enumerated
 function sendKeystrokesToVm {
     <#
         sends the string to the virtual machine in the form of keystrokes.
+
+        * see [http://justanotheritblog.co.uk/send-keystrokestext-to-a-vm-through-the-host-os/]
+        * see [https://richardspowershellblog.wordpress.com/2014/03/23/discovering-cimwmi-methods-and-parameters/]
+        * see [https://learn.microsoft.com/en-us/windows/win32/hyperv_v2/msvm-keyboard]
+        * see [https://learn.microsoft.com/en-us/windows/win32/inputdev/virtual-key-codes]
+        * see [https://learn.microsoft.com/en-us/windows/win32/hyperv_v2/typekey-msvm-keyboard]
+        * see [https://learn.microsoft.com/en-us/dotnet/api/system.windows.forms.keysconverter?view=windowsdesktop-8.0]
+        * see [https://learn.microsoft.com/en-us/windows/win32/api/winuser/nf-winuser-mapvirtualkeya]
+
     #>
-    # see [http://justanotheritblog.co.uk/send-keystrokestext-to-a-vm-through-the-host-os/]
-    # see [https://richardspowershellblog.wordpress.com/2014/03/23/discovering-cimwmi-methods-and-parameters/]
 
-    # see [https://learn.microsoft.com/en-us/windows/win32/hyperv_v2/msvm-keyboard]
-    # see [https://learn.microsoft.com/en-us/windows/win32/inputdev/virtual-key-codes]
-    # see [https://learn.microsoft.com/en-us/windows/win32/hyperv_v2/typekey-msvm-keyboard]
-    # see [https://learn.microsoft.com/en-us/windows/win32/hyperv_v2/typetext-msvm-keyboard]
 
-    # (Get-CimClass Msvm_Keyboard -Namespace "root\virtualization\v2" ).CimClassMethods |? {$_.Name -eq "TypeText"} | select -expand Parameters
-    # (Get-CimClass Msvm_Keyboard -Namespace "root\virtualization\v2" ).CimClassMethods |? {$_.Name -eq "TypeKey"} | select -expand Parameters
+
+    ## (Get-CimClass Msvm_Keyboard -Namespace "root\virtualization\v2" ).CimClassMethods |? {$_.Name -eq "TypeText"} | select -expand Parameters
+    ## (Get-CimClass Msvm_Keyboard -Namespace "root\virtualization\v2" ).CimClassMethods |? {$_.Name -eq "TypeKey"} | select -expand Parameters
 
     [CmdletBinding()]
     Param(
@@ -4165,10 +4169,119 @@ function sendKeystrokesToVm {
         [uint32[]] $keyCodesToSend = @(),
 
         [Parameter(Mandatory=$False)]
-        [Switch] $CtrlAltDel = $false
+        [Switch] $CtrlAltDel = $false,
+
+        [Parameter(Mandatory=$False)]
+        [Switch] $SendWithShifts = $false
     )
 
     begin {
+
+        $keySpecsByCharacter = @{
+            ## [char] 0x0d = @{   keyCode =  0x0d ; shift = $False    ; description = "carriage return"  }  # [System.Windows.Forms.Keys]::Enter
+            [char] 0x09 = @{   keyCode =  0x09 ; shift = $False    ; description = "tab"              }  # [System.Windows.Forms.Keys]::Tab              
+            [char] 0x0a = @{   keyCode =  0x0d ; shift = $False    ; description = "linefeed"         }  # [System.Windows.Forms.Keys]::Enter            
+            [char] 0x20 = @{   keyCode =  0x20 ; shift = $False    ; description = "space"            }  # [System.Windows.Forms.Keys]::Space            
+            [char] 0x21 = @{   keyCode =  0x31 ; shift = $True     ; description = "'!'"              }  # [System.Windows.Forms.Keys]::D1               
+            [char] 0x22 = @{   keyCode =  0xde ; shift = $True     ; description = "'`"'"             }  # [System.Windows.Forms.Keys]::OemQuotes        
+            [char] 0x23 = @{   keyCode =  0x33 ; shift = $True     ; description = "'#'"              }  # [System.Windows.Forms.Keys]::D3               
+            [char] 0x24 = @{   keyCode =  0x34 ; shift = $True     ; description = "'`$'"             }  # [System.Windows.Forms.Keys]::D4               
+            [char] 0x25 = @{   keyCode =  0x35 ; shift = $True     ; description = "'%'"              }  # [System.Windows.Forms.Keys]::D5               
+            [char] 0x26 = @{   keyCode =  0x37 ; shift = $True     ; description = "'&'"              }  # [System.Windows.Forms.Keys]::D7               
+            [char] 0x27 = @{   keyCode =  0xde ; shift = $False    ; description = "'''"              }  # [System.Windows.Forms.Keys]::OemQuotes        
+            [char] 0x28 = @{   keyCode =  0x39 ; shift = $True     ; description = "'('"              }  # [System.Windows.Forms.Keys]::D9               
+            [char] 0x29 = @{   keyCode =  0x30 ; shift = $True     ; description = "')'"              }  # [System.Windows.Forms.Keys]::D0               
+            [char] 0x2a = @{   keyCode =  0x6a ; shift = $False    ; description = "'*'"              }  # [System.Windows.Forms.Keys]::Multiply         
+            [char] 0x2b = @{   keyCode =  0x6b ; shift = $False    ; description = "'+'"              }  # [System.Windows.Forms.Keys]::Add              
+            [char] 0x2c = @{   keyCode =  0xbc ; shift = $False    ; description = "','"              }  # [System.Windows.Forms.Keys]::Oemcomma         
+            [char] 0x2d = @{   keyCode =  0x6d ; shift = $False    ; description = "'-'"              }  # [System.Windows.Forms.Keys]::Subtract         
+            [char] 0x2e = @{   keyCode =  0xbe ; shift = $False    ; description = "'.'"              }  # [System.Windows.Forms.Keys]::OemPeriod        
+            [char] 0x2f = @{   keyCode =  0x6f ; shift = $False    ; description = "'/'"              }  # [System.Windows.Forms.Keys]::Divide           
+            [char] 0x30 = @{   keyCode =  0x30 ; shift = $False    ; description = "'0'"              }  # [System.Windows.Forms.Keys]::D0               
+            [char] 0x31 = @{   keyCode =  0x31 ; shift = $False    ; description = "'1'"              }  # [System.Windows.Forms.Keys]::D1               
+            [char] 0x32 = @{   keyCode =  0x32 ; shift = $False    ; description = "'2'"              }  # [System.Windows.Forms.Keys]::D2               
+            [char] 0x33 = @{   keyCode =  0x33 ; shift = $False    ; description = "'3'"              }  # [System.Windows.Forms.Keys]::D3               
+            [char] 0x34 = @{   keyCode =  0x34 ; shift = $False    ; description = "'4'"              }  # [System.Windows.Forms.Keys]::D4               
+            [char] 0x35 = @{   keyCode =  0x35 ; shift = $False    ; description = "'5'"              }  # [System.Windows.Forms.Keys]::D5               
+            [char] 0x36 = @{   keyCode =  0x36 ; shift = $False    ; description = "'6'"              }  # [System.Windows.Forms.Keys]::D6               
+            [char] 0x37 = @{   keyCode =  0x37 ; shift = $False    ; description = "'7'"              }  # [System.Windows.Forms.Keys]::D7               
+            [char] 0x38 = @{   keyCode =  0x38 ; shift = $False    ; description = "'8'"              }  # [System.Windows.Forms.Keys]::D8               
+            [char] 0x39 = @{   keyCode =  0x39 ; shift = $False    ; description = "'9'"              }  # [System.Windows.Forms.Keys]::D9               
+            [char] 0x3a = @{   keyCode =  0xba ; shift = $True     ; description = "':'"              }  # [System.Windows.Forms.Keys]::OemSemicolon     
+            [char] 0x3b = @{   keyCode =  0xba ; shift = $False    ; description = "';'"              }  # [System.Windows.Forms.Keys]::OemSemicolon     
+            [char] 0x3c = @{   keyCode =  0xbc ; shift = $True     ; description = "'<'"              }  # [System.Windows.Forms.Keys]::Oemcomma         
+            [char] 0x3d = @{   keyCode =  0xbb ; shift = $False    ; description = "'='"              }  # [System.Windows.Forms.Keys]::Oemplus          
+            [char] 0x3e = @{   keyCode =  0xbe ; shift = $True     ; description = "'>'"              }  # [System.Windows.Forms.Keys]::OemPeriod        
+            [char] 0x3f = @{   keyCode =  0xbf ; shift = $True     ; description = "'?'"              }  # [System.Windows.Forms.Keys]::OemQuestion      
+            [char] 0x40 = @{   keyCode =  0x32 ; shift = $True     ; description = "'@'"              }  # [System.Windows.Forms.Keys]::D2               
+            [char] 0x41 = @{   keyCode =  0x41 ; shift = $True     ; description = "'A'"              }  # [System.Windows.Forms.Keys]::A                
+            [char] 0x42 = @{   keyCode =  0x42 ; shift = $True     ; description = "'B'"              }  # [System.Windows.Forms.Keys]::B                
+            [char] 0x43 = @{   keyCode =  0x43 ; shift = $True     ; description = "'C'"              }  # [System.Windows.Forms.Keys]::C                
+            [char] 0x44 = @{   keyCode =  0x44 ; shift = $True     ; description = "'D'"              }  # [System.Windows.Forms.Keys]::D                
+            [char] 0x45 = @{   keyCode =  0x45 ; shift = $True     ; description = "'E'"              }  # [System.Windows.Forms.Keys]::E                
+            [char] 0x46 = @{   keyCode =  0x46 ; shift = $True     ; description = "'F'"              }  # [System.Windows.Forms.Keys]::F                
+            [char] 0x47 = @{   keyCode =  0x47 ; shift = $True     ; description = "'G'"              }  # [System.Windows.Forms.Keys]::G                
+            [char] 0x48 = @{   keyCode =  0x48 ; shift = $True     ; description = "'H'"              }  # [System.Windows.Forms.Keys]::H                
+            [char] 0x49 = @{   keyCode =  0x49 ; shift = $True     ; description = "'I'"              }  # [System.Windows.Forms.Keys]::I                
+            [char] 0x4a = @{   keyCode =  0x4a ; shift = $True     ; description = "'J'"              }  # [System.Windows.Forms.Keys]::J                
+            [char] 0x4b = @{   keyCode =  0x4b ; shift = $True     ; description = "'K'"              }  # [System.Windows.Forms.Keys]::K                
+            [char] 0x4c = @{   keyCode =  0x4c ; shift = $True     ; description = "'L'"              }  # [System.Windows.Forms.Keys]::L                
+            [char] 0x4d = @{   keyCode =  0x4d ; shift = $True     ; description = "'M'"              }  # [System.Windows.Forms.Keys]::M                
+            [char] 0x4e = @{   keyCode =  0x4e ; shift = $True     ; description = "'N'"              }  # [System.Windows.Forms.Keys]::N                
+            [char] 0x4f = @{   keyCode =  0x4f ; shift = $True     ; description = "'O'"              }  # [System.Windows.Forms.Keys]::O                
+            [char] 0x50 = @{   keyCode =  0x50 ; shift = $True     ; description = "'P'"              }  # [System.Windows.Forms.Keys]::P                
+            [char] 0x51 = @{   keyCode =  0x51 ; shift = $True     ; description = "'Q'"              }  # [System.Windows.Forms.Keys]::Q                
+            [char] 0x52 = @{   keyCode =  0x52 ; shift = $True     ; description = "'R'"              }  # [System.Windows.Forms.Keys]::R                
+            [char] 0x53 = @{   keyCode =  0x53 ; shift = $True     ; description = "'S'"              }  # [System.Windows.Forms.Keys]::S                
+            [char] 0x54 = @{   keyCode =  0x54 ; shift = $True     ; description = "'T'"              }  # [System.Windows.Forms.Keys]::T                
+            [char] 0x55 = @{   keyCode =  0x55 ; shift = $True     ; description = "'U'"              }  # [System.Windows.Forms.Keys]::U                
+            [char] 0x56 = @{   keyCode =  0x56 ; shift = $True     ; description = "'V'"              }  # [System.Windows.Forms.Keys]::V                
+            [char] 0x57 = @{   keyCode =  0x57 ; shift = $True     ; description = "'W'"              }  # [System.Windows.Forms.Keys]::W                
+            [char] 0x58 = @{   keyCode =  0x58 ; shift = $True     ; description = "'X'"              }  # [System.Windows.Forms.Keys]::X                
+            [char] 0x59 = @{   keyCode =  0x59 ; shift = $True     ; description = "'Y'"              }  # [System.Windows.Forms.Keys]::Y                
+            [char] 0x5a = @{   keyCode =  0x5a ; shift = $True     ; description = "'Z'"              }  # [System.Windows.Forms.Keys]::Z                
+            [char] 0x5b = @{   keyCode =  0xdb ; shift = $False    ; description = "'['"              }  # [System.Windows.Forms.Keys]::OemOpenBrackets  
+            [char] 0x5c = @{   keyCode =  0xdc ; shift = $False    ; description = "'\'"              }  # [System.Windows.Forms.Keys]::OemPipe          
+            [char] 0x5d = @{   keyCode =  0xdd ; shift = $False    ; description = "']'"              }  # [System.Windows.Forms.Keys]::OemCloseBrackets 
+            [char] 0x5e = @{   keyCode =  0x36 ; shift = $True     ; description = "'^'"              }  # [System.Windows.Forms.Keys]::D6               
+            [char] 0x5f = @{   keyCode =  0xbd ; shift = $True     ; description = "'_'"              }  # [System.Windows.Forms.Keys]::OemMinus         
+            [char] 0x60 = @{   keyCode =  0xc0 ; shift = $False    ; description = "'`'"              }  # [System.Windows.Forms.Keys]::Oemtilde         
+            [char] 0x61 = @{   keyCode =  0x41 ; shift = $False    ; description = "'a'"              }  # [System.Windows.Forms.Keys]::A                
+            [char] 0x62 = @{   keyCode =  0x42 ; shift = $False    ; description = "'b'"              }  # [System.Windows.Forms.Keys]::B                
+            [char] 0x63 = @{   keyCode =  0x43 ; shift = $False    ; description = "'c'"              }  # [System.Windows.Forms.Keys]::C                
+            [char] 0x64 = @{   keyCode =  0x44 ; shift = $False    ; description = "'d'"              }  # [System.Windows.Forms.Keys]::D                
+            [char] 0x65 = @{   keyCode =  0x45 ; shift = $False    ; description = "'e'"              }  # [System.Windows.Forms.Keys]::E                
+            [char] 0x66 = @{   keyCode =  0x46 ; shift = $False    ; description = "'f'"              }  # [System.Windows.Forms.Keys]::F                
+            [char] 0x67 = @{   keyCode =  0x47 ; shift = $False    ; description = "'g'"              }  # [System.Windows.Forms.Keys]::G                
+            [char] 0x68 = @{   keyCode =  0x48 ; shift = $False    ; description = "'h'"              }  # [System.Windows.Forms.Keys]::H                
+            [char] 0x69 = @{   keyCode =  0x49 ; shift = $False    ; description = "'i'"              }  # [System.Windows.Forms.Keys]::I                
+            [char] 0x6a = @{   keyCode =  0x4a ; shift = $False    ; description = "'j'"              }  # [System.Windows.Forms.Keys]::J                
+            [char] 0x6b = @{   keyCode =  0x4b ; shift = $False    ; description = "'k'"              }  # [System.Windows.Forms.Keys]::K                
+            [char] 0x6c = @{   keyCode =  0x4c ; shift = $False    ; description = "'l'"              }  # [System.Windows.Forms.Keys]::L                
+            [char] 0x6d = @{   keyCode =  0x4d ; shift = $False    ; description = "'m'"              }  # [System.Windows.Forms.Keys]::M                
+            [char] 0x6e = @{   keyCode =  0x4e ; shift = $False    ; description = "'n'"              }  # [System.Windows.Forms.Keys]::N                
+            [char] 0x6f = @{   keyCode =  0x4f ; shift = $False    ; description = "'o'"              }  # [System.Windows.Forms.Keys]::O                
+            [char] 0x70 = @{   keyCode =  0x50 ; shift = $False    ; description = "'p'"              }  # [System.Windows.Forms.Keys]::P                
+            [char] 0x71 = @{   keyCode =  0x51 ; shift = $False    ; description = "'q'"              }  # [System.Windows.Forms.Keys]::Q                
+            [char] 0x72 = @{   keyCode =  0x52 ; shift = $False    ; description = "'r'"              }  # [System.Windows.Forms.Keys]::R                
+            [char] 0x73 = @{   keyCode =  0x53 ; shift = $False    ; description = "'s'"              }  # [System.Windows.Forms.Keys]::S                
+            [char] 0x74 = @{   keyCode =  0x54 ; shift = $False    ; description = "'t'"              }  # [System.Windows.Forms.Keys]::T                
+            [char] 0x75 = @{   keyCode =  0x55 ; shift = $False    ; description = "'u'"              }  # [System.Windows.Forms.Keys]::U                
+            [char] 0x76 = @{   keyCode =  0x56 ; shift = $False    ; description = "'v'"              }  # [System.Windows.Forms.Keys]::V                
+            [char] 0x77 = @{   keyCode =  0x57 ; shift = $False    ; description = "'w'"              }  # [System.Windows.Forms.Keys]::W                
+            [char] 0x78 = @{   keyCode =  0x58 ; shift = $False    ; description = "'x'"              }  # [System.Windows.Forms.Keys]::X                
+            [char] 0x79 = @{   keyCode =  0x59 ; shift = $False    ; description = "'y'"              }  # [System.Windows.Forms.Keys]::Y                
+            [char] 0x7a = @{   keyCode =  0x5a ; shift = $False    ; description = "'z'"              }  # [System.Windows.Forms.Keys]::Z                
+            [char] 0x7b = @{   keyCode =  0xdb ; shift = $True     ; description = "'{'"              }  # [System.Windows.Forms.Keys]::OemOpenBrackets  
+            [char] 0x7c = @{   keyCode =  0xdc ; shift = $True     ; description = "'|'"              }  # [System.Windows.Forms.Keys]::OemPipe          
+            [char] 0x7d = @{   keyCode =  0xdd ; shift = $True     ; description = "'}'"              }  # [System.Windows.Forms.Keys]::OemCloseBrackets 
+            [char] 0x7e = @{   keyCode =  0xc0 ; shift = $True     ; description = "'~'"              }  # [System.Windows.Forms.Keys]::Oemtilde         
+        }
+
+        ## $shiftKeyKeyCode = [uint32] [System.Windows.Forms.Keys]::ShiftKey
+        $shiftKeyKeyCode = 0x10
+
+
         ## $Keyboard = getVmKeyboard $virtualMachine
         $ComputerSystem = Get-CimInstance -ClassName Msvm_ComputerSystem -Namespace "root\virtualization\v2" -Filter "ElementName = '$($virtualMachine.Name)'"        
         $Keyboard = (Get-CimAssociatedInstance -InputObject $ComputerSystem -ResultClassName Msvm_Keyboard -Namespace "root\virtualization\v2")
@@ -4181,15 +4294,33 @@ function sendKeystrokesToVm {
 
 
         if($stringToSend){
-            Invoke-CimMethod -InputObject $Keyboard -MethodName "TypeText" -Arguments @{AsciiText=$stringToSend} | out-null
+            if($SendWithShifts){
+                # we assume that we are starting from a state where caps lock is off, and no modifier keys are being held down.
+
+                foreach($c in ([char[]] $stringToSend)){
+                    if($c -in $keySpecsByCharacter.Keys){
+                        $keySpec = $keySpecsByCharacter[$c]
+
+                        if($keySpec.shift){
+                            Invoke-CimMethod -InputObject $Keyboard -MethodName "PressKey" -Arguments @{keyCode=$shiftKeyKeyCode} | out-null
+                        }
+                        Invoke-CimMethod -InputObject $Keyboard -MethodName "PressKey" -Arguments @{keyCode=$keySpec.keyCode}  | out-null
+                        if($keySpec.shift){
+                            Invoke-CimMethod -InputObject $Keyboard -MethodName "ReleaseKey" -Arguments @{keyCode=$shiftKeyKeyCode}  | out-null
+                        }
+                    }
+                }
+            } else {
+                Invoke-CimMethod -InputObject $Keyboard -MethodName "TypeText" -Arguments @{AsciiText=$stringToSend} | out-null
+            }
         }
 
         foreach($keyCode in $keyCodesToSend){
-            Invoke-CimMethod -InputObject $Keyboard -MethodName "TypeKey" -Arguments @{KeyCode=$keyCode}
+            Invoke-CimMethod -InputObject $Keyboard -MethodName "TypeKey" -Arguments @{KeyCode=$keyCode} | out-null
         }
 
         if($CtrlAltDel){
-            Invoke-CimMethod -InputObject $Keyboard -MethodName "TypeCtrlAltDel" -Arguments @{}
+            Invoke-CimMethod -InputObject $Keyboard -MethodName "TypeCtrlAltDel" -Arguments @{} | out-null
         }
     }
 }
