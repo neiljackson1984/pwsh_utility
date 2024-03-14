@@ -251,6 +251,33 @@ function getSshPrivateKeyFromBitwardenItem {
     return $sshPrivateKey
 }
 
+function getSshPublicKeyFromPrivateKey {
+    [CmdletBinding()]
+    [OutputType([string])]
+    Param(
+        [parameter()]
+        [string] $privateKey,
+
+        [parameter(mandatory=$False)]
+        [string] $password = ""
+    )
+
+    $pathOfTemporaryFileContainingPrivateKey = New-TemporaryFile
+    # I am not a big fan of writing the private key to a file, but I can't
+    # figure out how to make ssh-keygen read from stdin.
+    #
+    # What I am actually trying to achieve with this function is usually to get
+    # the public key corresponding to the private key stored in some bitwarden
+    # item.  It might be more secure to store the public key as an additional
+    # attachment or field in the bitwarden item (At the time of creation), and
+    # then, when I want the public key, I wouldn't have to read or download the
+    # private key. 
+    set-content -Path $pathOfTemporaryFileContainingPrivateKey -Value $privateKey
+    $publicKey = $privateKey | ssh-keygen -y -P $password -f $pathOfTemporaryFileContainingPrivateKey
+    Remove-Item $pathOfTemporaryFileContainingPrivateKey
+    return $publicKey
+}
+
 function getSshOptionArgumentsFromBitwardenItem {
     [OutputType([System.Collections.Generic.IEnumerable[string]])]
     [CmdletBinding()]
