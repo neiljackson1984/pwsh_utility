@@ -306,7 +306,7 @@ function getSshOptionArgumentsFromBitwardenItem {
     [System.Uri] $sshUri = $(
         $bitwardenItem.login.uris |
         % {[System.Uri] $_.uri} |
-        ? {$_.Scheme -eq "ssh"}
+        ? {$_.Scheme -eq "ssh"} |
         select -first 1
     )
 
