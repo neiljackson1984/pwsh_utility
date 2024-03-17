@@ -844,7 +844,15 @@ function New-Invoker {
         [Object[]] $VariablesAndFunctionsToImport
     )
 
-    $uniqueMagicStringForThisFunction = "517f7e13f0c84e1d96b729651fe06b48"
+    # $uniqueMagicStringForThisFunction = "517f7e13f0c84e1d96b729651fe06b48"
+
+    $uniqueMagicStringForThisFunction = "$(new-guid)"
+    # we actually do not want to hardcode a magic string here.  Rather, we want
+    # to each call to New-Invoker to return a function (really a closure) that
+    # contains a unique session name within it.  We also don't need to include
+    # the computer name in the unique session name.
+
+
     $ComputerName = $(if($ComputerName){$ComputerName}else{$argumentsForGetDcSession['ComputerName']})
     if(-not $ComputerName){
         Write-Error "could not resolve ComputerName"
