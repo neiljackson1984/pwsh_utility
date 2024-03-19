@@ -984,6 +984,42 @@ function New-Invoker {
 }
 
 
+function New-ScreenconnectInvoker {
+    [CmdletBinding()]
+    [OutputType([ScriptBlock])]
+    Param(
+        [parameter()]
+        [HashTable] $argumentsForRunInCwcSession
+    )
+
+    return {
+        # see perhaps
+        # [https://stackoverflow.com/questions/62291492/powershell-create-dynamic-param-from-ast-of-another-script-block
+        [CmdletBinding(PositionalBinding=$False)]
+        Param(
+            [Parameter(Mandatory=$False)] 
+            [int] $timeout,
+
+            [Parameter(
+                Position=1,
+                Mandatory=$False
+            )] 
+            [string[]] $command
+        )
+        ## DynamicParam {}
+        ## code --goto (getcommandPath runInCwcSession)
+
+        # "PSBoundParameters: "
+        # $PSBoundParameters.GetTYpe().FullName
+        # $PSBoundParameters
+
+        Merge-Hashtables $argumentsForRunInCwcSession $PSBoundParameters |% {runInCwcSession @_}
+    }.GetNewClosure()
+}
+
+
+
+
 function connectVpn {
     <#
     .SYNOPSIS
