@@ -1017,7 +1017,9 @@ function getRr {
     [CmdletBinding()]
     [OutputType([ScriptBlock])]
     Param(
-        [string] $bitwardenItemId
+        [string] $bitwardenItemId,
+
+        [hashtable] $extraSshOptions =  @{}
     )
 
     # specify the bitwardenItem corresponding to the computer we want to ssh into
@@ -1025,6 +1027,11 @@ function getRr {
     
     $pathOfTemporaryKnownHostsFile = New-TemporaryFile
     $sshOptionArguments = @(    
+        $extraSshOptions.GetEnumerator()  |
+        % {
+            "-o"; "$($_.Key)=$($_.Value)"
+        }
+
         # these options prevent us from touching our
         # main known_hosts file:
         "-o";"StrictHostKeyChecking=no"
