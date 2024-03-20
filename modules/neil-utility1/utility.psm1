@@ -1013,6 +1013,36 @@ function runInSshSession {
 
 }
 
+function getRr {
+    [CmdletBinding()]
+    [OutputType([ScriptBlock])]
+    Param(
+        [string] $bitwardenItemId
+    )
+
+    # specify the bitwardenItem corresponding to the computer we want to ssh into
+    $bitwardenItem = Get-BitwardenItem $bitwardenItemId
+    
+    $pathOfTemporaryKnownHostsFile = New-TemporaryFile
+    $sshOptionArguments = @(    
+        # these options prevent us from touching our
+        # main known_hosts file:
+        "-o";"StrictHostKeyChecking=no"
+        "-o","UserKnownHostsFile=$($pathOfTemporaryKnownHostsFile)"
+
+        getSshOptionArgumentsFromBitwardenItem -bitwardenItemId $bitwardenItem.id 
+    )
+
+    $sshAgentEnvironment = initializeSshAgentFromBitwardenItemAndReturnSshAgentEnvironment $bitwardenItem.id
+    # Set-Alias -Name rr -Value runInSshSession
+    $rr = { 
+        $input | runInSshSession -sshAgentEnvironment $sshAgentEnvironment -sshOptionArguments $sshOptionArguments @args 
+    }.GetNewClosure()
+
+    & $rr 'echo $(date): hello from $(hostname) ' | write-host
+
+    return $rr
+}
 
 
 
