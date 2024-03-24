@@ -1,10 +1,51 @@
 #!pwsh
 import-module (join-path $psScriptRoot "utility.psm1")
-function dump-attachments {
-    # Look at all .msg files in the "source folder"
-    # for each, dump attached files into the "destination folder", renaming as needed for unique names.
-    # actually, we are doing hash-based naming to ensure just as much uniqueness as we need.
-    # we regard two attached files as "the same" iff. they have the same filename and the same hash.
+
+function Expand-Attachments {
+    <#
+        .SYNOPSIS
+            Look at all .msg files in the specified source folder, assumed to be
+            email message files as saved by Outlook.  For each, dump attached
+            files into the destination folder.
+
+            If appendHashToOutputFileNames is specified, de hash-based file
+            names to ensure file name uniqueness. we regard two attached files
+            as "the same" iff. they have the same filename and the same hash.
+
+        .DESCRIPTION
+            Long description
+
+        .PARAMETER pathOfSourceFolder
+
+
+        .PARAMETER pathOfDestinationFolder
+
+
+        .PARAMETER pathOfSourceMessageFile
+
+
+        .PARAMETER appendHashToOutputFileNames
+
+    #>
+    
+
+    
+    ## [Diagnostics.CodeAnalysis.SuppressMessageAttribute("PSUseApprovedVerbs", Scope="Function", Target="*")]
+    <#  I know, I know: "dump" is not an approved powershell verb.  Ideally, I
+        should change "dump" to one of the standard approved verbs, or perhaps
+        (probably ill-advised. is this even possible?), add "dump" to the list
+        of approved verbs.
+
+        The above Diagnostics.CodeAnalysis.SuppressMessageAttribute does
+        suppress the script analyzer warnings in vs code, but has no effect on
+        the warning message that powershell displays when importing this module:
+        "WARNING: The names of some imported commands from the module
+        'neil-utility1' include unapproved verbs that might make them less
+        discoverable. "
+
+    #>
+
+
 
     Param(
         [Parameter(Position=0)]
@@ -75,3 +116,14 @@ function dump-attachments {
         }
     }
 }
+
+<#
+    2024-03-24: renamed "dump-attachemnts" to "expand-attachments" in order to
+    get rid of the nonstandard verb "dump".
+
+    We now add the alias dump-attachments for backward compatibility.
+
+    Curiously, Powershell does not seem to mind having an alias with a
+    non-standard verb.
+#>
+set-alias dump-attachments Expand-Attachments

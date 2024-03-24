@@ -20,7 +20,7 @@
         "autodesk_identity.psm1"
         "domain_controller_session.psm1"
         "autodesk_popup_slapdown.psm1"
-        "dump-attachments.psm1"
+        "expand-attachments.psm1"
         "autocad-control.psm1"
     )
 
