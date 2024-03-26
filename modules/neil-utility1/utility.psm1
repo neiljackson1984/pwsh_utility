@@ -2744,11 +2744,11 @@ function installGoodies(){
             "chocolatey"
             "7zip"
             "pwsh"
-            "winmerge"
-            "spacesniffer"
+            ## "winmerge"
+            ## "spacesniffer"
             "notepadplusplus"
             "sysinternals"
-            "hdtune"
+            ## "hdtune"
         ) | % {choco upgrade --acceptlicense --yes $_}
 
         # "upgrade" installs if it is not already installed, so we do not need
@@ -2921,7 +2921,7 @@ function runInActiveSession {
     )
     [string[]] $flattenedRemainingArguments = @($remainingArguments |% {$_})
 
-    $nameOfScheduledTask = (New-Guid).Guid
+    $nameOfScheduledTask = "runInActiveSession--$((New-Guid).Guid)"
     Unregister-ScheduledTask -Confirm:$false  -TaskName $nameOfScheduledTask -ErrorAction SilentlyContinue | Out-Null
     
     $registeredScheduledTask = $null
