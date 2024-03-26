@@ -2955,6 +2955,19 @@ function runInActiveSession {
     )
     Start-ScheduledTask -InputObject $registeredScheduledTask
     Unregister-ScheduledTask -Confirm:$false -InputObject $registeredScheduledTask
+
+    <#
+        2024-03-26-1609: I am encountering error in the scheduled tasks log.
+
+        I suspect I have encountered this error before, but this is the first
+        time I have actually troubleshot it.
+
+        see
+        [https://serverfault.com/questions/559288/what-causes-scheduled-task-error-2147942402].
+
+        I suspect this might simply be that the command I was trying to run is
+        not on the path.
+    #>
 }
 
 function runWithPerpetuallyOpenStandardInput(){
