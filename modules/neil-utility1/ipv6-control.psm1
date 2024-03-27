@@ -28,4 +28,5 @@ function set-ipv6(){
 
 Export-ModuleMember -function enable-ipv6
 Export-ModuleMember -function disable-ipv6
+Export-ModuleMember -function set-ipv6
 
