@@ -2329,10 +2329,48 @@ function getAmazonAddToCartUrl {
         # [Switch]$Descending
     )
 
-    # Amazon add-to-cart URL syntax:
-    # (see https://webservices.amazon.com/paapi5/documentation/add-to-cart-form.html)
-    $url = "https://www.amazon.com/gp/aws/cart/add.html?" + (
+    <#  Amazon add-to-cart URL syntax:
+
+        see
+        [https://webservices.amazon.com/paapi5/documentation/add-to-cart-form.html].
+
+        As of 2024-03-29, and for many months prior, I have observe that the
+        add-to-cart API almost rarely works, and usually redirects to a 404
+        error page (or similar).  I suspect that the problem is that I have been
+        omitting the "AssociateTag" parameter from my query string.
+
+        On
+        [https://webservices.amazon.com/paapi5/documentation/add-to-cart-form.html],
+        the "AssociateTag" parameter is listed as being mandatory.
+
+        In an attempt to be able to make functional add-to-cart urls, I have
+        signed up for an associate id (which, I suspect is the same as the
+        "Associate tag").  My associate id is: "6c1690888e2c4-20".  I have
+        observed that including this associate id in the add-to-cart url seems
+        to eliminate the problem of being redirected to an error page.
+
+        Experimenting, it seems that even a bogus, made-up associate tag also
+        serves to eliminate the error.  For my purposes, I want to avoid a
+        conflict of interest when I send people an add-to-cart url.  Therefore,
+        I will use the bogus, made-up value "intentional-null" as the
+        ASsociateTag parameter of my add-to-cart urls.  This should make it
+        clear to anyone who bothers to manually read the URL that the associate
+        tag is intentionally bogus.
+
+    #>
+    ## $myRealAssociateTag         = "6c1690888e2c4-20"
+    $arbitraryFakeAssociateTag  = "intentional-null"
+    
+    ## $associateTag               = $myRealAssociateTag
+    $associateTag               = $arbitraryFakeAssociateTag
+
+
+    $url = 
+        "https://www.amazon.com/gp/aws/cart/add.html?" + 
+        (
             @(
+                "AssociateTag=$($associateTag)"
+            
                 for ($i=0; $i -lt $asinQuantityPairs.count; $i++ ){
                     if($asinQuantityPairs[$i][1]){
                         "ASIN.$($i+1)=$($asinQuantityPairs[$i][0])"
