@@ -2313,6 +2313,42 @@ function getReferencedAssembliesRecursivelyForReflection([System.Reflection.Asse
 
 
 function getAmazonAddToCartUrl {
+    <#
+    .SYNOPSIS
+    generates an Amazon "add-to-cart" url for the specified ASIN's and
+    quantities.
+
+
+    .PARAMETER asinQuantityPairs
+    A list of (asin, quantity) pairs
+
+    .EXAMPLE
+
+    This example shows how you might generate some html containing a link to the 
+    generated add-to-cart url, and then send this html to the clipboard as
+    rich-text (for pasting into an email, perhaps)
+    ```
+    getAmazonAddToCartUrl @(
+        ,@("B07JJTVGZM", 1) # nvme to pcie carrier card. $10
+        ## ,@("B0BHJJ9Y77", 1) # Samsung MZ-V9P2T0B/AM. 990 PRO without heat sink. $180
+        ,@("B0BHJDY57J", 1) # Samsung MZ-V9P2T0CW. 990 PRO with heat sink. $199
+    ) | 
+    % {
+        "<a href=`"$_`">CLick here to buy the stuff from Amazon.</a>" 
+    } | powershell -c {[string[]] $x = $input; $x | set-clipboard -ashtml; $x}
+    ```
+
+
+
+
+    .NOTES
+    General notes
+    #>
+    
+
+
+
+    
     [OutputType([String])]
     
     #example:
@@ -4700,20 +4736,25 @@ Function Install-WingetOnWindows10 {
 
     # todo: check for existing winget.
 
+    # todo: check that we acutally have chocolatey installed, which we need below.
+
     # todo perhaps: put all of this logic in the chocolatey winget package.
 
     
     choco upgrade --yes --acceptlicense  --exact winget
 
     # it seems that the only thing we need to do differently or special (I
-    # think) on Windows server 2019 and Windows 10, is take pains to get the
-    # winget.exe executable file on the path (it seems that App Execution
-    # Aliases -- the normal mechanism for winget to get added to the path -- do
-    # not work in Windows 10 and Windows Server 2019.  Or, at any rate, when we
-    # install the AppX Package named 'Microsoft.DesktopAppInstaller', version
+    # think) when using Chocolatey to install winget on Windows server 2019 and
+    # Windows 10 compared with windows 11, is take pains to get the winget.exe
+    # executable file on the path (it seems that App Execution Aliases -- the
+    # normal mechanism for winget to get added to the path -- do not work in
+    # Windows 10 and Windows Server 2019.  Or, at any rate, when we install the
+    # AppX Package named 'Microsoft.DesktopAppInstaller', version
     # '2024.227.1731.0', the App Execution Aliases (i.e. NTFS reparse points in
     # (join-path $env:localappdata "Microsoft/WindowsApps") seem to get created
-    # on Windows 11, but not on Windows 10 or Windows server 2019.) 
+    # on Windows 11, but not on Windows 10 or Windows server 2019 (probably
+    # because the process-starting api function in the Windows 10 kernel does
+    # not support the "app execution alias" ntfs reparse points. ) 
     #
     # The below creation of a chocolatey shim is one way to make winget
     # effectively available on the path.
