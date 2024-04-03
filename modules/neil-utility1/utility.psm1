@@ -2574,7 +2574,10 @@ function downloadFileAndReturnPath {
         [string] $hash = "",
 
         [parameter(mandatory=$False)]
-        [string] $hashAlgorithm = "SHA256"
+        [string] $hashAlgorithm = "SHA256",
+
+        [parameter(mandatory=$False)]
+        [string[]] $extraCurlArguments = @()
 
     ) 
 
@@ -2667,6 +2670,8 @@ function downloadFileAndReturnPath {
 
             "--output-dir";$pathOfDedicatedInitialDirectoryToContainDownloadedFile
             $urlOfFile
+
+            $extraCurlArguments
         )
 
         <#  2024-03-10-1437: I notice that in the case where there is no
@@ -4780,4 +4785,83 @@ Function Install-WingetOnWindows10 {
     # of agreement that winget forces you to acknowledge once before you can use
     # winget.  doing it here gets it out of the way.
 
+}
+
+function Convert-MacAddressToLinkLocalIpv6Address {
+    <#
+    .SYNOPSIS
+    Converts a 48-bit IEEE MAC address (in the form of a hex string (arbitrary
+    non-hex characters allowed)) into a link-local ipv6 address with the
+    interface identifier constructed according to the "Modified EUI-64 Format"
+    mentioned in RFC4291, Appendix A.
+
+    .EXAMPLE
+    ```
+    "$(Convert-MacAddressToLinkLocalIpv6Address 90:58:51:11:3b:e2)"
+    ```
+    fe80::9258:51ff:fe11:3be2
+
+
+    .NOTES
+    General notes
+    #>
+    [CmdletBinding()]
+    [OutputType([System.Net.IPAddress])]
+    Param(
+        [parameter()]
+        [string] $MacAddress
+        
+        ## ,
+        ## [parameter(mandatory=$false)]
+        ## [Int64] $ScopeId
+    )
+    $sanitizedMacAddress = $MacAddress.ToLower() -replace "[^0123456789abcdef]",""
+    $macAddressBytes = $([System.Convert]::FromHexString($sanitizedMacAddress))
+    if( -not ($macAddressBytes -and $macAddressBytes.Count -eq 6)){
+        Write-Error "we were expecting a 48-bit mac address"
+        return
+    }
+    # see [https://datatracker.ietf.org/doc/html/rfc4291#section-2.5.1]
+    #
+    # see [https://datatracker.ietf.org/doc/html/rfc4291#appendix-A]
+    #
+    # see [https://ben.akrin.com/mac-address-to-ipv6-link-local-address-online-converter/]
+
+    $eui64Bytes = [byte[]] @(
+        $macAddressBytes[0..2]
+        0xff
+        0xfe
+        $macAddressBytes[3..5]
+    )
+
+    # possibly, we should  not be calling this the eui64Bytes, because, as
+    # mentioned in the Note at the end of Appenmdix A in RFC4291, the IEEE
+    # EUI-64 standard defines 0xff, 0xff (NOT 0xff, 0xfe) as the bytes to be
+    # inserted in the middle of the 48-bit IEEE MAC-48 identifier to generate
+    # the equivalent EUI-64 identifier.  Apparently, a writer of an earlier
+    # version of the RFC4291 standard (or one of its predecessors) mistakenly
+    # specified 0xfe due to confusion about the difference between IEEE MAC-48
+    # and IEEE EUI-48. Because 0xfe became enshrined in the IETF standard,  and
+    # because the mistake doesn't cause any problems in this context (as long as
+    # everyone agrees on the mistake), the IETF decided to leave the 0xfe value
+    # as part of RFC4291.
+    #
+    # I wonder if any implementers DO use the "correct" 0xff, 0xff sequence.
+
+    $modifiedEui64Bytes = [byte[]] @(
+        $eui64Bytes[0] -bxor 0x02
+        $eui64Bytes[1..7]
+    )
+
+    $ipv6AddressBytes =  [byte[]] @(
+        0xfe; 0x80
+        0x00; 0x00
+        0x00; 0x00
+        0x00; 0x00
+        $modifiedEui64Bytes
+    )
+
+    $ipv6Address = [System.Net.IPAddress] $ipv6AddressBytes
+    ## if($ScopeId){$ipv6Address.ScopeId = $ScopeId}
+    return $ipv6Address
 }
