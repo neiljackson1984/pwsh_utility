@@ -2554,6 +2554,7 @@ function downloadAndExpandArchiveFile{
     return (expandArchiveFile -pathOfArchiveFile (downloadFileAndReturnPath $url) -pathOfDirectoryInWhichToExpand $pathOfDirectoryInWhichToExpand)
 }
 
+Set-Alias -Name download -Value downloadFileAndReturnPath
 function downloadFileAndReturnPath {
     <#
     .SYNOPSIS
@@ -2718,6 +2719,8 @@ function downloadFileAndReturnPath {
         # return $null
     }
 }
+
+
 
 function getPathOfPossiblyNestedFileMatchingPattern{
     <#
