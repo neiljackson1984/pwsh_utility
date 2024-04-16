@@ -2628,8 +2628,15 @@ function downloadFileAndReturnPath {
             # follow redirects:
             "--location"
 
-            # "--header"; 'User-Agent: Mozilla/5.0 (Windows NT 10.0; Win64; x64; rv:109.0) Gecko/20100101 Firefox/118.0'
-            
+            "--user-agent"; 'Mozilla/5.0 (Windows NT 10.0; Win64; x64; rv:124.0) Gecko/20100101 Firefox/124.0'
+            # including a user-agent header seems to include reliability with some servers.
+    
+            ## "--header"; "Accept: text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,*/*;q=0.8"
+            ## "--header"; "Accept-Language: en-US,en;q=0.5"
+            ## "--header"; "Accept-Encoding: gzip, deflate, br"
+            "--header"; "Accept-Encoding: *"
+            # I have observed at least one server that requires the Accept-Encoding to be present.
+
             # "--cookie-jar";$pathOfCookieJarFile
             # "--cookie";$pathOfCookieJarFile  
             # "--cookie"; "`"`""
