@@ -3538,8 +3538,10 @@ function getStronglyNamedPath {
 function getCommandPath {
     <#
     .SYNOPSIS
-    returns the path of the file containing the specified command, along with the relevant line number in that file.
-    Intended to be used for commands that are defined as a powershell function in a powershell acript module file.
+    returns the path of the file containing the specified command, along with
+    the relevant line number in that file. Intended to be used for commands that
+    are defined as a powershell function in a powershell script module file (or
+    for commands that are aliases pointing to such commands)
 
     #>
     [OutputType([string])]
@@ -3549,7 +3551,15 @@ function getCommandPath {
         [string] $nameOfCommand
     )
 
-    Get-Command $nameOfCommand | % { "$($_.ScriptBlock.File):$($_.ScriptBlock.StartPosition.StartLine)" }
+    $commandInfo = $(Get-Command $nameOfCommand)
+    if($commandInfo){
+        if($commandInfo.CommandType -ceq [System.Management.Automation.CommandTypes]::Alias){
+            getCommandPath $commandInfo.Definition
+        } else {
+            # here, we are basically assuming that the command is a function or a cmdlet.
+            return "$($commandInfo.ScriptBlock.File):$($commandInfo.ScriptBlock.StartPosition.StartLine)"
+        }
+    }
 }
 
 function New-TemporaryDirectory {
