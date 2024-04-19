@@ -4,6 +4,8 @@
 
     As an example of a few ideas about how to use this, see
     [https://gitlab.com/neiljackson1984/2020-08-13_219004_shaffer/-/raw/34d945d87f3c0c37408b5ddf39d569376283f79f/shaffer_process_notes.ps1].
+
+    
 #>
 
 &{  # load several useful AutoCAD assemblies (dll files) into memory,
@@ -34,8 +36,8 @@
 }
 
 
-
-function awaitQuiescense($acad){
+Set-Alias awaitQuiescense awaitAutocadQuiescense
+function awaitAutocadQuiescense($acad){
     while(
         -not $(
             try{
@@ -64,7 +66,8 @@ function tryToCloseDrawing1($acad){
     }
 }
 
-function getDocument([Object] $acad, [String] $pathOfDwgFile){
+set-alias getDocument Get-AutocadDocument
+function Get-AutocadDocument([Object] $acad, [String] $pathOfDwgFile){
     # this is just about like $acad.Documents.Open(), except
     # that we check if the file is already opened and return the already-opened 
     # document if it is.
@@ -83,19 +86,25 @@ function getDocument([Object] $acad, [String] $pathOfDwgFile){
         return $existingDocumentCandidates[0]
     } else {
         Write-host "opening: $($pathOfDwgFile)"
-        $document = $acad.Documents.Open("$($_.FullName)")
+        $document = $acad.Documents.Open("$($pathOfDwgFile)")
         awaitQuiescense($acad)
         return $document
     }
 }
 
-function getAutocadComObject([string] $product){
-    # try to get existing acad com object.  
-    # In the case where there is already an existing object, we'll ignore the $product argument 
-    # and blindly assume that
-    # we are already in the desired mode.
-    # https://renenyffenegger.ch/notes/Microsoft/dot-net/namespaces-classes/System/Runtime/InteropServices/Marshal/GetActiveObject
+set-alias getAcad Get-AutocadComObject
+set-alias getAutocadComObject Get-AutocadComObject
+function Get-AutocadComObject([string] $product){
+    <#
+        try to get existing acad com object.  
+        In the case where there is already an existing object, we'll ignore the
+        $product argument and blindly assume that we are already in the desired
+        mode.
+        https://renenyffenegger.ch/notes/Microsoft/dot-net/namespaces-classes/System/Runtime/InteropServices/Marshal/GetActiveObject
 
+        It probably makes sense to maintain the "Existing"  acad object in a
+        module-scoped variable, and return that if it exists and is valid.
+    #>
     
     add-type -typeDefinition (
         @(
@@ -218,7 +227,8 @@ function getXDataAsHashTable($acadEntity){
     return $xDataHashTable
 }
 
-function setSelection([Object] $document, [Object[]] $entities){
+Set-Alias setSelection Set-AutocadSelection
+function Set-AutocadSelection([Object] $document, [Object[]] $entities){
     <# 
         example usage:
         # select some stuff:

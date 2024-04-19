@@ -1014,6 +1014,20 @@ function runInSshSession {
 }
 
 function getRr {
+    <#
+    .SYNOPSIS
+    "rr" is, in my mind, short for "remote runner" -- a function that sends
+    commands to a particular ssh endpoint (the details of the endpoint are baked
+    into the function) and outputs the results.  
+
+    In practice, in scripts, you should assign the function returned by getRr to
+    a short name, for example:
+    ```
+    $function:rkk = getRr -bitwardenItemId "my super great router"
+    ```
+
+
+    #>
     [CmdletBinding()]
     [OutputType([ScriptBlock])]
     Param(
