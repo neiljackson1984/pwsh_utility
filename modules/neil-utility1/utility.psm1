@@ -4899,3 +4899,84 @@ function Convert-MacAddressToLinkLocalIpv6Address {
     ## if($ScopeId){$ipv6Address.ScopeId = $ScopeId}
     return $ipv6Address
 }
+
+
+function Convert-FromBase64EncodedStringToByteArray{
+    [CmdletBinding()]
+    [OutputType([Byte[]])]
+    
+    Param(
+        [parameter(ValueFromPipeline=$True)]
+        [string[]] $base64EncodedString,
+
+        [parameter()]
+        [switch] $urlSafe = $False,
+
+        [parameter()]
+        [switch] $nonStrictPadding = $False
+    )
+
+    # we ought to add the ability to detect a urlsafe base64 string (and to
+    # detect a string that is neither a url-safe base64 string nor a
+    # non-url-safe base64 string (e.g. contains both "-" and "_").
+
+    #TODO: ponder whether  the parameter tagged "ValueFromPipeline" should really be of array type?
+
+    process {
+        foreach($s in $base64EncodedString){
+            if($nonStrictPadding){
+                
+
+                # add padding characters to make the length of the string 0 mod 4.
+                # 
+                # see [https://stackoverflow.com/questions/34278297/how-to-add-padding-before-decoding-a-base64-string].
+
+                $s += "=" * (( (- $s.Length % 4) + 4 ) % 4) 
+            }
+
+            if($urlSafe){
+                $s = $s.Replace('-','+').Replace('_','/')
+            }
+            write-debug "s: $s"
+            [System.Convert]::FromBase64String($s)
+        }
+    }
+}
+
+
+function Convert-FromBase64EncodedStringToString{
+    [CmdletBinding()]
+    [OutputType([string])]
+    
+    Param(
+        [parameter(ValueFromPipeline=$True)]
+        [string[]] $base64EncodedString,
+
+        [parameter()]
+        [switch] $urlSafe = $False,
+
+        [parameter()]
+        [switch] $nonStrictPadding = $False,
+
+        <# I would like the default values for the urlSafe and nonStrictPadding
+            parameters to automatically match the defaults defined in
+            Convert-FromBase64EncodedStringToByteArray, becuase this function is
+            just a wrapper around that one.
+        #>
+
+        [parameter()]
+        [System.Text.Encoding] $textEncoding = [System.Text.Encoding]::UTF8
+
+        ## possibly, we should take the default encoding from the environment rather than hardcoding utf8.
+    )
+
+    process {
+        foreach($s in $base64EncodedString){
+            $textEncoding.GetString(
+                (
+                    Convert-FromBase64EncodedStringToByteArray -base64EncodedString $s -urlSafe:$urlSafe -nonStrictPadding:$nonStrictPadding
+                )
+            )
+        }
+    }
+}
