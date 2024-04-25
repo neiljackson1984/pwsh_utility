@@ -157,8 +157,9 @@ function Get-AutocadComObject([string] $product){
         taskkill /t /f /im accoreconsole.exe | out-null
         # accoreconsole.exe
 
-        # set the LastLaunchedProduct registry value in order to force
-        # the NEw-Object call below to launch acad in plant 3d mode.
+        # set the LastLaunchedProduct registry value in order to force the
+        # NEw-Object call below to launch acad in our desired product mode (e.g.
+        # PLNT3D for plant 3d).
         Get-ChildItem -Path "registry::HKEY_CURRENT_USER\Software\Autodesk\Autocad" |
             ? {$_.PSChildName -match '(?-i)^R\d+(\.\d+)?$'} |  
             % {
@@ -239,7 +240,7 @@ function Set-AutocadSelection([Object] $document, [Object[]] $entities){
             $document.HandleToObject("15969")
         )
 
-        # clear the selelction (i.e. deselect everything.)
+        # clear the selection (i.e. deselect everything.)
         setSelection -document $document -entities @()
     #>
     
