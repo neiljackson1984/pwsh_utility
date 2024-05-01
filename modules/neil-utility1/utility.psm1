@@ -1026,6 +1026,7 @@ function getRr {
     $function:rkk = getRr -bitwardenItemId "my super great router"
     ```
 
+    For documentation of the ssh option arguments, see [https://man.openbsd.org/ssh_config.5].
 
     #>
     [CmdletBinding()]
