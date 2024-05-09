@@ -669,6 +669,59 @@ function getDcSession {
 }
 
 
+function getArgumentsForGetDcSessionForNonDomainSession  {
+    
+    <#  This function is a bit of a hack.  What we really want is a robust way
+        to encode, in a bitwarden item (and ideally we wuld not be strictly
+        dependent on bitwarden but could work with any arbitrary secrets
+        database) all the information (including secrets) necessary to establish
+        a a psremoting session.  At the moment, the mechanism that we have to do
+        this is geared toward pulling a domain administrator credential from a
+        "companyParameters" bitwarden item.  This function here exists to allow
+        us to use local credentials instead.
+
+        in general, we need to rethink how we do bitwarden-assisted
+        authentication into psremoting sessions (we ought to prefer public key
+        cryptography).
+
+        This whole thing is a bit messy.
+    #>
+    [CmdletBinding()]
+    [OutputType([System.Management.Automation.Runspaces.PSSession])]
+    Param(
+        [string] $bitwardenItemIdOfWindowsCredentialsOnTargetComputer,
+        [string] $bitwardenItemIdOfCompanyParameters,
+        [parameter(mandatory=$false)][string] $ConfigurationName
+    )
+
+    $bitwardenItem = Get-BitwardenItem $bitwardenItemIdOfWindowsCredentialsOnTargetComputer
+    $hostname = (
+        (getFieldMapFromBitwardenItem $bitwardenItem.id)['hostname'] ?? 
+        ([System.Uri] @($bitwardenItem.login.uris)[0].uri).Host ??
+        @($bitwardenItem.login.uris)[0].uri
+    )
+    ## write-host "hostname: $hostname"
+    @{
+        bitwardenItemIdOfCompanyParameters = $bitwardenItemIdOfCompanyParameters
+        ComputerName = $hostname
+        Credential = (
+            @{
+                TypeName = "System.Management.Automation.PSCredential"
+                ArgumentList = @(
+                    # "$($hostname)\$($bitwardenItem.login.username)"
+                    "$($bitwardenItem.login.username)"
+                    (ConvertTo-SecureString $bitwardenItem.login.password -AsPlainText -Force)  
+                )
+            } | % { New-Object @_ } 
+        )
+    } + (
+        $ConfigurationName ?
+        @{ ConfigurationName = $ConfigurationName } :
+        @{}
+    ) 
+}
+
+
 function New-Invoker {
     <#
     .SYNOPSIS
@@ -1016,9 +1069,6 @@ function New-ScreenconnectInvoker {
         Merge-Hashtables $argumentsForRunInCwcSession $PSBoundParameters |% {runInCwcSession @_}
     }.GetNewClosure()
 }
-
-
-
 
 function connectVpn {
     <#
