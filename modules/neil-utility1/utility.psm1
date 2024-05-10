@@ -134,7 +134,7 @@ function getFieldMapFromBitwardenItem {
 
     [HashTable] $bitwardenItem = Get-BitwardenItem -bitwardenItemId $bitwardenItemId
 
-    $fieldMap = @{}
+    $fieldMap = [ordered] @{}
     
 
     # ion the case where bitwardenItem has no fields, there will be no "fields"
@@ -150,6 +150,54 @@ function getFieldMapFromBitwardenItem {
     }
 
     return $fieldMap
+}
+
+function Open-BitwardenItem {
+    <#
+        .SYNOPSIS
+        Opens the specified Bitwarden item for viewing in the GUI.
+
+        This is a bit of a hack -- depends on having Firefox with the Bitwarden
+        plugin installed, with the correct hardcoded plugin id, which I am not
+        at all sure is consistent across installations.  Works on my machine.
+    #>
+    [CmdletBinding()]
+    Param(
+
+        [Parameter(
+            HelpMessage=  "The bitwarden item id of the bitwarden item we want to view",
+            Mandatory = $True
+        )]
+        [String] $bitwardenItemId 
+    )
+
+    $idOfFirefoxExtension = "0516f8c4-cf97-4186-b8d6-403e911d48ab"
+    <#  it is a bit of a hack to hardcode this here.  It tends to vary every
+        time the bitwarden extension is updated, and possibly also varies across
+        machines.
+    #>
+
+    $resolvedBitwardenItemId = $((Get-BitwardenItem $bitwardenItemId).id 2>$null)
+    <#  This business about "resolving" the bitwarden item id is because,
+        whereas each bitwarden item has a formal, opaque, id that is a guid, the
+        bitwarden cli (but not the firefox extension's url syntax) lets you
+        treat the name of a bitwarden item, if that name is unique among all
+        bitwarden items, as a bitwarden item id.  In order to preserve these
+        same semantics, I "resolve" the specified bitwarden item id, which might
+        be a unique name rather than a formal guid-based id, into the
+        corresponding formal, guid-based id.
+    #>
+
+    if($resolvedBitwardenItemId){
+        @{
+            FilePath = "firefox" 
+            ArgumentList = @(
+                "moz-extension://$($idOfFirefoxExtension)/popup/index.html?uilocation=popout#/view-cipher?cipherId=$($resolvedBitwardenItemId)"
+            )
+        } |% {Start-Process  @_}
+    } else {
+        write-error "Could not resolve the specified bitwarden item id ('$($bitwardenItemId)') to a valid bitwarden item id."
+    }
 }
 
 function getSshPrivateKeyFromBitwardenItem {
