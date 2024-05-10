@@ -58,16 +58,22 @@ function Set-BitwardenItem {
     )
     #todo 2023-05-15-1146: accept pipeline input.  think about what the return type should be.
     unlockTheBitwardenVault
-    $bitwardenItem | ConvertTo-Json -Depth 99 | bw --nointeraction --raw  encode | bw --nointeraction --raw edit item $bitwardenItem.id
-
+    $bitwardenItem | ConvertTo-Json -Depth 99 | bw --nointeraction --raw  encode | bw --nointeraction --raw edit item $bitwardenItem.id | out-null
+    return (Get-BitwardenItem -bitwardenItemId $bitwardenItem['id'] )
 }
 
-function makeNewBitwardenItem {
+Set-Alias makeNewBitwardenItem New-BitwardenItem
+function New-BitwardenItem {
     [OutputType([HashTable])]
     [CmdletBinding()]
     Param (
         [Parameter(HelpMessage=  "The name of the bitwarden item")]
-        [String] $name = ""
+        [String] $name = "THIS IS AN AUTOMATICALLY GENERATED NAME $(Get-Date -Format "yyyy-MM-dd_HH-mm-ss") c0f223d7178f4e4c85f7e1b902bc3739"
+        # evidently, the name field is not allowed to be an empty string the
+        # hardocded guid in the default name above, is to allow me to easily
+        # find (and delete) accidentally programmatically created bitwarden
+        # items, created by this function (and then, for whatever reason, never
+        # modified later to change the name)
     )
 
     [HashTable] $bitwardenItem = ( bw --nointeraction --raw get template item | ConvertFrom-Json -AsHashtable)
@@ -75,10 +81,36 @@ function makeNewBitwardenItem {
     $bitwardenItem['notes'] = "created programmatically $(Get-Date -Format "yyyy-MM-dd_HH-mm-ss")`nfoo_ef7ba3fce1bc482c8fb5304da2e2a89e" 
     # this magic string is mainly for testing, just to help me find and delete all the new bitwarden items that I created during testing .
 
-    $bitwardenItem['login'] = ( bw --nointeraction --raw get template item.login | ConvertFrom-Json -AsHashtable)
-    $bitwardenItem['login']['username'] = ""
-    $bitwardenItem['login']['password'] = ""
-    $bitwardenItem['login']['totp'] = ""
+    ## $bitwardenItem['login'] = ( bw --nointeraction --raw get template item.login | ConvertFrom-Json -AsHashtable)
+    ## $bitwardenItem['login']['username'] = ""
+    ## $bitwardenItem['login']['password'] = ""
+    ## $bitwardenItem['login']['totp'] = ""
+
+    $bitwardenItem['login'] =  @{}
+    <#
+        Annoyingly, the template login object returned by `bw --nointeraction
+        --raw get template item.login` contains not minimal null-ish field
+        values, but rather bogus example values, like "jdoe" for the username.
+
+        The template "item" object returned by `bw --nointeraction --raw get
+        template item` has the same problem: the value of the "name" field is
+        "Item name", and the value of the notes field is "Some notes about this
+        item.".  But, we are overwriting both the notes field and the name field
+        here.
+
+        the template that we want is equivalent to what you would get if you
+        created a new bitwarden item in the GUI, and saved it without filling in
+        any of the fields -- most of the fields would then be null or the empty
+        string.
+
+        fortunately, it seems to suffice to specify the "login" property of the
+        bitwarden item to be an empty hashtable.  I suspect we might be able to
+        get away specifying the entire new item as an empty hashtable (with the
+        possible exceptionof requiring a truthy "name" field).
+
+        It might make sense to generate a random password and fill in the
+        password field, or provide an option to do this.
+    #>
 
     unlockTheBitwardenVault
     $result = [System.Convert]::ToBase64String( ([system.Text.Encoding]::UTF8).GetBytes(($bitwardenItem | ConvertTo-Json -Depth 50)) )  | bw --nointeraction --raw create item 
