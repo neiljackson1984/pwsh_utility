@@ -1165,6 +1165,10 @@ function putFieldMapToBitwardenItem {
         # [String]$nameForNewBitwardenItem=""
     )
     
+    # this function ought to be called something like "update-fieldmap" or
+    # "appendto-fieldmap" because it does not completely overwrite the exiting
+    # fields.
+
     # [System.Management.Automation.OrderedHashtable] $bitwardenItem = ( bw --nointeraction --raw get item $bitwardenItemId  | ConvertFrom-Json )
     # $bitwardenItemId = "12d90ae7-d294-4a3e-b100-af70002c83e6"
 
