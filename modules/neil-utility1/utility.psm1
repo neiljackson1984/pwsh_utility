@@ -1154,11 +1154,23 @@ function putFieldMapToBitwardenItem {
     [CmdletBinding()]
     Param (
         [Parameter(HelpMessage=  "The field map.")]
-        [HashTable] $fieldMap,
+        ## [HashTable] $fieldMap,
+        ## [System.Collections.Specialized.OrderedDictionary] $fieldMap,
+        [Object] $fieldMap,
+        # really we want and expect that $fieldMap is either a [HashTable] or a
+        # [System.Collections.Specialized.OrderedDictionary] (which is what you
+        # get when you evaluate `[ordered] @{}`. unfortunately, the constructor
+        # of [System.Collections.Specialized.OrderedDictionary] (or whatever the
+        # powershell automatic  type conversion machinery uses) will not simply
+        # "upgrade" a [HashTable] to a
+        # [System.Collections.Specialized.OrderedDictionary] .  Thus, in order
+        # to allow passing either an OrderedDictionary or a HashTable, we
+        # specify the type as [Object], which is a bit of a hack.
+        
 
         [Parameter(HelpMessage=  "The bitwarden item id of the bitwarden item into which we will inject the configuration data.")]
         # [String]$pathOfTheConfigurationFile = "config.json" # (Join-Path $PSScriptRoot "config.json")
-        [String]$bitwardenItemId=""
+        [String] $bitwardenItemId=""
 
         # [Boolean]$doMakeNewBitwardenItem=$False,
 
