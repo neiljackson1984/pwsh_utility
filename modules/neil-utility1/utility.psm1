@@ -5077,3 +5077,66 @@ function Convert-FromBase64EncodedStringToString{
         }
     }
 }
+
+
+function Show-InVscode {
+    <#
+        .SYNOPSIS
+        This function is an extension of vscode's behavior where you can pipe
+        bytes into `code -` to cause vscode to create and open a new temporary
+        file and then write the piped-in input into the file.
+
+        The main added functionality is that this function lets you, optionally,
+        specify the desired name of the (temporary) file that we open in vscode
+        and fill with the piped-in input.
+
+        Being able to specify the file name (rather than using the random
+        filename that `code -` generates) is useful for two reasons: 
+        1. Specifying a particular extension will cause vscode to recognize the
+           file as being of the desired type (for syntax highlighting, etc.).
+        2. Particularly when you have several such temporary files open in
+           vscode, you want vscode to display the (meaningful) file name in its
+           tabbed interface so you can keep the files straight.
+
+        This function  might be affected by Powershell's
+        bytestream-vs.object-stream weirdness; when piping to a native program
+        (like `code -`), especially (I think) when the expression producing the
+        stream (of bytes) to be piped is itself a native program, powershell
+        (sometimes? when?) sends the byte stream through unaltered without
+        parsing the stream into powershell objects (i.e. strings) and then back
+        into bytes.  Therefore, I anticipate the usual set of newline/terminal
+        width/encoding/etc. weirdness that happens when using powershell to pipe
+        (what should be) byte streams around.  TODO: be on the lookout for this.
+        Perhaps the type of our "$input" argument should be a byte array rather
+        than a string (array).  Because of this bytestream-vs.object-stream
+        weirdness, the content of the file produced by piping something into
+        this command might not be identical to what you would get if you were to
+        pipe into `code -`, I suspect.
+
+    #>
+    [CmdletBinding(PositionalBinding=$False)]
+    Param(
+        [parameter(Position=0)]
+        [string] $desiredNameOfFile = $null,
+
+        [parameter(ValueFromPipeline = $True)]
+        [string[]] $input 
+    )
+
+    begin {
+        $pathOfTemporaryFile = join-path $env:temp "$(new-guid)/$( $desiredNameOfFile ? $desiredNameOfFile : (new-guid) )"
+        New-Item -ItemType File -Path $pathOfTemporaryFile -Force | out-null
+        Write-Host "opening in vscode, then writing stdin into the file:  '$($pathOfTemporaryFile)'"
+        Start-Process -NoNewWindow -FilePath code -ArgumentList @($pathOfTemporaryFile)
+    }
+
+    process {
+        $input >> $pathOfTemporaryFile
+    }
+
+    end {
+
+    }
+
+
+}
