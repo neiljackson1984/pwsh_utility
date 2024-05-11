@@ -5078,7 +5078,7 @@ function Convert-FromBase64EncodedStringToString{
     }
 }
 
-
+Set-Alias toCode Show-InVscode
 function Show-InVscode {
     <#
         .SYNOPSIS
@@ -5126,7 +5126,7 @@ function Show-InVscode {
     begin {
         $pathOfTemporaryFile = join-path $env:temp "$(new-guid)/$( $desiredNameOfFile ? $desiredNameOfFile : (new-guid) )"
         New-Item -ItemType File -Path $pathOfTemporaryFile -Force | out-null
-        Write-Host "opening in vscode, then writing stdin into the file:  '$($pathOfTemporaryFile)'"
+        Write-Host "opening in vscode, then writing stdin into the file:  $($pathOfTemporaryFile)"
         Start-Process -NoNewWindow -FilePath code -ArgumentList @($pathOfTemporaryFile)
     }
 
