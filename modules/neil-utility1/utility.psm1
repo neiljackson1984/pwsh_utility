@@ -778,7 +778,7 @@ function runInSshSession {
     ```
 
     I would like to not have to always pass the sshOptionArguments on the
-    commnand line to make the command very short and readable (we typically set
+    command line to make the command very short and readable (we typically set
     a two-letter alias for this command).
 
     One way to do this, which is maybe not quite the most elegant, but at least
@@ -1112,14 +1112,24 @@ function getRr {
     [CmdletBinding()]
     [OutputType([ScriptBlock])]
     Param(
+        [parameter()]
         [string] $bitwardenItemId,
 
-        [hashtable] $extraSshOptions =  @{}
+        [parameter()]
+        [hashtable] $extraSshOptions =  @{},
+
+        [parameter()]
+        [switch] $scp = $false
+        # this parameter really ought to be an enum having values ssh and scp (and possibly others).
     )
 
     # specify the bitwardenItem corresponding to the computer we want to ssh into
     $bitwardenItem = Get-BitwardenItem $bitwardenItemId
     
+
+
+    $sshAgentEnvironment = initializeSshAgentFromBitwardenItemAndReturnSshAgentEnvironment $bitwardenItem.id
+
     $pathOfTemporaryKnownHostsFile = New-TemporaryFile
     $sshOptionArguments = @(    
         $extraSshOptions.GetEnumerator()  |
@@ -1130,18 +1140,112 @@ function getRr {
         # these options prevent us from touching our
         # main known_hosts file:
         "-o";"StrictHostKeyChecking=no"
-        "-o","UserKnownHostsFile=$($pathOfTemporaryKnownHostsFile)"
+        "-o";"UserKnownHostsFile=$($pathOfTemporaryKnownHostsFile)"
+        "-o";"IdentityAgent=$($sshAgentEnvironment['SSH_AUTH_SOCK'])"
+        # I think it makes more sense to push the IdentityAgent option in to the
+        # list of ssh options here, rather than in getSshSession.  At the moment
+        # (2024-05-13-1144), we are also doing this in getSshSession, but I
+        # think I will remove that from getSshSession (and maybe will
+        # refactor/rethink/possibly-delete getSshSession altogether).  In the
+        # interim, it shouldn't hurt to have the same option  get passed twice
+        # to ssh (I hope).
 
         getSshOptionArgumentsFromBitwardenItem -bitwardenItemId $bitwardenItem.id 
     )
 
-    $sshAgentEnvironment = initializeSshAgentFromBitwardenItemAndReturnSshAgentEnvironment $bitwardenItem.id
     # Set-Alias -Name rr -Value runInSshSession
-    $rr = { 
-        $input | runInSshSession -sshAgentEnvironment $sshAgentEnvironment -sshOptionArguments $sshOptionArguments @args 
-    }.GetNewClosure()
+    if($scp){
+        <#
+            whereas runInSshSession is like a curried form of ssh, we want a
+            similar function that is a smiilarly-curried form of scp. ideally,
+            we want our curried form of scp to use the same sshAgent as our
+            curried form of ssh (for the same host).  In other words, we want to
+            obtain a pair of <curriedSsh, curriedScp> for a given host (really,
+            for a given bitwarden item specifying a connection to a host).
 
-    & $rr 'echo $(date): hello from $(hostname) ' | write-host
+            Actually, the thing returned by getRr is like a curried a form of
+            runInSshSession, with all of the (slow) bitwarden lookups and ssh
+            agent initialization finished and baked into the thing returns by
+            getRr.
+
+            As I write this (2024-05-13-1129), I cannot entirely remember why
+            getRr bothers to call runInSshSession instead of calling ssh
+            directly -- probably the purpose of runInSshSession in the context
+            of getRr (and generally) is to encapsulate all the
+            byteArray-vs.-string weirdness and powershell-extra-newline
+            weirdness (both manifestations of powershell's attitude that the
+            thing that flows through a pipeline is an object rather than a
+            byte.).  Another purpose of runInSshSession might be to encapsulate
+            the ssh-argumnet-parsing weirdness that requires explictly passing
+            an empty string as the final argument in the case when you want to
+            run ssh as an interactive terminal (and don;t want to pass any
+            "command" arguments to ssh).
+
+
+            TODO [DONE]: unify getRr and getCurriedScp -- both these functions
+            are essentially identical except for the final executable that (the
+            curried function) calls (in the case of getRr, it's ssh (indirectly
+            through runInSshSession).  In the case of getCurriedScp, it's scp.)
+
+            2024-05-13-1139: I have accomplished the above TODO (almost as soon
+            as I conceived of it) by adding the $scp switch parameter to getRr,
+            which causes getRr to behave like getCurriedScp (which I deleted).
+
+            TODO: deal with filesystem paths containing colons (e.g. as happens
+            with windows-style paths).  scp tends to treat the colon as a
+            delimeter between hostname and filesystem path.
+        #>
+        $rr = { 
+            $input | scp @sshOptionArguments @args
+            <#  does scp ever meaningfully take piped input?
+
+                TODO: address the known weirdness with scp where you have to
+                have some kind of a host name in the sourcepath or
+                destinationpath arguments even if the host name has already been
+                specified in option arguments.  The essential purpose for
+                needing something like a host name in one of the source or
+                destination arguments even when a hostname has been specified in
+                the option arguments is probably to specify which of the source
+                or destination is on the remote machine.
+
+                There's not much to address, except to remember that, if the
+                host has been specified by means of the "hostname" option, then
+                you can use any name whatsoever in the source or destination
+                arguments to stand in as a "dummy" hostaname.
+
+                It's mopderately irritating that scp decided to invent its own
+                extension of the filesystem path concept to embed the hostname
+                (and the specification of which of the two paths is remote) into
+                the source and target arguments.
+
+                Ideally, scp should have arguments that always accept plain old
+                filesystem paths, and then additional arguments would specify
+                which path is on which machine.
+            #>
+
+        }.GetNewClosure()
+
+    } else {
+        $rr = { 
+            $input | runInSshSession -sshAgentEnvironment $sshAgentEnvironment -sshOptionArguments $sshOptionArguments @args 
+        }.GetNewClosure()
+
+        ## & $rr 'echo $(date): hello from $(hostname) ' | write-host
+        <#
+            The above running of a little identifying "hello" message from the
+            machine being ssh'ed into is intended as a verification (for the user to
+            see) that (1) we are able to succesfully ssh into the machine and (2)
+            the machine we have ssh'ed into is the machine we intended to ssh into.
+
+            This is usefule so far as it goes, but in practice, particularly when
+            generating several "rr" functions, and particularly when the target
+            machine(s) happen to be unreachable at the time you generate the rr
+            functions, the above sanity check takes a long time to run, and is an
+            annoyance to wait for.
+
+            Therefore, I have commented it out.
+        #>
+    }
 
     return $rr
 }
