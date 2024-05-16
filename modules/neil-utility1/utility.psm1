@@ -4274,11 +4274,11 @@ function publishFile {
     ##     }
     ## } |% {New-MgDriveItem @_}
 
-    $sizeThresholdForSignlePut = 20
+    $sizeThresholdForSinglePut = 20
     # the main point of this is to be able to handle zero-byte files, whcih the uploadsession technique can't handle.
     
 
-    if($totalLength -lt $sizeThresholdForSignlePut){    
+    if($totalLength -lt $sizeThresholdForSinglePut){    
         $x = @{
             Method        = "PUT"
             Uri           = "v1.0/drives/me/items/root:/Attachments/$($strongFilename):/content"

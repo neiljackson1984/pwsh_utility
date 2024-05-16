@@ -1,6 +1,60 @@
 
 Import-Module (join-path $psScriptRoot "utility.psm1")
 Import-Module (join-path $psScriptRoot "connect_to_office_365.psm1")
+
+
+function Get-ActiveAutodeskIdentity {
+        
+    [CmdletBinding()]
+    [OutputType([String])]
+    Param(
+       
+    )
+
+    $pathOfAutodeskAppdataFolder        = (join-path $env:localappdata "Autodesk")
+    $pathOfIdentitiesRepositoryFolder   = (join-path $pathOfAutodeskAppdataFolder "identity_repository")
+    $pathOfIdentityFile                 = (join-path $pathOfIdentitiesRepositoryFolder "identity.json")
+    # TODO: make these definitions central rather than redefining them here (this (happens to) duplicates the definitions in Set-ActiveAutodeskIdentity)
+
+
+    $existingIdentity = $(
+        if(Test-Path -PathType Leaf -LiteralPath $pathOfIdentityFile){
+            Get-Content -Raw $pathOfIdentityFile | ConvertFrom-Json
+        }else{
+            $null
+        } 
+    )  
+
+    return $existingIdentity
+   
+}
+
+
+function Get-AutodeskIdentity {
+    <#
+    .SYNOPSIS
+    Returns the names of all existing Autodesk identities.
+    #> 
+    [CmdletBinding()]
+    [OutputType([String])]
+    Param(
+       
+    )
+
+    $pathOfAutodeskAppdataFolder        = (join-path $env:localappdata "Autodesk")
+    $pathOfIdentitiesRepositoryFolder   = (join-path $pathOfAutodeskAppdataFolder "identity_repository")
+
+    @(
+        Get-ActiveAutodeskIdentity
+        Get-ChildItem -Directory $pathOfIdentitiesRepositoryFolder | select -expand Name
+    ) |
+    ? {$_} |
+    select -unique | 
+    sort
+}
+
+
+
 function Set-ActiveAutodeskIdentity {
     <#
         .DESCRIPTION
@@ -27,7 +81,8 @@ function Set-ActiveAutodeskIdentity {
     [OutputType([Void])]
     Param(
         [Parameter(
-            Position=0
+            Position=0,
+            Mandatory=$True
         )]
         [String] $identity = ""
     )
@@ -36,7 +91,9 @@ function Set-ActiveAutodeskIdentity {
     $pathOfLogFile                      = (join-path $pathOfAutodeskAppdataFolder "identity_swap.log")
     $pathOfIdentitiesRepositoryFolder   = (join-path $pathOfAutodeskAppdataFolder "identity_repository")
     $pathOfIdentityFolder               = (join-path $pathOfIdentitiesRepositoryFolder $identity)
+    $pathOfIdentityFile                 = (join-path $pathOfIdentitiesRepositoryFolder "identity.json")
     
+    $existingIdentity = $(Get-ActiveAutodeskIdentity)
     
     # $pathOfActiveWebServicesFolder      = (join-path $pathOfAutodeskAppdataFolder "Web Services")
     
@@ -47,7 +104,6 @@ function Set-ActiveAutodeskIdentity {
     
     
     
-    $pathOfIdentityFile                 = (join-path $pathOfIdentitiesRepositoryFolder "identity.json")
     $robocopyOptions=@(
         "/S"
         # copy subfolders
@@ -75,15 +131,6 @@ function Set-ActiveAutodeskIdentity {
         # /NJS /NJH /NDL /NFL /NP -- suppress the output report
     )
 
-
-
-    $existingIdentity = $(
-        if(Test-Path -PathType Leaf -LiteralPath $pathOfIdentityFile){
-            Get-Content -Raw $pathOfIdentityFile | ConvertFrom-Json
-        }else{
-            $null
-        } 
-    )  
 
     if( $existingIdentity -eq $identity ){
         Write-Host "Autodesk identity is already `"$($identity)`".  No need to swap."
@@ -137,12 +184,15 @@ function Set-ActiveAutodeskIdentity {
                 "ADPClientService"
                 "AdskAccessUIHost"
                 "AdAppMgrSvc"
+                "AdskLicensingAgent"
+                "GenuineService"
+                "AutodeskDesktopApp"
             )
-            $namesOfServicesToKill  | % {Stop-Service -Name $_ -confirm:$false -force:$true -ErrorAction SilentlyContinue}
-            $namesOfProcessesToKill | % {Stop-Process -Name $_ -confirm:$false -force:$true -ErrorAction SilentlyContinue}
-            $namesOfServicesToKill  | % {Stop-Service -Name $_ -confirm:$false -force:$true -ErrorAction SilentlyContinue}
-            $namesOfProcessesToKill | % {Stop-Process -Name $_ -confirm:$false -force:$true -ErrorAction SilentlyContinue}
 
+            0..4 |% {
+                $namesOfServicesToKill  | % {Stop-Service -Name $_ -confirm:$false -force:$true -ErrorAction SilentlyContinue}
+                $namesOfProcessesToKill | % {Stop-Process -Name $_ -confirm:$false -force:$true -ErrorAction SilentlyContinue}
+            }
 
 
 
@@ -220,29 +270,48 @@ function Set-ActiveAutodeskIdentity {
 
 
 
-function Get-ActiveAutodeskIdentity {
+
+function Remove-AutodeskIdentity {
+    <#
+        .DESCRIPTION
+        Removes any saved identity having the specified name, or, if the
+        specified identity is the active identity, simply un-names the active
+        identity.
+
+    #>
         
     [CmdletBinding()]
-    [OutputType([String])]
+    [OutputType([Void])]
     Param(
-       
+        [Parameter(
+            Position=0,
+            Mandatory=$True
+        )]
+        [String] $identity 
     )
 
     $pathOfAutodeskAppdataFolder        = (join-path $env:localappdata "Autodesk")
+    $pathOfLogFile                      = (join-path $pathOfAutodeskAppdataFolder "identity_swap.log")
     $pathOfIdentitiesRepositoryFolder   = (join-path $pathOfAutodeskAppdataFolder "identity_repository")
+    $pathOfIdentityFolder               = (join-path $pathOfIdentitiesRepositoryFolder $identity)
     $pathOfIdentityFile                 = (join-path $pathOfIdentitiesRepositoryFolder "identity.json")
-    # TODO: make these definitions central rather than redefining them here (this (happens to) duplicates the definitions in Set-AutodeskIdentity)
+    
+    $existingIdentity = $(Get-ActiveAutodeskIdentity)
 
 
-    $existingIdentity = $(
-        if(Test-Path -PathType Leaf -LiteralPath $pathOfIdentityFile){
-            Get-Content -Raw $pathOfIdentityFile | ConvertFrom-Json
-        }else{
-            $null
-        } 
-    )  
+    if(Test-Path -LiteralPath $pathOfIdentityFolder){
+        Write-Host "deleting the folder '$($pathOfIdentityFolder)'."
+        Remove-Item -recurse $pathOfIdentityFolder
+    } else {
+        Write-Host "The identity folder ($($pathOfIdentityFolder)) does not exist, so we will not bother trying to delete it."
+    }
 
-    return $existingIdentity
-   
+    
+    if($existingIdentity -eq $identity){
+        Write-Host "The identity that you have requested to remove ('$($identity)') is the active identity, so we will un-name the active identity."
+        Write-Host "deleting the file '$($pathOfIdentityFile)'."
+        Remove-Item $pathOfIdentityFile
+    } else {
+        Write-Host "The identity that you have requested to remove  ('$($identity)') is not the active identity ('$($existingIdentity)'), so we will not bother to un-name the active identity."
+    }
 }
-
