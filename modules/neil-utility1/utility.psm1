@@ -4068,7 +4068,7 @@ function runInCwcSession {
         # than just a single (array) command parameter) is to facilitate
         # splatting.
     )
-    Import-Module ConnectWiseControlAPI
+    ## Import-Module ConnectWiseControlAPI
     <#
         We can't use version 0.3.5.0 of the ConnectWiseControlAPI module (whcih
         is the latest version as of 2024-01-11-1118) because that version
@@ -4082,18 +4082,23 @@ function runInCwcSession {
 
 
     ## ensure connection to screenconnect:
-    $bitwardenItem = Get-BitwardenItem -bitwardenItemId $bitwardenItemIdOfScreenconnectCredentials
-    @{
-        Server      = "$(([System.Uri] $bitwardenItem.login.uris[0].uri ).Host)"
-        Credentials = (
-            New-Object System.Management.Automation.PSCredential (
-                $bitwardenItem.login.username, 
-                (ConvertTo-SecureString $bitwardenItem.login.password -AsPlainText -Force)
+    if((Get-Command connect-cwc).Module.SessionState.PSVariable.GetValue("CWCServerConnection") ){
+        write-verbose "reusing apparent existing connection"
+    } else {
+        write-verbose "connecting fresh."
+        $bitwardenItem = Get-BitwardenItem -bitwardenItemId $bitwardenItemIdOfScreenconnectCredentials
+        @{
+            Server      = "$(([System.Uri] $bitwardenItem.login.uris[0].uri ).Host)"
+            Credentials = (
+                New-Object System.Management.Automation.PSCredential (
+                    $bitwardenItem.login.username, 
+                    (ConvertTo-SecureString $bitwardenItem.login.password -AsPlainText -Force)
+                )
             )
-        )
-        # Force       = $True
-    } | % { Connect-CWC  @_ } | 
-    Write-Host
+            # Force       = $True
+        } | % { Connect-CWC  @_ } | 
+        Write-Host
+    }
 
     $screenconnectSearchString = "## NAME = '$($nameOfSession)'"
     ## retrieve the specified session
