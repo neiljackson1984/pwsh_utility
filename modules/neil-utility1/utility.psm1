@@ -152,7 +152,8 @@ function getFieldMapFromBitwardenItem {
     return $fieldMap
 }
 
-function Open-BitwardenItem {
+Set-Alias Open-BitwardenItem Show-BitwardenItem
+function Show-BitwardenItem {
     <#
         .SYNOPSIS
         Opens the specified Bitwarden item for viewing in the GUI.
