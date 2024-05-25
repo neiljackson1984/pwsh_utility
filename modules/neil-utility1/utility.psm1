@@ -5306,4 +5306,7 @@ function Convert-XmlDocumentToFormattedXml {
     $memoryStream.Seek(0, [System.IO.SeekOrigin]::Begin) | out-null
     $streamReader.ReadToEnd()
     $streamReader.Close()
+
+    # strategy 4:
+    ## $xmlDocument.InnerXml
 }
