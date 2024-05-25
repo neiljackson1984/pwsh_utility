@@ -9,6 +9,13 @@ function set-ipv6(){
         [Bool]$desiredState
     )
 
+    <#
+        `Disable-NetAdapterBinding  -ComponentID ms_tcpip6 -Name *`  and
+        `Eanble-NetAdapterBinding  -ComponentID ms_tcpip6 -Name *` work and a re
+        abit faster than my approach, but do not provide the same output telling
+        you the initial and final states for each adapter.
+    #>
+
     foreach ($netAdapter in (Get-NetAdapter))
     {
         $initialState = ($netAdapter | Get-NetAdapterBinding -ComponentID ms_tcpip6).Enabled
