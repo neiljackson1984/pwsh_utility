@@ -5250,3 +5250,60 @@ function Show-InVscode {
 
 
 }
+
+
+function Convert-XmlDocumentToFormattedXml {
+    [OutputType([string])]
+    [CmdletBinding()]
+    Param(
+        [parameter(ValueFromPipeline=$True)]
+        [System.Xml.XmlDocument]  $xmlDocument,
+
+        [System.Xml.XmlWriterSettings] $xmlWriterSettings = @{
+            Indent = $True
+            NewLineOnAttributes = $True
+            ## Encoding = [System.Text.Encoding]::UTF8
+        }
+    )
+
+    
+    ## # strategy 1:
+    ## $xmlWriterSettings.Encoding = [System.Text.Encoding]::UTF8
+    ## $stringWriter = New-Object System.IO.StringWriter
+    ## $xmlWriter = [System.Xml.XmlWriter]::Create(
+    ##     $stringWriter,
+    ##     $xmlWriterSettings
+    ## )
+    ## $xmlDocument.Save($xmlWriter)
+    ## $xmlWriter.Close()
+    ## $stringWriter.GetStringBuilder().ToString()
+
+
+
+    ## # strategy 2 (attempting to control the "encoding" attribute)
+    ## $memoryStream = New-Object System.IO.MemoryStream
+    ## $streamWriter = New-Object System.IO.StreamWriter $memoryStream
+    ## $streamReader = New-Object System.IO.StreamReader $memoryStream
+    ## $xmlWriter = [System.Xml.XmlWriter]::Create(
+    ##     $streamWriter,
+    ##     $xmlWriterSettings
+    ## )
+    ## $xmlDocument.Save($xmlWriter)
+    ## $xmlWriter.Close()
+    ## $memoryStream.Seek(0, [System.IO.SeekOrigin]::Begin) | out-null
+    ## $streamReader.ReadToEnd()
+    ## $streamReader.Close()
+
+    # strategy 3 (streamlined version of strategy 2)
+    $memoryStream = New-Object System.IO.MemoryStream
+    $streamReader = New-Object System.IO.StreamReader $memoryStream
+    $xmlWriter = [System.Xml.XmlWriter]::Create(
+        (New-Object System.IO.StreamWriter $memoryStream),
+        $xmlWriterSettings
+    )
+    $xmlDocument.Save($xmlWriter)
+    $xmlWriter.Close()
+    $memoryStream.Seek(0, [System.IO.SeekOrigin]::Begin) | out-null
+    $streamReader.ReadToEnd()
+    $streamReader.Close()
+}
