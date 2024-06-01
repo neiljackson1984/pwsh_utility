@@ -22,6 +22,7 @@
         "autodesk_popup_slapdown.psm1"
         "expand-attachments.psm1"
         "autocad-control.psm1"
+        "web_request_session_with_firefox_cookies.psm1"
     )
 
 
