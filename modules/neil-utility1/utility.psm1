@@ -2636,8 +2636,8 @@ function getAmazonAddToCartUrl {
     $url
 }
 
-
-function sendTestMessage([String] $recipient){
+set-alias sendTestMessage Send-TestMessage
+function Send-TestMessage([String] $recipient){
     @{
         emailAccount = "neil@autoscaninc.com"
         from         = "neil@autoscaninc.com"
