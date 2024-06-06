@@ -1392,8 +1392,8 @@ function stringToSecureString {
     )
 }
 
-
-function sendMail($emailAccount, $from, $to = @(), $cc = @(), $bcc = @(), $subject, $body){
+Set-Alias sendMail Send-Mail
+function Send-Mail($emailAccount, $from, $to = @(), $cc = @(), $bcc = @(), $subject, $body){
     # unlock the bitwarden vault:
     # unlockTheBitwardenVault
 
@@ -1458,6 +1458,7 @@ function sendMail($emailAccount, $from, $to = @(), $cc = @(), $bcc = @(), $subje
 
 }
 
+set-alias sendTestMessage Send-TestMessage
 function Send-TestMessage(){
     [CmdletBinding()]
     [OutputType([Void])]
@@ -1510,7 +1511,7 @@ function Send-TestMessage(){
                 "206-282-1616"
             ) -Join "`n"
 
-        } | % { sendMail @_ }
+        } | % { Send-Mail @_ }
     }
 }
 
@@ -2040,7 +2041,7 @@ function grantUserAccessToMailbox(
             to           = $(if($sendAdvisoryMessageToDummyAddressInsteadOfRealRecipientAddress){$dummyAddressForAdvisoryMessages} else {$recipientAddress})
             subject      = $(if($sendAdvisoryMessageToDummyAddressInsteadOfRealRecipientAddress){"(TO: $recipientAddress) " } else {""} ) + "$($mgUserToBeAdvised.DisplayName) now has full access to the $($mailbox.PrimarySmtpAddress) mailbox"
             body         = $messageBody
-        } ; sendMail @xx
+        } ; Send-Mail @xx
     }
 
 
@@ -2636,33 +2637,6 @@ function getAmazonAddToCartUrl {
     $url
 }
 
-set-alias sendTestMessage Send-TestMessage
-function Send-TestMessage([String] $recipient){
-    @{
-        emailAccount = "neil@autoscaninc.com"
-        from         = "neil@autoscaninc.com"
-        to           =  "$recipient"
-        subject      = "test message sent to $($recipient) $('{0:yyyy/MM/dd HH:mm:ss K}' -f [timezone]::CurrentTimeZone.ToLocalTime((Get-Date)))"
-        body         = @( 
-            "This is a test message sent to $($recipient).  Please disregard."
-
-            ""
-            ""
-
-            "Sincerely,"
-            "Neil Jackson"
-            "neil@autoscaninc.com"
-            "425-218-6726 (cell)"
-            "206-282-1616 ext. 102 (office)"
-            ""
-            "Autoscan, Inc."
-            "4040 23RD AVE W"
-            "SEATTLE WA 98199-1209"
-            "206-282-1616"
-        ) -Join "`n"
-
-    } | % { sendMail @_ }
-}
 
 function expandArchiveFile {
     [CmdletBinding()]
