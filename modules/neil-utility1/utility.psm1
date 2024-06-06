@@ -1468,6 +1468,7 @@ function Send-TestMessage(){
                 Mandatory = $True
             )
         ]
+        [Alias("To")]
         [String] 
         $recipientEmailAddress,
 
