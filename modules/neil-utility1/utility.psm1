@@ -1422,6 +1422,8 @@ function Send-Mail($emailAccount, $from, $to = @(), $cc = @(), $bcc = @(), $subj
         Write-Error "unable to find a Bitwarden item corresponding to the email account $emailAccount"
         return
     }
+
+    Write-host "using the email account defined in bitwarden item $($bitwardenItemContainingEmailCredentials.id)"
     
     $explicitAppPassword=@($bitwardenItemContainingEmailCredentials.fields | Where-Object {$_.name -eq 'app_password'} | Foreach-object {$_.value})[0]
     $password="$(if($explicitAppPassword){$explicitAppPassword} else {$bitwardenItemContainingEmailCredentials.login.password})"
