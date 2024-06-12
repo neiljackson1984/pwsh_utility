@@ -4426,19 +4426,48 @@ function formattedObjectToClipboard {
         that describes the piped-in object.  Useful for exploring classes (and recording the 
         reports in-line with the exploratory code.
     #>
-    
+
+    [CmdletBinding()]
+    Param(
+
+        [parameter(ValueFromPipeline=$True)]
+        [Object] $InputObject,
+
+        [parameter()]
+        [Alias("Passthru")]
+        [switch] $PassThrough = $False,
+
+        [parameter()]
+        [int] $IndentLevel = 0
+
+
+    )
+    begin {
+
+        $singleIndent = ' '*4
+    }
+
     end {
         $input | 
         fl | 
         out-string | 
         % {
             @(
-                $_ -split "`n" |
-                % { "    $_" }
-            ) -join "`n"
-        } |
-        % {"<#$_`n#>"} | 
-        set-clipboard
+                @(
+                    '<#'
+                    @(
+                        '```'
+                        $_ -split "\n"
+                        '```'
+                    )| %{ "$($singleIndent*1)$($_)" } 
+
+                    '#>'
+                ) | %{ "$($singleIndent*$IndentLevel)$($_)" } 
+            )-join "`n"
+        } | 
+        set-clipboard 
+
+        if($PassThrough){$input}
     }
 }
 
