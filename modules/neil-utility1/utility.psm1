@@ -4444,6 +4444,23 @@ function formattedObjectToClipboard {
     )
     begin {
 
+
+        <#  Can we get the very line of code that called us (so that we can
+            infer the correct indentLevel from that line)?  This would be useful
+            for the way that I often invoke this function, interactively in
+            vscode.
+
+            Almost -- `$myInvocation.Line` almost gives us what we need, except
+            that the vscode function that sends the current line to the
+            interactive terminal strips leading whitespace, so
+            $myInvocation.line does not have the leading white space that we
+            would need in order to infer the correct indentation level.
+
+        #>
+        ## write-host "`$MyInvocation.Line: '$($MyInvocation.Line)'"
+
+
+
         $singleIndent = ' '*4
     }
 
@@ -5318,4 +5335,42 @@ function Convert-XmlDocumentToFormattedXml {
 
     # strategy 4:
     ## $xmlDocument.InnerXml
+}
+
+function getParentInterfaces([System.Type]  $type){
+    <#
+    .SYNOPSIS
+    System.Type::GetInterfaces() returns all the interfaces that the type
+    implements  (a.k.a. "inherits from"), buy says nothing about which
+    interfaces the type inherits from directly, and which transitively.  I
+    suspect that such a multi-generational inheritance tree is not a
+    well-defined concept in .NET for interface inheritance in the way that it is
+    for class inheritance.  My thinking in those terms is based on the fact
+    that, in C# code, when declaring a class, you declare a list of interfaces
+    that your class will implement, but you don't have to declare ALL the
+    interfaces that your class will implement -- only the first "generation" of
+    interfaces.  It is implicit that your class will implement any interfaces
+    that those interfaces inherit from, on and on.
+
+    I suspect that this concept of multi-generational interface inheritance is a
+    compile-time convenience and does not really exist after compilation.
+
+    Nevertheless, by looking at which interfaces a type implements, and by
+    looking at which interfaces those interfaces implement (a.k.a. inherit
+    from), we can construct a plausible minimal set of interfaces that the code
+    for the type would have had to declare as "parents".
+
+    I haven't fully thought through whether there is always exactly one, unique,
+    such minimal set of "parent" interfaces.
+
+    #>
+    # see (https://stackoverflow.com/questions/3416496/how-do-i-find-the-interface-inheritance-hierarchy-for-a-type)
+
+    $ancestorInterfaces = $type.GetInterfaces()
+
+    $ancestorInterfacesExcludingParents = @( $ancestorInterfaces |% {$_.GetInterfaces()} | select -unique )
+
+    $parentInterfaces = @($ancestorInterfaces |? {-not ($_ -in $ancestorInterfacesExcludingParents)})
+
+    return $parentInterfaces
 }
