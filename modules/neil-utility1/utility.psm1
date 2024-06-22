@@ -2809,6 +2809,8 @@ function downloadFileAndReturnPath {
         }
     }
 
+    # see (https://stackoverflow.com/questions/6881034/curl-to-grab-remote-filename-after-following-location)
+
     if(-not $finalPathOfDownloadedFile){
         New-Item -Force -ItemType Directory $pathOfDedicatedInitialDirectoryToContainDownloadedFile  | out-null
         curl @(
