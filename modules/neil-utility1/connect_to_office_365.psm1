@@ -1622,7 +1622,7 @@ function connectToOffice365 {
         Write-Debug "about to do Connect-MgGraph"
         # Select-MgProfile -Name Beta
         Disconnect-MgGraph -ErrorAction SilentlyContinue 1>$null 2>$null
-        $s = @{
+        @{
             ClientId                = $configuration['appId']
             # CertificateThumbprint   = $configuration['certificateThumbprint'] 
             Certificate             = $certificate
@@ -1634,7 +1634,7 @@ function connectToOffice365 {
             # pass the guid version of the tenant id seems to avoid this problem.
             TenantId                = $configuration['tenantId']
             ContextScope            = "Process"
-        }; Connect-MgGraph @s 1> $null
+        } |%{Connect-MgGraph @_ } | out-null
         Write-Debug "Finished doing Connect-MgGraph"
     }
 
