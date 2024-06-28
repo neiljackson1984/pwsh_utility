@@ -1,12 +1,15 @@
 
-#ugly hack to try to work around dll hell between Exchange Online module and MGGraph module:
-# [System.Reflection.Assembly]::LoadFrom((join-path (Get-InstalledModule "ExchangeOnlineManagement").InstalledLocation "netCore/System.IdentityModel.Tokens.Jwt.dll"))
-# [System.Reflection.Assembly]::LoadFrom("C:\Users\Admin\Documents\PowerShell\Modules\ExchangeOnlineManagement\3.1.0\netCore\System.IdentityModel.Tokens.Jwt.dll")
+<#  Ugly hack to try to work around dll hell between Exchange Online module and
+    MGGraph module:
 
-# pwsh       -command "Install-Module Microsoft.Graph.Beta -AllowPrerelease -Confirm:0 -Force -Scope CurrentUser"
+    ```
+    [System.Reflection.Assembly]::LoadFrom((join-path (Get-InstalledModule "ExchangeOnlineManagement").InstalledLocation "netCore/System.IdentityModel.Tokens.Jwt.dll"))
+    [System.Reflection.Assembly]::LoadFrom("C:\Users\Admin\Documents\PowerShell\Modules\ExchangeOnlineManagement\3.1.0\netCore\System.IdentityModel.Tokens.Jwt.dll") 
+    ```
 
-# # ultra-ugly way to deal with dll hell:
-# this should be private.
+#>
+
+
 
 
 
@@ -219,7 +222,6 @@ function forceLoadConflictingAssemblies(){
 }
 
 
-
 function doUglyHackToFixDependencyHellFor_System_IdentityModel_Tokens_Jwt(){
     # see https://stackoverflow.com/questions/72490964/powershell-core-resolving-assembly-conflicts
     # see https://stackoverflow.com/questions/68972925/powershell-why-am-i-able-to-load-multiple-versions-of-the-same-net-assembly-in
@@ -263,42 +265,48 @@ function doUglyHackToFixDependencyHellFor_System_IdentityModel_Tokens_Jwt(){
     #%%
 }
 
-# 2022-12-21-1142. I was not able to make the "2.0.0-preview1" or
-# "2.0.0-preview2" versions of the Microsoft.Graph module work correctly.
-# Specifically, when attempting to set the Application KeyCredentials I would
-# get an error complaining that "the literal ... cannot be converted to
-# edm.binary" (or something to that effect) the error message makes me think
-# that the preview versions are not correctly encoding the byte array into a
-# url-safe base64 string.  My only recourse is to revert to the non-preview
-# version of Microsoft.Graph, which is problematic because of the dll  hell
-# issue.  (The preview versions also hjad a dll hell conflict with
-# ExchangeOnlineManagement module, but at least the preview versions used a
-# version of the conflicting assembly that was closer to the one Exchange was
-# using (both 6.something) that (I think) the two modules worked corectly with
-# either version of the assembly.  The non-preview verison of the
-# Microsoft.Graph module uses a 5.something version of the conflicting assembly,
-# which I suspect makes my workaround less likely to work.
+<#  2022-12-21-1142. I was not able to make the "2.0.0-preview1" or
+    "2.0.0-preview2" versions of the Microsoft.Graph module work correctly.
+    Specifically, when attempting to set the Application KeyCredentials I would
+    get an error complaining that "the literal ... cannot be converted to
+    edm.binary" (or something to that effect) the error message makes me think
+    that the preview versions are not correctly encoding the byte array into a
+    url-safe base64 string.  My only recourse is to revert to the non-preview
+    version of Microsoft.Graph, which is problematic because of the dll  hell
+    issue.  (The preview versions also hjad a dll hell conflict with
+    ExchangeOnlineManagement module, but at least the preview versions used a
+    version of the conflicting assembly that was closer to the one Exchange was
+    using (both 6.something) that (I think) the two modules worked corectly with
+    either version of the assembly.  The non-preview verison of the
+    Microsoft.Graph module uses a 5.something version of the conflicting
+    assembly, which I suspect makes my workaround less likely to work. 
+#>
 
 
 Import-Module (join-path $psScriptRoot "utility.psm1")
-# to do: make a module manifest file to declare dependencies and exports, so we don't 
 
-# 2022-12-18 todo: store the certificate (and private key) in bitwarden rahter than what we are curently doing (which is storing 
-# the certificate and private key on the local machine's  certificate store and storing the certificate's thumbprint (i.e. hash)
-# in the configuration that we store in bitwarden.
+<#  2022-12-18 todo: store the certificate (and private key) in bitwarden rahter
+    than what we are curently doing (which is storing the certificate and
+    private key on the local machine's  certificate store and storing the
+    certificate's thumbprint (i.e. hash) in the configuration that we store in
+    bitwarden. 
+#>
 
-# 2022-12-18 todo: allow us to specify the tenant somehow (perhaps by one of the
-# domain names -- those are fairly unique within azure active directory, I
-# think) when we are creating a fresh configuration and creating a new bitwarden
-# entry. this would be useful for initial setup in a declarative,
-# understandable, unambiguous way.
+<#  2022-12-18 todo: allow us to specify the tenant somehow (perhaps by one of
+    the domain names -- those are fairly unique within azure active directory, I
+    think) when we are creating a fresh configuration and creating a new
+    bitwarden entry. this would be useful for initial setup in a declarative,
+    understandable, unambiguous way. 
+#>
 
-# todo: handle nonexisting or more-than-one-existing bitwarden item (because we
-# can use the name as item id if its unique, but of course the name might not be
-# unique (what happens if an item has a name that is the itemId of another item
-# - what happens when you do a get for that itemId?) ) cases more intelligently.
+<#  todo: handle nonexisting or more-than-one-existing bitwarden item (because
+    we can use the name as item id if its unique, but of course the name might
+    not be unique (what happens if an item has a name that is the itemId of
+    another item -- what happens when you do a get for that itemId?) ) cases
+    more intelligently. 
+#>
 
-#private
+# private
 function Script:getCanonicalNameOfBitwardenItemBasedOnPrimaryDomainName {
     [OutputType([String])] # really I mean a nullable string
     [CmdletBinding()]
@@ -317,21 +325,127 @@ function Script:getCanonicalNameOfBitwardenItemBasedOnPrimaryDomainName {
 }
 
 
-# this function is for debugging and verification: it can be used to
-# generate an expression for $roleSpecifications that can be pasted above
-# (starting with an app that has been manually configured in the desired
-# way.
+function Install-MicrosoftGraphDependencies {
+    [CmdletBinding()]
+    [OutputType([Void])]
+    param ()
+    <#  This whole function is a bit of a hack; I'm sure this is not the
+        preferred cleanest way to install depencies, but it is marginally better
+        then putting these commands in comments somewhere, which is how I've
+        been doing it until now. 
+    #>
+    process {
+        
+        @(
+            "Microsoft.Graph"
+            "Microsoft.Graph.Beta"
+            "ExchangeOnlineManagement"
+            "PnP.PowerShell"
+        ) | % { 
+            <#  During testing, before running this function, I go manually delete any
+                graph, Exchange, and pnp -related folders from within the following folders:
+                  * %programfiles%\WindowsPowerShell\Modules 
+                  * %userprofile%\Documents\PowerShell\Modules
+                  * %userprofile%\Documents\WindowsPowerShell\Modules (this folder does not exist as of 2023-02-26-1411 (I deleted it)) 
+            #>
+
+            Write-Host "now installing $($_) in Windows Powershell."
+            powershell -c "Install-Module -Confirm:0 -Force -AllowPrerelease -Name $($_)"
+            <#  I don't think I am using windows powershell at all anymore, so
+                installing the modules in windows in windows powershell is
+                probably completely unnecessary and serves no purpose. 
+            #>
+
+            Write-Host "now installing $($_) in Powershell core."
+            pwsh -c "Install-Module -Confirm:0 -Force -AllowPrerelease -Name $($_)"
+
+        }
+    }
+
+    <#  As of 2023-02-26-1616, in order to avoid the Edm.Binary error when
+        creating a new configuration we must have something prior to the 2.0
+        version of mggraph installed. Could the edm.binary error be related to
+        newtonsoft json dll hell? 
+    #>
+    
+    ## pwsh -c "Install-Module -Confirm:0 -Force -Name Microsoft.Graph -MaximumVersion 1.22"  
+    ## pwsh -c "Install-Module -Confirm:0 -Force -AllowPrerelease -Name Microsoft.Graph"   
+    ## pwsh -c "Install-Module -Confirm:0 -Force -AllowPrerelease -Name PnP.PowerShell"   
+
+}
+
+function getBitwardenItemContainingMicrosoftGraphManagementConfiguration {
+    <#  2022-12-20 at the moment, this function is only used in the setup of new
+        configurations.  It is not used by the conectToOffice365 function in the
+        normnal course of established operations. However, I have half a mind to
+        give the ability of connectToOffice365 the ability to accept,as an
+        alternative to the bitwarden item id of a configuration, a primary
+        domain name of the tenant.  In that case, I will have
+        connectToOffice365() use this function to (attempt to) get the
+        configuration. 
+    #>
+    [OutputType([HashTable])] # really I mean a nullable hasthable.
+    [CmdletBinding()]
+    Param (
+        [Parameter(
+            Mandatory=$True
+        )]
+        [String] $primaryDomainName,
+
+        [Parameter(
+        )]
+        [Switch] $createIfNotAlreadyExists
+    )
+    Write-Host "now working on $($primaryDomainName.ToLower())"
+    $nameOfBitwardenItem = getCanonicalNameOfBitwardenItemBasedOnPrimaryDomainName $primaryDomainName
+    <#   We are relying on this function agreeing with connectToOffice365()
+        about the name format. this is a little bit inelegant. 
+    #>
+    $bitwardenItem = getBitwardenItem $nameOfBitwardenItem
+    if($bitwardenItem){
+        Write-Host "Found a suitable existing bitwarden item, whose id is $($bitwardenItem['id'])."
+    } else {
+        if($createIfNotAlreadyExists){
+            Write-Host ""
+            Write-Host "======================="
+            Write-Host "We will now construct Microsoft Graph management credentials for $($primaryDomainName.ToLower()).  Please respond to the authorization prompt(s) accordingly."
+            Write-Host "$($primaryDomainName.ToLower())"
+            Write-Host "======================="
+            Write-Host ""
+            connectToOffice365 -makeNewConfiguration:$true -tenantIdHint:$($primaryDomainName.ToLower()) | Write-Host
+
+            $bitwardenItem = getBitwardenItem $nameOfBitwardenItem
+            if($bitwardenItem){
+                Write-Host "After constructing a fresh configuration, we have now found a suitable bitwarden item, whose id is $($bitwardenItem['id'])."
+            } else {
+                Write-Host "After constructing a fresh configuration, we are still unable to find a suitable bitwarden item."    
+            }
+        }
+    }
+    return $bitwardenItem
+}
+
+
+
+
 Function getRoleSpecificationsExpression(){
+    <#  This function is for debugging and verification: it can be used to
+        generate an expression for $roleSpecifications that can be pasted above
+        (starting with an app that has been manually configured in the desired
+        way. 
+    #>
+    
     param(
         [Microsoft.Graph.PowerShell.Models.MicrosoftGraphServicePrincipal]  $servicePrincipalForApp
     )
     
-    # how to construct $roleSpecifications programmatically, if needed:
-    #=======================================
-    # we can look up the proper/allowed $roleSpecifications by doing the
-    # following in a tenant that is already properly set up. this assumes
-    # that $azureAdServicePrincipal is the service principal for the app
-    # that we have created.
+    <#  how to construct $roleSpecifications programmatically, if needed:
+
+        we can look up the proper/allowed $roleSpecifications by doing the
+        following in a tenant that is already properly set up. this assumes
+        that $azureAdServicePrincipal is the service principal for the app
+        that we have created. 
+    #>
 
 
     
@@ -480,65 +594,102 @@ function excludeRedundantReadRoleNamesFromASetOfAppRoleNames([string[]] $namesOf
 }
 
 function connectToOffice365 {
-    #To get pre-requisites:
-    # Install-Module -Confirm:$false -Force -Name 'AzureAD', 'ExchangeOnlineManagement', 'PnP.PowerShell'
-    # Install-Module -Confirm:$false -Force -Name 'AzureADPreview', 'ExchangeOnlineManagement', 'PnP.PowerShell'
-    # UnInstall-Module -Confirm:$false -Force -Name 'AzureAD'
-    # UnInstall-Module -Confirm:$false -Force -Name 'AzureADPreview'
-    # to make this work with Powershell Core (which, as of 2021-10-26, does not work out of the box with the AzureAD module), install the following special version of the AzureAD module as follows:
-    # (thanks to https://endjin.com/blog/2019/05/how-to-use-the-azuread-module-in-powershell-core)
-    ###    # Check if test gallery is registered
-    ###    $packageSource = Get-PackageSource -Name 'Posh Test Gallery'
-    ###    if (!$packageSource)
-    ###    {
-    ###    	$packageSource = Register-PackageSource -Trusted -ProviderName 'PowerShellGet' -Name 'Posh Test Gallery' -Location 'https://www.poshtestgallery.com/api/v2/'
-    ###    }
-    ###    
-    ###    # Check if module is installed
-    ###    $module = Get-Module 'AzureAD.Standard.Preview' -ListAvailable -ErrorAction SilentlyContinue
-    ###    
-    ###    if (!$module) 
-    ###    {
-    ###      Write-Host "Installing module AzureAD.Standard.Preview ..."
-    ###      $module = Install-Module -Name 'AzureAD.Standard.Preview' -Force -Scope CurrentUser -SkipPublisherCheck -AllowClobber 
-    ###      Write-Host "Module installed"
-    ###    }
-    # when I attempt connect-azuread in powershell core (even when I am using the version of connect-azuread from the AzureAD.Standard.Preview module),
-    # I encounter the error "Certificate based authentication is not supported in netcore version."
-    # I take that as the nail in the coffin of the hope of using this script from within powershell core (for now).
-    # Install-Module -Confirm:$false -Force -Name 'AzureAD', 'ExchangeOnlineManagement', 'PnP.PowerShell'
-    # TODO (potentially): check the version of powershell that we are running under and throw some kind of error or warning if we notice that
-    # we are running under powershell core, because the AzureAD module does not quite work correctly under powershell core, it seems.
+    <#  To get pre-requisites:
 
+        ```
+        Install-Module -Confirm:$false -Force -Name 'AzureAD', 'ExchangeOnlineManagement', 'PnP.PowerShell'
+        Install-Module -Confirm:$false -Force -Name 'AzureADPreview', 'ExchangeOnlineManagement', 'PnP.PowerShell'
+        UnInstall-Module -Confirm:$false -Force -Name 'AzureAD'
+        UnInstall-Module -Confirm:$false -Force -Name 'AzureADPreview'
+        ```
 
-    # # update 2022-09-16:
-    # # to get prerequisistes:
-    # #   AzureADPreview (and AzureAD) STILL does not work completely correctly under powershell core.
-    # #   The -UseWindowsPowerShell  option of powershell core's Import-Module function
-    # #   seemed promising as a way to use the windowsPowershell module from within powershell core,
-    # #   , but the serializing of the command output is a dealbreaker.  Therefore, we are STILL
-    # #   constrained to use windowsPowershell and not powershell core.
-    # powershell -c "Install-Module -Confirm:0 -Force -Name AzureADPreview"
-    # powershell -c "Install-Module -Confirm:0 -Force -Name ExchangeOnlineManagement -AllowPrerelease"
-    # powershell -c "Install-Module -Confirm:0 -Force -Name PnP.PowerShell"
+        To make this work with Powershell Core (which, as of 2021-10-26, does
+        not work out of the box with the AzureAD module), install the following
+        special version of the AzureAD module as follows: (thanks to
+        https://endjin.com/blog/2019/05/how-to-use-the-azuread-module-in-powershell-core)
 
-    # powershell -c "Install-Module -Confirm:0 -Force -Name Microsoft.Graph"; pwsh -c "Install-Module -Confirm:0 -Force -Name Microsoft.Graph"
+        ```
+           # Check if test gallery is registered
+           $packageSource = Get-PackageSource -Name 'Posh Test Gallery'
+           if (!$packageSource)
+           {
+            $packageSource = Register-PackageSource -Trusted -ProviderName 'PowerShellGet' -Name 'Posh Test Gallery' -Location 'https://www.poshtestgallery.com/api/v2/'
+           }
 
-    # powershell -c "Install-Module -Confirm:0 -Force -Name Microsoft.Graph -AllowPrerelease; Install-Module -Confirm:0 -Force -Name ExchangeOnlineManagement -AllowPrerelease; Install-Module -Confirm:0 -Force -Name PnP.PowerShell"; 
-    # pwsh -c "Install-Module -Confirm:0 -Force -Name Microsoft.Graph.Beta -AllowPrerelease;"
-    # pwsh -c "Install-Module -Confirm:0 -Force -Name PnP.PowerShell -AllowPrerelease;"
+           # Check if module is installed
+           $module = Get-Module 'AzureAD.Standard.Preview' -ListAvailable -ErrorAction SilentlyContinue
+
+           if (!$module) 
+           {
+             Write-Host "Installing module AzureAD.Standard.Preview ..."
+             $module = Install-Module -Name 'AzureAD.Standard.Preview' -Force -Scope CurrentUser -SkipPublisherCheck -AllowClobber 
+             Write-Host "Module installed"
+           }
+        ```
 
 
 
-    # the AzureADPreview module is being deprecated, and replaced with "Microsoft Graph Powershell"
-    # see https://learn.microsoft.com/en-us/powershell/azure/active-directory/migration-faq?view=azureadps-2.0 
-    # see https://learn.microsoft.com/en-us/powershell/microsoftgraph/azuread-msoline-cmdlet-map?view=graph-powershell-1.0
-    # see https://practical365.com/connect-microsoft-graph-powershell-sdk/
-    #see https://learn.microsoft.com/en-us/graph/api/overview
-    # as part of the migration process, the commands Find-MgGraphCommand and Find-MgGraphPermission are useful to figure out
-    # what MgGraph command to use in place of a given AzureAD command, and what permissions (i.e. scopes, I think) we need
-    # in order to be able to run a given mggraph command (oops -- that is not exactly what those commands do (or not the only thing that they do).
-    # to translate from powershell command to api endpoint, use Find-MgGraphCommand with the -Command option.
+
+        update 2022-09-16:
+
+        to get prerequisistes:
+
+        AzureADPreview (and AzureAD) STILL does not work completely correctly
+        under powershell core. The -UseWindowsPowerShell  option of powershell
+        core's Import-Module function seemed promising as a way to use the
+        windowsPowershell module from within powershell core, but the
+        serializing of the command output is a dealbreaker.  Therefore, we are
+        STILL constrained to use windowsPowershell and not powershell core.
+
+        ```
+        powershell -c "Install-Module -Confirm:0 -Force -Name AzureADPreview"
+        powershell -c "Install-Module -Confirm:0 -Force -Name ExchangeOnlineManagement -AllowPrerelease"
+        powershell -c "Install-Module -Confirm:0 -Force -Name PnP.PowerShell"
+
+        powershell -c "Install-Module -Confirm:0 -Force -Name Microsoft.Graph" 
+        pwsh -c "Install-Module -Confirm:0 -Force -Name Microsoft.Graph"
+
+        powershell -c (@(
+            "Install-Module -Confirm:0 -Force -Name Microsoft.Graph -AllowPrerelease; Install-Module -Confirm:0 -Force -Name ExchangeOnlineManagement -AllowPrerelease"
+            "Install-Module -Confirm:0 -Force -Name PnP.PowerShell"
+        ) -join "; ") 
+        
+        
+        pwsh -c "Install-Module -Confirm:0 -Force -Name Microsoft.Graph.Beta -AllowPrerelease"
+        pwsh -c "Install-Module -Confirm:0 -Force -Name PnP.PowerShell -AllowPrerelease"
+        ```
+
+    #>
+    <#  When I attempt connect-azuread in powershell core (even when I am using
+        the version of connect-azuread from the AzureAD.Standard.Preview
+        module), I encounter the error "Certificate based authentication is not
+        supported in netcore version." I take that as the nail in the coffin of
+        the hope of using this script from within powershell core (for now).
+        Install-Module -Confirm:$false -Force -Name 'AzureAD',
+        'ExchangeOnlineManagement', 'PnP.PowerShell' TODO (potentially): check
+        the version of powershell that we are running under and throw some kind
+        of error or warning if we notice that we are running under powershell
+        core, because the AzureAD module does not quite work correctly under
+        powershell core, it seems. 
+    #>
+    <#  The AzureADPreview module is being deprecated, and replaced with
+        "Microsoft Graph Powershell".
+          * see
+            (https://learn.microsoft.com/en-us/powershell/azure/active-directory/migration-faq?view=azureadps-2.0)
+          * see
+            (https://learn.microsoft.com/en-us/powershell/microsoftgraph/azuread-msoline-cmdlet-map?view=graph-powershell-1.0)
+          * see
+            (https://practical365.com/connect-microsoft-graph-powershell-sdk/)
+          * see (https://learn.microsoft.com/en-us/graph/api/overview)
+
+        As part of the migration process, the commands Find-MgGraphCommand and
+        Find-MgGraphPermission are useful to figure out what MgGraph command to
+        use in place of a given AzureAD command, and what permissions (i.e.
+        scopes, I think) we need in order to be able to run a given mggraph
+        command (oops -- that is not exactly what those commands do (or not the
+        only thing that they do). To translate from powershell command to api
+        endpoint, use Find-MgGraphCommand with the -Command option. 
+    #>
 
 
     [CmdletBinding()]
@@ -568,16 +719,16 @@ function connectToOffice365 {
     )
     
 
-    # forceExchangeModuleToLoadItsVersionOf_System_IdentityModel_Tokens_Jwt
     forceLoadConflictingAssemblies
 
-    # todo: think through and simplify all the possibilities of parameters.  We
-    # have three parameters (namely: bitwardenItemIdOfTheConfiguration,
-    # tenantIdHint, primaryDomainName)  that, at first glance, appear to be
-    # doing almost the same thing: namely, identifying the tenant to which we
-    # want to connect (in a more-or-less direct way).  The overlap between these
-    # three parameters is way too confusing for production (but I had my reasons
-    # for using them.)
+    <#  todo: think through and simplify all the possibilities of parameters.
+        We have three parameters (namely: bitwardenItemIdOfTheConfiguration,
+        tenantIdHint, primaryDomainName)  that, at first glance, appear to be
+        doing almost the same thing: namely, identifying the tenant to which we
+        want to connect (in a more-or-less direct way).  The overlap between
+        these three parameters is way too confusing for production (but I had my
+        reasons for using them.) 
+    #>
 
     if(-not $bitwardenItemIdOfTheConfiguration -and -not $primaryDomainName -and -not $makeNewConfiguration){
         Write-Host "you must specify at least one of bitwardenItemIdOfTheConfiguration, primaryDomainName, makeNewConfiguration.  doing nothing."
@@ -591,99 +742,115 @@ function connectToOffice365 {
 
     Import-Module -Name 'ExchangeOnlineManagement'
     Import-Module -Name 'PnP.PowerShell'
-    # Import-Module -Name 'Microsoft.Graph' 
-    #
-    # strangely, explicitly importing the
-    # Microsoft.Graph module takes a long time (several minutes). Fortunately, we do
-    # not incur the same wait if we simply call commands without first importing
-    # (which relies on the automatic-module-importing mechanism of powershell.)
 
-    # we run into an error when we run Connect-ExchangeOnline if we have previously
-    # invoked Connect-MgGraph. The error message is "OperationStopped: Could not load file
-    # or assembly 'System.IdentityModel.Tokens.Jwt, Version=6.22.1.0,
-    # Culture=neutral, PublicKeyToken=31bf3856ad364e35'. Could not find or load a
-    # specific file. (0x80131621)".  I suspect that the MgGraph module and the
-    # ExchangeOnlineManagement are each trying to load a different version of the
-    # System.IdentityModel.Tokens.Jwt assembly. For Whatever reason, we can avoid
-    # this error by letting the ExchangeOnlineManagement do its assembly-loading
-    # before we let the MgGraph module do its assembly loading. It seems that
-    # MgGraph can tolerate the version of the System.IdentityModel.Tokens.Jwt
-    # assembly that ExchangeOnlineManagement loads, but not vice versa. I am
-    # noticing that MgGraph tends to load version 5.6.0.0 of the assembly, and
-    # ExchangeOnlineManagement wants to load version 6.22.1.0 .
+    ## Import-Module -Name 'Microsoft.Graph' 
+    <#  Strangely, explicitly importing the Microsoft.Graph module takes a long
+        time (several minutes). Fortunately, we do not incur the same wait if we
+        simply call commands without first importing (which relies on the
+        automatic-module-importing mechanism of powershell.) 
+    #>
 
-    #Curiously, this error happens only in powershell core, not Windows Powershell. 
+    <#  We run into an error when we run Connect-ExchangeOnline if we have
+        previously invoked Connect-MgGraph. The error message is
+        "OperationStopped: Could not load file or assembly
+        'System.IdentityModel.Tokens.Jwt, Version=6.22.1.0, Culture=neutral,
+        PublicKeyToken=31bf3856ad364e35'. Could not find or load a specific
+        file. (0x80131621)".  I suspect that the MgGraph module and the
+        ExchangeOnlineManagement are each trying to load a different version of
+        the System.IdentityModel.Tokens.Jwt assembly. For Whatever reason, we
+        can avoid this error by letting the ExchangeOnlineManagement do its
+        assembly-loading before we let the MgGraph module do its assembly
+        loading. It seems that MgGraph can tolerate the version of the
+        System.IdentityModel.Tokens.Jwt assembly that ExchangeOnlineManagement
+        loads, but not vice versa. I am noticing that MgGraph tends to load
+        version 5.6.0.0 of the assembly, and ExchangeOnlineManagement wants to
+        load version 6.22.1.0 .
 
-    # After carefully letting Exchange Online do its assembly loading, and then letting
-    # Microsoft.Graph do its assembly loading, we have the following results:
-    #
-    # In Windows Powershell:
-    #
-    #       [System.AppDomain]::CurrentDomain.GetAssemblies() | 
-    #           Where-Object Location | 
-    #           Where-Object {$_.FullName -match "^System.IdentityModel.Tokens.Jwt\b.*`$" } |
-    #           Sort-Object -Property FullName | 
-    #           Select-Object -Property FullName, Location, GlobalAssemblyCache, IsFullyTrusted |
-    #           fl 
-    #
-    #       #>>> FullName            : System.IdentityModel.Tokens.Jwt, Version=5.6.0.0, Culture=neutral, PublicKeyToken=31bf3856ad364e35
-    #       #>>> Location            : C:\Program Files\WindowsPowerShell\Modules\Microsoft.Graph.Authentication\1.18.0\Dependencies\System.Ident
-    #       #>>>                       ityModel.Tokens.Jwt.dll
-    #       #>>> GlobalAssemblyCache : False
-    #       #>>> IsFullyTrusted      : True
-    #       #>>> 
-    #       #>>> FullName            : System.IdentityModel.Tokens.Jwt, Version=6.21.0.0, Culture=neutral, PublicKeyToken=31bf3856ad364e35
-    #       #>>> Location            : C:\Program Files\WindowsPowerShell\Modules\ExchangeOnlineManagement\3.0.0\netFramework\System.IdentityMode
-    #       #>>>                       l.Tokens.Jwt.dll
-    #       #>>> GlobalAssemblyCache : False
-    #       #>>> IsFullyTrusted      : True
-    #
-    #
-    # In Powershell Core:
-    #       [System.AppDomain]::CurrentDomain.GetAssemblies() | 
-    #           Where-Object Location | 
-    #           Where-Object {$_.FullName -match "^System.IdentityModel.Tokens.Jwt\b.*`$" } |
-    #           Sort-Object -Property FullName | 
-    #           Select-Object -Property FullName, Location, GlobalAssemblyCache, IsFullyTrusted |
-    #           fl 
-    #
-    #       #>>> FullName            : System.IdentityModel.Tokens.Jwt, Version=6.22.1.0, Culture=neutral, 
-    #       #>>>                       PublicKeyToken=31bf3856ad364e35
-    #       #>>> Location            : C:\Users\Admin\Documents\PowerShell\Modules\ExchangeOnlineManagement\3.1.0\netCore\Sys 
-    #       #>>>                       tem.IdentityModel.Tokens.Jwt.dll
-    #       #>>> GlobalAssemblyCache : False
-    #       #>>> IsFullyTrusted      : True
-    #
-    # Notice that, uniquley, in Windows Powershell, both versions of the assembly are simultaneously loaded.
+        Curiously, this error happens only in powershell core, not Windows
+        Powershell. 
 
-    # I am seeing which version of the assembly is loaded by using the followeing command:
-    ### thanks to https://www.koskila.net/how-to-list-all-of-the-assemblies-loaded-in-a-powershell-session/
-    ## [System.AppDomain]::CurrentDomain.GetAssemblies() | Where-Object Location | Sort-Object -Property FullName | Select-Object -Property FullName, Location, GlobalAssemblyCache, IsFullyTrusted | Out-GridView
+         After carefully letting Exchange Online do its assembly loading, and
+         then letting Microsoft.Graph do its assembly loading, we have the
+         following results:
 
-    # we do the below call to Connect-ExchangeOnline, which we know will fail, and
-    # whichwe want to fail, for the express purpose of ensuring (unless we are
-    # dot-sourced into an existing session that already has the
-    # System.IdentityModel.Tokens.Jwt loaded, of course), that the ExchangeOnlineManagement
-    # gets the first crack at loading that assembly.
+        In Windows Powershell:
+        ```
+            [System.AppDomain]::CurrentDomain.GetAssemblies() | 
+                Where-Object Location | 
+                Where-Object {$_.FullName -match "^System.IdentityModel.Tokens.Jwt\b.*`$" } |
+                Sort-Object -Property FullName | 
+                Select-Object -Property FullName, Location, GlobalAssemblyCache, IsFullyTrusted |
+                fl 
+        ```
+        ``` RESULT:
+            FullName            : System.IdentityModel.Tokens.Jwt, Version=5.6.0.0, Culture=neutral, PublicKeyToken=31bf3856ad364e35
+            Location            : C:\Program Files\WindowsPowerShell\Modules\Microsoft.Graph.Authentication\1.18.0\Dependencies\System.Ident
+                                    ityModel.Tokens.Jwt.dll
+            GlobalAssemblyCache : False
+            IsFullyTrusted      : True
 
-    # this strategy does not work.
-    # to facilitate a partial-workaround, I will save the initialDomainName in the configuration file so that 
-    # we can, in teh normal course of operation, call the Connect-ExchangeOnline cmdlet before we call Connect-MgGraph.
-    # try{
-    #     $s = @{
-    #         AppID                   = "234523452345"
-    #         CertificateThumbprint   = "asdfgasdfasdfasdfasdf"
-    #         # Organization            = $initialDomainName 
-    #         Organization            = "whateverc1a6dee0ed884239baaec483d6b31550.onmicrosoft.com"
-    #         ShowBanner              = $false
-    #     };    Connect-ExchangeOnline @s
-    # } catch {
+            FullName            : System.IdentityModel.Tokens.Jwt, Version=6.21.0.0, Culture=neutral, PublicKeyToken=31bf3856ad364e35
+            Location            : C:\Program Files\WindowsPowerShell\Modules\ExchangeOnlineManagement\3.0.0\netFramework\System.IdentityMode
+                                    l.Tokens.Jwt.dll
+            GlobalAssemblyCache : False
+            IsFullyTrusted      : True
+        ```
 
-    # }
+         In Powershell Core:
+         ```
+               [System.AppDomain]::CurrentDomain.GetAssemblies() | 
+                   Where-Object Location | 
+                   Where-Object {$_.FullName -match "^System.IdentityModel.Tokens.Jwt\b.*`$" } |
+                   Sort-Object -Property FullName | 
+                   Select-Object -Property FullName, Location, GlobalAssemblyCache, IsFullyTrusted |
+                   fl 
+        ```
+        ``` RESULT:
+            FullName            : System.IdentityModel.Tokens.Jwt, Version=6.22.1.0, Culture=neutral, 
+                                PublicKeyToken=31bf3856ad364e35
+            Location            : C:\Users\Admin\Documents\PowerShell\Modules\ExchangeOnlineManagement\3.1.0\netCore\Sys 
+                                tem.IdentityModel.Tokens.Jwt.dll
+            GlobalAssemblyCache : False
+            IsFullyTrusted      : True
+        ```
+         Notice that, uniquley, in Windows Powershell, both versions of the
+         assembly are simultaneously loaded.
 
+        I am seeing which version of the assembly is loaded by using the
+        following command (thanks to
+        https://www.koskila.net/how-to-list-all-of-the-assemblies-loaded-in-a-powershell-session/):
+        ```
+            [System.AppDomain]::CurrentDomain.GetAssemblies() | 
+                Where-Object Location | 
+                Sort-Object -Property FullName | 
+                Select-Object -Property FullName, Location, GlobalAssemblyCache, IsFullyTrusted | 
+                Out-GridView
+        ```
 
+        We do the below call to Connect-ExchangeOnline, which we know will fail,
+        and which we want to fail, for the express purpose of ensuring (unless
+        we are dot-sourced into an existing session that already has the
+        System.IdentityModel.Tokens.Jwt loaded, of course), that the
+        ExchangeOnlineManagement gets the first crack at loading that assembly.
 
+        this strategy does not work. to facilitate a partial-workaround, I will
+        save the initialDomainName in the configuration file so that we can, in
+        the normal course of operation, call the Connect-ExchangeOnline cmdlet
+        before we call Connect-MgGraph.
+        ```
+        try{
+            @{
+                AppID                   = "234523452345"
+                CertificateThumbprint   = "asdfgasdfasdfasdfasdf"
+                ## Organization            = $initialDomainName 
+                Organization            = "whateverc1a6dee0ed884239baaec483d6b31550.onmicrosoft.com"
+                ShowBanner              = $false
+            } |% {Connect-ExchangeOnline @_}
+        } catch {
 
+        } 
+        ```
+    #>
 
     if($makeNewConfiguration){
         Write-Host "Constructing fresh configuration."
@@ -1572,8 +1739,9 @@ function connectToOffice365 {
     }
 
 
-    #at this point, we expect to have a valid $configuration and can proceed with
-    #making the connection:
+    <#  At this point, we expect to have a valid $configuration and can proceed
+        with making the connection: 
+    #>
 
     $certificate = base64EncodedPfxToX509Certificate2 $configuration['base64EncodedPfx'] -password $configuration['pfxPassword']
 
@@ -1648,10 +1816,6 @@ function connectToOffice365 {
             connectToMgGraph 
         }
     }
-
-
-
-
 
 
 
@@ -1829,11 +1993,12 @@ function connectToOffice365 {
 
 
 
-    #IPS session is not entirely an independent thiung from Exchange session
-    # (e.g. calling Disconnect-ExchangeOnline will also disconnect any active
-    # IPS session).  It is not quite correct to treat IPS session as another
-    # top-=level item, we ought to make it a substituent of the Exchange
-    # connection somehow, but oh well. 
+    <#  IPS session is not entirely an independent thiung from Exchange session
+        (e.g. calling Disconnect-ExchangeOnline will also disconnect any active
+        IPS session).  It is not quite correct to treat IPS session as another
+        top-=level item, we ought to make it a substituent of the Exchange
+        connection somehow, but oh well.  
+    #>
     function getWeAreConnectedToIPPSSession {
         [OutputType([Boolean])]
         param ()
@@ -1972,23 +2137,11 @@ function connectToOffice365 {
     }
 
 
-
-
-    # try {
-    #     Disconnect-ExchangeOnline -Confirm:$false -ErrorAction Stop
-    #     # this is here mainly for trying to overcome dll hell.
-    # } catch {
-    #     Write-Host "ignoring an error that occured with Disconnect-ExchangeOnline: $_"
-    # }
-
-
-    
     try{ ensureThatWeAreConnectedToMgGraph } 
     catch {
         Write-Host ("encountered error when attempting to ensure that we are " +
             "connected to Microsoft Graph: $($_)")
     }
-
 
     try{ ensureThatWeAreConnectedToSharepointOnline } 
     catch {
@@ -1996,522 +2149,24 @@ function connectToOffice365 {
             "connected to Sharepoint Online: $($_) $($_.Exception)")
     }
 
-
-
-
-    # try{ ensureThatWeAreConnectedToIPPSSession } 
-    # catch {
-    #     Write-Host ("encountered error when attempting to ensure that we are " +
-    #         "connected to IPPSSession: $($_)")
-    # }
-
-    
     try{ ensureThatWeAreConnectedToExchangeOnlineAndIPPSSession } 
     catch {
         Write-Host ("encountered error when attempting to ensure that we are " +
             "connected to IPPSSession and ExchangeOnline: $($_)")
     }
-    # # 2022-12-30-1255: I have commented out the above and replaced it with the below so that
-    # # we will not connect to ipssession at all.
-
-    
-    # try{ ensureThatWeAreConnectedToExchangeOnline } 
-    # catch {
-    #     Write-Host ("encountered error when attempting to ensure that we are " +
-    #         "connected to Exchange Online: $($_)")
-    # }
 
 
-    
     if(getWeAreConnectedToMgGraph){
         Write-Host "You are connected to Microsoft Graph.  ((Get-MgOrganization -Property "displayName").displayName): $((Get-MgOrganization -Property "displayName").displayName)"
     }
 
-    # it is important that the Exchange Online stuff occurs before the MgGraph stuff because
-    # Graph loads an older version of the System.IdentityModel.Tokens.Jwt assembly than does
-    # Exchange Online.  IF we try to do the graph stuff first, we get an error
-    # when trying to do then do the Exchange online stuff.
+    <#  It is important that the Exchange Online stuff occurs before the MgGraph
+        stuff because Graph loads an older version of the
+        System.IdentityModel.Tokens.Jwt assembly than does Exchange Online.  IF
+        we try to do the graph stuff first, we get an error when trying to do
+        then do the Exchange online stuff. 
+    #>
 
 
-    # if(-not (& {
-    # try{Get-MgOrganization 2> $null}
 
-
-    # catch{ $null}
-    # })){
-        
-        
-    #     # Write-Host "about to do Connect-MgGraph"
-    #     # # Select-MgProfile -Name Beta
-    #     # $s = @{
-    #     #     ClientId                = $configuration['appId'] 
-    #     #     # CertificateThumbprint   = $configuration['certificateThumbprint'] 
-    #     #     Certificate             = Get-Item (Join-Path $certificateStorageLocation $configuration['certificateThumbprint'] )
-    #     #     TenantId                = $configuration['tenantId']
-    #     #     ContextScope            = "Process"
-    #     #     ForceRefresh            = $True
-    #     # }; Connect-MgGraph @s 
-    #     # Write-Host "Finished doing Connect-MgGraph"
-
-    #     # $initialDomainName = ((Get-MgOrganization).VerifiedDomains | where-object {$_.IsInitial -eq $true}).Name
-
-    #     # $initialDomainName = $configuration['initialDomainName']
-
-    #     # Write-Host "about to do Connect-AzureAD"
-    #     # $s = @{
-    #     #     ApplicationId           = $configuration['appId'] 
-    #     #     CertificateThumbprint   = $configuration['certificateThumbprint']
-    #     #     TenantId                = $configuration['tenantId'] 
-    #     # }; $azureConnection = Connect-AzureAD @s 
-    #     # Write-Host "done"
-
-
-
-    #     #ideally, we should do a separate test for connection for each of the modules (AzureAD, Exchange, and Sharepoint).
-    #     # However, as a hack, I am only looking at the AzureAD module.
-    #     # updated: AzureAD --> Microsoft.Graph
-
-    #     # Install-Module -Name ExchangeOnlineManagement -RequiredVersion 2.0.5 
-    #     # Install-Module -Name ExchangeOnlineManagement -AllowPrerelease -Confirm:$false -Force
-    #     # Install-Module -Name ExchangeOnlineManagement -AllowPrerelease -Confirm:$false -Force -Scope CurrentUser
-        
-        
-
-
-
-
-
-    #     # $sharepointServiceUrl="https://" +  ($initialDomainName -Split '\.')[0] + "-admin.sharepoint.com"
-
-    #     # $s=@{
-    #     #     Url=$sharepointServiceUrl
-    #     #     # Credential=
-    #     # }; Connect-SPOService @s
-
-    #     # Connect-PnPOnline `
-    #         # -ClientId $configuration['appId']  `
-    #         # -Tenant (Get-AzureAdDomain | where-object {$_.IsInitial}).Name `
-    #         # -Thumbprint $configuration['certificateThumbprint'] 
-            
-    #     # Install-Module -Name "PnP.PowerShell"   
-
-    #     # $azureAdApplication = Get-AzureADApplication -SearchString $azureAdApplication.DisplayName
-        
-    # } else {
-    #     Write-Host "It seems that a connection to Microsoft Graph (and presumably also ExchangeOnline, and Sharepoint, and etc.) already exists, so we will not bother attempting to reconnect."
-    # }
-
-    # exit     
-
-
-
-    # [System.Text.Encoding]::ASCII.GetString((Get-AzureADApplicationKeyCredential -ObjectId $azureAdApplication.ObjectId  ).CustomKeyIdentifier)
-    # Get-AzureADServicePrincipalKeyCredential -ObjectId $azureAdServicePrincipal.ObjectId
-    # # Create the Service Principal and connect it to the Application
-    # $azureAdServicePrincipal = New-AzureADServicePrincipal -AppId $azureAdApplication.AppId
-
-
-
-    # # Give the Service Principal global admin access to the current tenant (Get-AzureADDirectoryRole)
-    # Add-AzureADDirectoryRoleMember -ObjectId $globalAdminAzureAdDirectoryRole.ObjectId -RefObjectId $azureAdServicePrincipal.ObjectId 
-
-    # Remove-AzureADDirectoryRoleMember -ObjectId $globalAdminAzureAdDirectoryRole.ObjectId -MemberId $azureAdServicePrincipal.ObjectId
-
-    # Get-AzureADApplicationOwner -ObjectId $azureAdApplication.ObjectId
-
-    # $result = `
-        # $namesOfTargetServicePrincipals -PipelineVariable nameOfTargetServicePrincipal | 
-        # foreach-object { 
-
-            
-            # @( 
-                # $nameOfTargetServicePrincipal , 
-                
-                
-            # ) 
-        # }
-
-    # $targetServicePrincipal = Get-AzureADServicePrincipal -Filter "DisplayName eq 'Microsoft Graph'"
-    # # $targetAppRole = $targetServicePrincipal.AppRoles[0]
-    # $targetAppRole = $targetServicePrincipal.AppRoles | where {$_.Value -eq "Sites.Selected"}
-
-
-    # New-AzureADServiceAppRoleAssignment 
-        # -ResourceId # this is the id of the 'resource' (i.e. the service principal for the app whose api we want to access)
-        # -Id # this is the id of one of the Microsoft.Open.AzureAD.Model.AppRole objects in the resource's AppRoles property.
-        # -PrincipalId # this is the id of the service principal for our app (i.e. the service principal to whom we are granting permissions.)
-        # -ObjectId # I don't know what the purpose of this argument is
-        
-    # New-AzureADServiceAppRoleAssignment `
-        # -ResourceId $targetServicePrincipal.ObjectId `
-        # -Id  $targetAppRole.Id `
-        # -PrincipalId  $azureAdServicePrincipal.ObjectId `
-        # -ObjectId ([Guid]::Empty)
-            
-    # $result = New-AzureADServiceAppRoleAssignment `
-        # -ResourceId $targetServicePrincipal.ObjectId `
-        # -Id  $targetAppRole.Id `
-        # -PrincipalId  $azureAdServicePrincipal.ObjectId `
-        # -ObjectId $azureAdServicePrincipal.ObjectId        
-
-    # $requiredResourceAccess = New-Object -TypeName "Microsoft.Open.AzureAD.Model.RequiredResourceAccess"
-    # $requiredResourceAccess.ResourceAppId = $targetServicePrincipal.AppId
-    # $requiredResourceAccess.ResourceAccess = $resourceAccessObjects
-
-    # # set the required resource access
-    # Set-AzureADApplication -ObjectId $childApp.ObjectId -RequiredResourceAccess $requiredResourceAccess
-
-
-    # #result is of type Microsoft.Open.AzureAD.Model.AppRoleAssignment, and the newly-created 'role assignment' (aka permission) appears in the 'Other permissions' section (not in the 'configured permissions') of the app's "api permissions' page in the azure ad web interface.    
-    # # also, the list returned by (Get-AzureADServiceAppRoleAssignment -ObjectId $azureAdServicePrincipal.ObjectId) remains empty.
-    # Get-AzureADServiceAppRoleAssignment -ObjectId $azureAdServicePrincipal.ObjectId -All $true
-
-    # $roleAssignment = (Get-AzureADServiceAppRoleAssignment -ObjectId $azureAdServicePrincipal.ObjectId)[0]
-    # Get-AzureADObjectByObjectId -ObjectIds @($roleAssignment.Id  )
-    # Get-AzureADObjectByObjectId -ObjectIds @($roleAssignment.PrincipalId  )
-    # Get-AzureADObjectByObjectId -ObjectIds @($roleAssignment.ResourceId  )
-    # Get-AzureADObjectByObjectId -ObjectIds @($roleAssignment.ObjectId  )
-
-    # Get-AzureADObjectByObjectId -ObjectIds @($azureAdApplication.AppId  )
-
-    # (Get-AzureADObjectByObjectId -ObjectIds @($roleAssignment.ResourceId  )).AppRoles | Where {$_.Id -eq $roleAssignment.Id}
-    # (Get-AzureADObjectByObjectId -ObjectIds @($roleAssignment.ResourceId  )).AppRoles | Where {$_.Id -eq $roleAssignment.ObjectId}
-
-    # #add api permissions:
-    # # see (https://stackoverflow.com/questions/61457429/how-to-add-api-permissions-to-an-azure-app-registration-using-powershell)
-
-    # $namesOfRequiredAppRoles = ...
-
-    # # Iterate Permissions array
-    # Write-Output -InputObject ('Retrieve Role Assignments objects')
-    # $requiredAppRoles = @()
-    # Foreach ($AppPermission in $appPermissionsRequired) {
-        # $appRole = $azureAdServicePrincipal.AppRoles | Where-Object { $_.Value -eq $AppPermission}
-        # $requiredAppRoles += $appRole
-    # }
-
-    # $resourceAccessObjects = New-Object 'System.Collections.Generic.List[Microsoft.Open.AzureAD.Model.ResourceAccess]'
-    # foreach ($appRole in $requiredAppRoles) {
-        # $resourceAccess = New-Object -TypeName "Microsoft.Open.AzureAD.Model.ResourceAccess"
-        # $resourceAccess.Id = $appRole.Id
-        # $resourceAccess.Type = 'Role'
-        # $resourceAccessObjects.Add($resourceAccess)
-    # }
-    # $requiredResourceAccess = New-Object -TypeName "Microsoft.Open.AzureAD.Model.RequiredResourceAccess"
-    # $requiredResourceAccess.ResourceAppId = $azureAdServicePrincipal.AppId
-    # $requiredResourceAccess.ResourceAccess = $resourceAccessObjects
-
-    # $requiredResourceAccessList = New-Object 'System.Collections.Generic.List[Microsoft.Open.AzureAD.Model.RequiredResourceAccess]'
-
-    # $requiredResourceAccessList.Add(...)
-
-    # # set the required resource access
-    # $azureAdApplication | Set-AzureADApplication  -RequiredResourceAccess $requiredResourceAccessList
-    # Start-Sleep -s 1
-
-    # # grant the required resource access
-    # foreach ($appRole in $requiredAppRoles) {
-        # Write-Output -InputObject ('Granting admin consent for App Role: {0}' -f $($appRole.Value))
-        # New-AzureADServiceAppRoleAssignment -ObjectId $servicePrincipalForApp.ObjectId -Id $appRole.Id -PrincipalId $servicePrincipalForApp.ObjectId -ResourceId $azureAdServicePrincipal.ObjectId
-        # Start-Sleep -s 1
-    # }
-
-
-    # GrantAllThePermissionsWeWant `
-        # -nameOfTargetServicePrincipal $nameOfTargetServicePrincipal `
-        # -appPermissionsRequired $appPermissionsRequired `
-        # -childApp $app `
-        # -servicePrincipalForApp $servicePrincipalForApp
-
-
-
-
-    # # Remove-AzureAdApplication -ObjectId $azureAdApplication.ObjectId
-    # # Remove-AzureADServicePrincipal -ObjectId $azureAdServicePrincipal.ObjectId
-    # #at this point, the configuration of our app in AzureAd is complete.
-    # #Collect the configuration details into an object and serialize to a file for future use by the connect_to_office_365.ps1 script
-
-    # $configuration = @{
-        # tenantId = (Get-AzureADTenantDetail).ObjectId;
-        # servicePrincipalId = $azureAdServicePrincipal.AppId;
-        # pathOfCertificateFile = $pathOfCertificateFile;
-        # passwordOfCertificateFile = $passwordOfCertificateFile;
-    # }
-
-
-
-
-
-    # # Get Tenant Detail
-    # $tenant=(Get-AzureADTenantDetail).ObjectId
-    # # Now you can login to Azure PowerShell with your Service Principal and Certificate
-    # Connect-AzureAD -TenantId $tenant.ObjectId -ApplicationId  $sp.AppId -CertificateThumbprint $thumb
-
-
-
-    # # $appId = Get-AzureADApplication -SearchString ""
-    # # $appId = Get-AzureADApplication | Out-String -Stream | Select-String -Pattern "autoscan"
-
-    # #Get-AzureADMSApplication
-
-    # $autoscanManagementAzureAdApp = Get-AzureADApplication -ObjectId "94bbd8b1-a0e1-468a-aa8c-c0a8e340873f"
-    # $azureAdServicePrincipal = Get-AzureADServicePrincipal -Filter ("appId eq '" + $autoscanManagementAzureAdApp.AppId + "'")
-    # $azureAdDirectoryRole =  Get-AzureADDirectoryRole | where {$_.DisplayName -eq "Company Administrator"}
-
-
-    # Get-AzureADDirectoryRoleMember -ObjectId $azureAdDirectoryRole.ObjectId
-
-    # # New-AzureADServiceAppRoleAssignment -ObjectId $azureAdServicePrincipal.ObjectId    -Id $azureAdDirectoryRole.ObjectId  -PrincipalId <String>  -ResourceId <String>
-    # # New-AzureADServiceAppRoleAssignment -ObjectId $azureAdServicePrincipal.ObjectId   -PrincipalId $azureAdServicePrincipal.ObjectId    -Id $azureAdDirectoryRole.ObjectId  
-
-    # Add-AzureADDirectoryRoleMember -ObjectId $azureAdDirectoryRole.ObjectId  -RefObjectId $azureAdServicePrincipal.ObjectId 
-
-    # # Connect-ExchangeOnline -CertificateFilePath "J:\loberg_roofing\powershell management of Office365 for Loberg\mycert.pfx" -CertificatePassword (ConvertTo-SecureString -String "N4M%2ezK9FAkZurF" -AsPlainText -Force) -AppID "94bbd8b1-a0e1-468a-aa8c-c0a8e340873f" -Organization "appriver3651003074.onmicrosoft.com"
-    # # Connect-ExchangeOnline -CertificateFilePath "J:\loberg_roofing\powershell management of Office365 for Loberg\mycert.pfx" -CertificatePassword (ConvertTo-SecureString -String "N4M%2ezK9FAkZurF" -AsPlainText -Force) -AppID "27b20dbe-43b3-4185-878b-bf564f7e2a21" -Organization "lobergroofing.com"
-    # # Connect-ExchangeOnline -CertificateFilePath "J:\loberg_roofing\powershell management of Office365 for Loberg\mycert.pfx" -CertificatePassword (ConvertTo-SecureString -String "N4M%2ezK9FAkZurF" -AsPlainText -Force) -AppID "bcd4ec85-1ab0-4228-9078-e9484d23037c" -Organization "lobergroofing.com"
-    # # Connect-ExchangeOnline -CertificateFilePath "J:\loberg_roofing\powershell management of Office365 for Loberg\mycert.pfx" -CertificatePassword (ConvertTo-SecureString -String "N4M%2ezK9FAkZurF" -AsPlainText -Force) -AppID "bcd4ec85-1ab0-4228-9078-e9484d23037c" -Organization "appriver3651003074.onmicrosoft.com"
-
-
-
-    # $tenantId = "f3f4dd6b-4a3c-42b9-b6f9-e959fa1c4c25"
-    # $applicationClientId = "bcd4ec85-1ab0-4228-9078-e9484d23037c"
-    # $organization = "appriver3651003074.onmicrosoft.com"
-    # $pathOfCertificateFile = "J:\loberg_roofing\powershell management of Office365 for Loberg\mycert.pfx"
-    # $passwordOfCertificateFile = "N4M%2ezK9FAkZurF"
-    # # $clientSecret="FPx12~6GdAiX9xhynY1oWG~R8i_-J-GkqX"
-    # # $scope = "https://graph.microsoft.com/.default"
-    # # $grantType = "client_credentials"
-
-
-    # $certificate =  Import-PfxCertificate -CertStoreLocation "cert:\LocalMachine\My" -FilePath $pathOfCertificateFile -Password (ConvertTo-SecureString -String $passwordOfCertificateFile -AsPlainText -Force) 
-
-    # # Connect-ExchangeOnline -CertificateFilePath $pathOfCertificateFile -CertificatePassword (ConvertTo-SecureString -String $passwordOfCertificateFile -AsPlainText -Force) -AppID $appId -Organization $organization
-    # # Connect-ExchangeOnline -AppID $appId -Organization $organization -Certificate $certificate 
-    # Connect-ExchangeOnline -AppID $applicationClientId -Organization $organization -CertificateThumbprint $certificate.Thumbprint
-    # # Connect-AzureAD -TenantId $tenantId  -ApplicationId $appId -CertificateFilePath $pathOfCertificateFile -CertificatePassword (ConvertTo-SecureString -String $passwordOfCertificateFile -AsPlainText -Force) 
-    # Connect-AzureAD -TenantId $tenantId  -ApplicationId $applicationClientId -CertificateThumbprint $certificate.Thumbprint
-
-
-
-    # $autoscanManagementAzureAdApp = (Get-AzureADApplication -Filter ("AppId eq '" + $applicationClientId + "'"))
-    # $azureAdServicePrincipal = Get-AzureADServicePrincipal -Filter ("appId eq '" + $autoscanManagementAzureAdApp.AppId + "'")
-
-
-    # # $result = New-AzureADApplicationPasswordCredential -ObjectId $applicationClientId
-    # # $result = New-AzureADApplicationPasswordCredential -ObjectId $azureAdServicePrincipal.ObjectId
-    # # New-AzureADMSApplicationPassword -ObjectId $applicationClientId -PasswordCredential @{ displayname = "mypassword" }
-    # # New-AzureADMSApplicationPassword -ObjectId $azureAdServicePrincipal.ObjectId -PasswordCredential @{ displayname = "mypassword" }
-    # $passwordCredential = New-AzureADMSApplicationPassword -ObjectId $autoscanManagementAzureAdApp.ObjectId -PasswordCredential @{ displayname = "mypassword" }
-    # $clientSecret=$passwordCredential.SecretText
-
-    # write-host "Sleeping for 4 seconds to allow client secret creation in cloud" -foregroundcolor green
-    # start-sleep 30
-
-    # # Create a hashtable for the body, the data needed for the token request
-    # # The variables used are explained above
-    # $Body = @{
-        # 'tenant' = $tenantId
-        # 'client_id' = $applicationClientId
-        # 'scope' = 'https://graph.microsoft.com/.default'
-        # 'client_secret' = $clientSecret
-        # 'grant_type' = 'client_credentials'
-    # }
-
-    # # Assemble a hashtable for splatting parameters, for readability
-    # # The tenant id is used in the uri of the request as well as the body
-    # $Params = @{
-        # 'Uri' = "https://login.microsoftonline.com/$tenantId/oauth2/v2.0/token"
-        # 'Method' = 'Post'
-        # 'Body' = $Body
-        # 'ContentType' = 'application/x-www-form-urlencoded'
-    # }
-
-    # $AuthResponse = Invoke-RestMethod @Params
-
-
-    # $msGraphAccessToken = $AuthResponse.access_token
-
-    
-
-
-    # # Create a hashtable for the body, the data needed for the token request
-    # # The variables used are explained above
-    # $Body = @{
-        # 'tenant' = $tenantId
-        # 'client_id' = $applicationClientId
-        # 'scope' = 'https://graph.windows.net/.default'
-        # 'client_secret' = $clientSecret
-        # 'grant_type' = 'client_credentials'
-    # }
-
-    # # Assemble a hashtable for splatting parameters, for readability
-    # # The tenant id is used in the uri of the request as well as the body
-    # $Params = @{
-        # 'Uri' = "https://login.microsoftonline.com/$tenantId/oauth2/v2.0/token"
-        # 'Method' = 'Post'
-        # 'Body' = $Body
-        # 'ContentType' = 'application/x-www-form-urlencoded'
-    # }
-
-    # $AuthResponse = Invoke-RestMethod @Params
-    # $adGraphAccessToken = $AuthResponse.access_token
-
-
-
-
-    # Connect-MsolService -AdGraphAccessToken $adGraphAccessToken -MsGraphAccessToken $msGraphAccessToken
-    
-    # $secureCredential = New-Object System.Management.Automation.PSCredential ($applicationClientId, (ConvertTo-SecureString $clientSecret -AsPlainText -Force))
-    # Connect-MsolService -Credential $secureCredential 
-
-    # $secureCredential = New-Object System.Management.Automation.PSCredential ($azureAdServicePrincipal.ObjectId, (ConvertTo-SecureString $clientSecret -AsPlainText -Force))
-    # Connect-MsolService -Credential $secureCredential
-
-    # Connect-MsolService -AccessToken $adGraphAccessToken 
-    # Connect-MsolService -AccessToken $msGraphAccessToken
-
-
-    # Connect-MsolService -AdGraphAccessToken $adGraphAccessToken 
-    # Connect-MsolService -MsGraphAccessToken $msGraphAccessToken
-
-
-
-    # Connect-MsolService -AdGraphAccessToken  $msGraphAccessToken -MsGraphAccessToken  $adGraphAccessToken
-    # Connect-MsolService  -MsGraphAccessToken  $adGraphAccessToken
-    # Connect-MsolService -AdGraphAccessToken  $msGraphAccessToken 
-
-    # Connect-MsolService AdGraphAccessToken  $msGraphAccessToken -MsGraphAccessToken  $msGraphAccessToken
-    # Connect-MsolService -AdGraphAccessToken  $adGraphAccessToken -MsGraphAccessToken  $adGraphAccessToken
-
-
-    # Set-Clipboard -Value $adGraphAccessToken
-    # Set-Clipboard -Value $msGraphAccessToken
-
-    # # serviceprincipal's objectId is 27b20dbe-43b3-4185-878b-bf564f7e2a21
-
-
-    # # Get-Command Export-PfxCertificate  | fl
-
-    # # there are good instructions about how to automate the initial setup of the app permissions and certificate creation at https://docs.microsoft.com/en-us/powershell/module/azuread/connect-azuread?view=azureadps-2.0
-
-    # $ApplicationId         = 'xxxx-xxxx-xxxx-xxxx-xxx'
-    # $ApplicationSecret     = 'YOURSECRET' | Convertto-SecureString -AsPlainText -Force
-    # $TenantID              = 'xxxxxx-xxxx-xxx-xxxx--xxx' 
-    # $RefreshToken          = 'LongResourcetoken'
-    # $ExchangeRefreshToken  = 'LongExchangeToken'
-    # $credential = New-Object System.Management.Automation.PSCredential($ApplicationId, $ApplicationSecret)
-
-
-
-    # $aadGraphToken = New-PartnerAccessToken -ApplicationId $ApplicationId -Credential $credential -RefreshToken $refreshToken -Scopes 'https://graph.windows.net/.default' -ServicePrincipal -Tenant $tenantID 
-    # $graphToken = New-PartnerAccessToken -ApplicationId $ApplicationId -Credential $credential -RefreshToken $refreshToken -Scopes 'https://graph.microsoft.com/.default' -ServicePrincipal -Tenant $tenantID 
-
-    # Connect-MsolService -AdGraphAccessToken $aadGraphToken.AccessToken -MsGraphAccessToken $graphToken.AccessToken
-
-
-    # Get-AzureADUserOAuth2PermissionGrant $appId
-
-    # Get-AzureADServicePrincipalOAuth2PermissionGrant -ObjectId $appId
-    # Get-AzureADServicePrincipalOAuth2PermissionGrant -ObjectId $azureAdServicePrincipal.ObjectId
-
-    # Install-Module -Name Microsoft.Graph -Force
-
-    # Connect-Graph
-
-}
-
-function Install-MicrosoftGraphDependencies {
-    [CmdletBinding()]
-    [OutputType([Void])]
-    param ()
-    # this whole function is a bit of a hack; I'm sure this is not the preferred
-    # cleanest way to install depencies, but it is marginally better then
-    # putting these commands in comments somewhere, which is how I've been doing
-    # it until now.
-    process {
-        
-        @(
-            "Microsoft.Graph"
-            "Microsoft.Graph.Beta"
-            "ExchangeOnlineManagement"
-            "PnP.PowerShell"
-        ) | % { 
-            # during testing, before running this function, I go manually delete any
-            # graph, Exchange, and pnp -related folders from within the following folders:
-            #   - %programfiles%\WindowsPowerShell\Modules 
-            #   - %userprofile%\Documents\PowerShell\Modules
-            #   - %userprofile%\Documents\WindowsPowerShell\Modules (this folder does not exist as of 2023-02-26-1411 (I deleted it))
-
-            Write-Host "now installing $($_) in Windows Powershell."
-            powershell -c "Install-Module -Confirm:0 -Force -AllowPrerelease -Name $($_)"
-            # I don't think I am using windows powershell at all anymore, so
-            # installing the modules in windows in windows powershell is
-            # probably completely unnecessary and serves no purpose.
-
-            Write-Host "now installing $($_) in Powershell core."
-            pwsh -c "Install-Module -Confirm:0 -Force -AllowPrerelease -Name $($_)"
-
-        }
-    }
-
-    # As of 2023-02-26-1616, in order to avoid the Edm.Binary error when
-    # creating a new configuration we must have something prior to the 2.0
-    # version of mggraph installed. Could the edm.binary error be related to
-    # newtonsoft json dll hell?
-    
-    # pwsh -c "Install-Module -Confirm:0 -Force -Name Microsoft.Graph -MaximumVersion 1.22"  
-
-
-    # pwsh -c "Install-Module -Confirm:0 -Force -AllowPrerelease -Name Microsoft.Graph"   
-    # pwsh -c "Install-Module -Confirm:0 -Force -AllowPrerelease -Name PnP.PowerShell"   
-
-}
-
-# function getBitwardenItemContainingOffice365ManagementConfiguration {
-function getBitwardenItemContainingMicrosoftGraphManagementConfiguration {
-    # 2022-12-20 at the moment, this function is only used in the setup of new
-    # configurations.  It is not used by the conectToOffice365 function in the
-    # normnal course of established operations. However, I have half a mind to
-    # give the ability of connectToOffice365 the ability to accept,as an
-    # alternative to the bitwarden item id of a configuration, a primary domain
-    # name of the tenant.  In that case, I will have connectToOffice365() use
-    # this function to (attempt to) get the configuration.
-    [OutputType([HashTable])] # really I mean a nullable hasthable.
-    [CmdletBinding()]
-    Param (
-        [Parameter(
-            Mandatory=$True
-        )]
-        [String] $primaryDomainName,
-
-        [Parameter(
-        )]
-        [Switch] $createIfNotAlreadyExists
-    )
-    Write-Host "now working on $($primaryDomainName.ToLower())"
-    $nameOfBitwardenItem = getCanonicalNameOfBitwardenItemBasedOnPrimaryDomainName $primaryDomainName
-    # we are relying on this function agreeing with connectToOffice365() about the name format.
-    # this is a little bit inelegant.
-    $bitwardenItem = getBitwardenItem $nameOfBitwardenItem
-    if($bitwardenItem){
-        Write-Host "Found a suitable existing bitwarden item, whose id is $($bitwardenItem['id'])."
-    } else {
-        if($createIfNotAlreadyExists){
-            Write-Host ""
-            Write-Host "======================="
-            Write-Host "We will now construct Microsoft Graph management credentials for $($primaryDomainName.ToLower()).  Please respond to the authorization prompt(s) accordingly."
-            Write-Host "$($primaryDomainName.ToLower())"
-            Write-Host "======================="
-            Write-Host ""
-            connectToOffice365 -makeNewConfiguration:$true -tenantIdHint:$($primaryDomainName.ToLower()) | Write-Host
-
-            $bitwardenItem = getBitwardenItem $nameOfBitwardenItem
-            if($bitwardenItem){
-                Write-Host "After constructing a fresh configuration, we have now found a suitable bitwarden item, whose id is $($bitwardenItem['id'])."
-            } else {
-                Write-Host "After constructing a fresh configuration, we are still unable to find a suitable bitwarden item."    
-            }
-        }
-    }
-    return $bitwardenItem
 }
