@@ -9,10 +9,6 @@
 
 #>
 
-
-
-
-
 function forceExchangeModuleToLoadItsVersionOf_System_IdentityModel_Tokens_Jwt(){
     # [System.Reflection.Assembly]::LoadFrom((join-path (Get-InstalledModule "ExchangeOnlineManagement").InstalledLocation "netCore/System.IdentityModel.Tokens.Jwt.dll"))
     # 
@@ -99,7 +95,6 @@ function forceExchangeModuleToLoadItsVersionOf_System_IdentityModel_Tokens_Jwt()
     ) | Write-Debug
 }
 
-
 function forceGraphModuleToLoadItsVersionOf_System_IdentityModel_Tokens_Jwt(){
     # [System.Reflection.Assembly]::LoadFrom((join-path (Get-InstalledModule "Microsoft.Graph.Authentication").InstalledLocation "Dependencies/System.IdentityModel.Tokens.Jwt.dll"))
     
@@ -129,7 +124,6 @@ function forceGraphModuleToLoadItsVersionOf_System_IdentityModel_Tokens_Jwt(){
         fl
 }
 
-
 function forceLoadConflictingAssemblies(){
     <#
 
@@ -148,8 +142,9 @@ function forceLoadConflictingAssemblies(){
     Param()
 
     $rootAssembliesToForceSpecs = @(
-        # coming up with a working list of specs here is purely trial and error
-        # guided (sort of) by the error messages.
+        <#  Coming up with a working list of specs here is purely trial and error
+            guided (sort of) by the error messages. 
+        #>
         @{
             nameOfModule                      = "Microsoft.Graph.Authentication"
             relativePathOfRootAssemblyToForce = "Dependencies/Core/Microsoft.Identity.Client.dll"
@@ -220,7 +215,6 @@ function forceLoadConflictingAssemblies(){
         }
     }
 }
-
 
 function doUglyHackToFixDependencyHellFor_System_IdentityModel_Tokens_Jwt(){
     # see https://stackoverflow.com/questions/72490964/powershell-core-resolving-assembly-conflicts
@@ -324,7 +318,6 @@ function Script:getCanonicalNameOfBitwardenItemBasedOnPrimaryDomainName {
     }
 }
 
-
 function Install-MicrosoftGraphDependencies {
     [CmdletBinding()]
     [OutputType([Void])]
@@ -424,9 +417,6 @@ function getBitwardenItemContainingMicrosoftGraphManagementConfiguration {
     }
     return $bitwardenItem
 }
-
-
-
 
 Function getRoleSpecificationsExpression(){
     <#  This function is for debugging and verification: it can be used to
