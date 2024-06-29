@@ -2021,8 +2021,8 @@ function connectToOffice365 {
                 ## ModuleInfo      = (invoke-command -Session $psSessionForExchangeOnlineManagementModule {(Get-Command get-mailbox).Module})
                 ## FullyQualifiedName      = (invoke-command -Session $psSessionForExchangeOnlineManagementModule {(Get-Command get-mailbox).Module})
                 FullyQualifiedName      = (invoke-command -Session $psSessionForExchangeOnlineManagementModule {(Get-Command get-mailbox).Module.Path})
-                
                 ## NoClobber = $True
+                ## Verbose = $true
             } |% {Import-Module @_}
 
             <#  2024-06-29-1207: I wonder if, once prepared, the temporary
@@ -2187,6 +2187,7 @@ function connectToOffice365 {
                 PSSession = $psSessionForExchangeOnlineManagementModule
                 FullyQualifiedName      = (invoke-command -Session $psSessionForExchangeOnlineManagementModule {(Get-Command Get-RetentionCompliancePolicy).Module.Path})
                 ## NoClobber = $True
+                ## Verbose = $true
             } |% {Import-Module @_}
 
         }
