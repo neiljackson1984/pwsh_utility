@@ -709,7 +709,17 @@ function connectToOffice365 {
     )
     
 
-    ##forceLoadConflictingAssemblies
+    ## forceLoadConflictingAssemblies
+    <#  2024-06-29-1212: we are no longer relying on forcing a custom load order
+        of dlls to work around dll hell.  Rather, we are now loading the
+        ExchangeOnlineManagement commands in a separate Powershell Session and
+        importing the commands from that separate session by means of implicit
+        remoting.  Thus, the ExchangeOnlineManagement module is free to have its
+        own, preferred versions of assemblies (I rather suspect that Newtonsoft
+        Json is at the heart of the problem), without bolloxing the
+        PnP.PowerShell, Microsoft.Graph, and Az modules, which all seem to play
+        nicely with one another out of the box. 
+    #>
 
     <#  todo: think through and simplify all the possibilities of parameters.
         We have three parameters (namely: bitwardenItemIdOfTheConfiguration,
@@ -1752,453 +1762,478 @@ function connectToOffice365 {
     $pathOfTemporaryCertificateFile = New-TemporaryFile
     Set-Content  -AsByteStream -Value ([System.Convert]::FromBase64String($configuration['base64EncodedPfx'] )) -LiteralPath $pathOfTemporaryCertificateFile | out-null
     
+    .{ #functions for MgGraph
+        function getWeAreConnectedToMgGraph {
+            [OutputType([Boolean])]
+            param ()
+            <#  Unlike with the old AzureAD powershell, with Graph, it might be
+                problematic to use a succesfull invoking of Get-MgOrganization to infer
+                that an existing connection exists.  Because the Graph powershell module
+                caches crednetials across sessions, its possible that Get-MgOrganization
+                will return a result without complaint from an old closed session that I
+                am long done with and have forgotten about.  
+                Is there any way (perhaps an argument we can pass to connect-mggraph) to
+                force the Graph module not to cache crednetials after the end of the
+                session? Answer: I think  "-ContextScope Process" (and maybe also
+                "-ForceRefresh") are the arguments that will have the desired effect.
+            #>
+            
 
-    function getWeAreConnectedToMgGraph {
-        [OutputType([Boolean])]
-        param ()
+            <#  This  might be another way to test for connectivity:
+                ```
+                $null -ne [Microsoft.Graph.PowerShell.Authentication.GraphSession]::Instance
+                ```
+            #>
 
-        try{
-            $mgOrganization = (Get-MgOrganization -ErrorAction SilentlyContinue) 
-        } catch {
-            $mgOrganization = $null
-        }
-
-
-        # Unlike with the old AzureAD powershell, with Graph, it might be
-        # problematic to use a succesfull invoking of Get-MgOrganization to infer
-        # that an existing connection exists.  Because the Graph powershell module
-        # caches crednetials across sessions, its possible that Get-MgOrganization
-        # will return a result without complaint from an old closed session that I
-        # am long done with and have forgotten about.  
-        # Is there any way (perhaps an argument we can pass to connect-mggraph) to
-        # force the Graph module not to cache crednetials after the end of the
-        # session? Answer: I think  "-ContextScope Process" (and maybe also
-        # "-ForceRefresh") are the arguments that will have the desired effect.
-        
-        if(
-            $mgOrganization -and 
-            (
-                ($mgOrganization.VerifiedDomains | where-object {$_.IsInitial -eq $true}).Name.Trim().ToLower() -eq
-                $configuration['initialDomainName'].Trim().ToLower()
+            return (
+                [Boolean] $(
+                    &{
+                        Get-MgOrganization | 
+                        ? { 
+                            $($_.VerifiedDomains | ? {$_.IsInitial -eq $true})?.Name.Trim().ToLower() -eq
+                            $configuration['initialDomainName'].Trim().ToLower()
+                        }
+                    } -erroraction silentlycontinue 2>$null
+                )
             )
-        ){
-            return $true
-        } else {
-            return $false
+
         }
 
-        #  ($null -ne [Microsoft.Graph.PowerShell.Authentication.GraphSession]::Instance)
-        # the above might be another way to test for the existence of connectivity.
-    }
+        function connectToMgGraph {
+            [OutputType([Void])]
+            param ()
+            Write-Debug "about to do Connect-MgGraph"
+            # Select-MgProfile -Name Beta
+            Disconnect-MgGraph -ErrorAction SilentlyContinue 1>$null 2>$null
+            @{
+                ClientId                = $configuration['appId']
+                # CertificateThumbprint   = $configuration['certificateThumbprint'] 
+                Certificate             = $certificate
 
-
-    function connectToMgGraph {
-        [OutputType([Void])]
-        param ()
-        Write-Debug "about to do Connect-MgGraph"
-        # Select-MgProfile -Name Beta
-        Disconnect-MgGraph -ErrorAction SilentlyContinue 1>$null 2>$null
-        @{
-            ClientId                = $configuration['appId']
-            # CertificateThumbprint   = $configuration['certificateThumbprint'] 
-            Certificate             = $certificate
-
-            # TenantId                = $configuration['initialDomainName']
-            # at least as of version 1.19 of the Microsoft.Graph module,
-            # passing initialDomainName as the tenantId (in some cases, at least)
-            # causes the error: "Connect-MgGraph: You specified a different tenant - once in WithAuthority() and once using WithTenant()."
-            # pass the guid version of the tenant id seems to avoid this problem.
-            TenantId                = $configuration['tenantId']
-            ContextScope            = "Process"
-        } |%{Connect-MgGraph @_ } | out-null
-        Write-Debug "Finished doing Connect-MgGraph"
-    }
-
-    function ensureThatWeAreConnectedToMgGraph {
-        [OutputType([Void])]
-        param ()
-        if( getWeAreConnectedToMgGraph ){
-            Write-Host ("It seems that a connection to Microsoft Graph already " +
-                "exists, so we will not bother attempting to reconnect.")
-        } else {
-            connectToMgGraph 
+                # TenantId                = $configuration['initialDomainName']
+                # at least as of version 1.19 of the Microsoft.Graph module,
+                # passing initialDomainName as the tenantId (in some cases, at least)
+                # causes the error: "Connect-MgGraph: You specified a different tenant - once in WithAuthority() and once using WithTenant()."
+                # pass the guid version of the tenant id seems to avoid this problem.
+                TenantId                = $configuration['tenantId']
+                ContextScope            = "Process"
+            } |%{Connect-MgGraph @_ } | out-null
+            Write-Debug "Finished doing Connect-MgGraph"
         }
-    }
 
-
-
-    function getWeAreConnectedToExchangeOnline {
-        [OutputType([Boolean])]
-        param ()
-        $connectionInformation = $(
-            try{
-                Get-ConnectionInformation -ErrorAction "Stop"
-            } catch {
-                $null
+        function tryToEnsureThatWeAreConnectedToMgGraph {
+            [OutputType([Void])]
+            param ()
+            try{ 
+                if( getWeAreConnectedToMgGraph ){
+                    Write-Host ("It seems that a connection to Microsoft Graph already " +
+                        "exists, so we will not bother attempting to reconnect.")
+                } else {
+                    connectToMgGraph 
+                } 
+            } 
+            catch {
+                Write-Host ("encountered error when attempting to ensure that we are " +
+                    "connected to Microsoft Graph: $($_)")
             }
-        )
-        if(
-            $connectionInformation -and 
-            (
-                ($connectionInformation.Organization).Trim().ToLower() -eq
-                $configuration['initialDomainName'].Trim().ToLower()
+        }
+    }
+
+    .{  # functions for SharepointOnline
+        function getWeAreConnectedToSharepointOnline {
+            [OutputType([Boolean])]
+            param ()
+            return (
+                [Boolean] $(
+                    &{
+                        $(
+                            try{
+                                Get-PnpConnection -erroraction silentlycontinue 2>$null 
+                            } catch {
+                                $null
+                            }
+                        ) | 
+                        ? {$_} |
+                        ? { 
+                            $_.Tenant.Trim().ToLower() -eq
+                            $configuration['initialDomainName'].Trim().ToLower() 
+                        }
+                    } -erroraction silentlycontinue 2>$null
+                )
             )
-        ){
-            return $true
-        } else {
-            return $false
         }
 
-    }
-
-    function connectToExchangeOnline {
-        [OutputType([Void])]
-        param ()
-        Write-Debug "about to do Connect-ExchangeOnline"
-        
-        $result = @{
-            AppID                   = $configuration['appId'] 
+        function connectToSharepointOnline {
+            # [OutputType([Void])]
+            param ()
+            Write-Debug "about to do Connect-PnPOnline (which I call 'SharepointOnline')"    
             
-            ##  Certificate             = $certificate
-            CertificateFilePath = $pathOfTemporaryCertificateFile
-            CertificatePassword  = ConvertTo-SecureString -AsPlainText $configuration['pfxPassword']
-
-            Organization            = $configuration['initialDomainName']
-            ShowBanner              = $false
-        } |% {Connect-ExchangeOnline @_}
-
-        ## @{
-        ##     Session = $psSessionForExchangeOnlineManagementModule 
-        ##     Module = (invoke-command -Session $psSessionForExchangeOnlineManagementModule {(Get-Command get-mailbox).Module.Name})
-        ## } |% {Import-PSSession @_}
-
-        @{
-            Scope     = "Global"
-            PSSession = $psSessionForExchangeOnlineManagementModule
-
-            ## Name      = (invoke-command -Session $psSessionForExchangeOnlineManagementModule {(Get-Command get-mailbox).Module.Name})
-            ## ModuleInfo      = (invoke-command -Session $psSessionForExchangeOnlineManagementModule {(Get-Command get-mailbox).Module})
-            ## FullyQualifiedName      = (invoke-command -Session $psSessionForExchangeOnlineManagementModule {(Get-Command get-mailbox).Module})
-            FullyQualifiedName      = (invoke-command -Session $psSessionForExchangeOnlineManagementModule {(Get-Command get-mailbox).Module.Path})
+            # $temporaryFile = New-TemporaryFile
+            # Set-Content  -AsByteStream -Value ([System.Convert]::FromBase64String($configuration['base64EncodedPfx'])) -LiteralPath $temporaryFile.FullName 1> $null
             
-            ## NoClobber = $True
-        } |% {Import-Module @_}
+            # $certStoreLocation = "Cert:\CurrentUser\My"
+            # Remove-Item -Force -Path (join-path $certStoreLocation $certificate.Thumbprint)
+            # $s = @{
+            #     CertStoreLocation =  $certStoreLocation
+            #     Password = (stringToSecureString "") 
+            #     FilePath = $temporaryFile.FullName
+            #     Exportable = $True
+            # }; $x = Import-PfxCertificate @s 
+            # # $y = [System.Convert]::ToBase64String($x.RawData)
+            # # this doesn't work, of course, because $y does not contain the private key.
 
-        
-        ## Write-Debug "Finished doing Connect-ExchangeOnline, and the result is $($result).  First mailbox is $(@(get-mailbox)[0])"
-        ## Write-Host "Finished doing Connect-ExchangeOnline, and the result is $($result).  First mailbox is $(@(get-mailbox)[0])"
-    }
-
-    function ensureThatWeAreConnectedToExchangeOnline {
-        [OutputType([Void])]
-        param ()
-        if( getWeAreConnectedToExchangeOnline ){
-            Write-Debug ("It seems that a connection to Exchange Online already " +
-                "exists, so we will not bother attempting to reconnect.")
-        } else {
-            connectToExchangeOnline | out-null
-        }
-    }
+            # # $y = [System.Convert]::ToBase64String($x.PrivateKey.ExportRSAPrivateKey())
+            # # $y = $x.PrivateKey.ExportRSAPrivateKeyPem()
 
 
+            # Write-Debug "`$certificate.PSPath: $($certificate.PSPath)"
+            # Remove-Item -Force -Path $temporaryFile.FullName
+            
+
+            # note: to understand the relationship between X509Certificate2::RawData
+            # and X509Certificate2::ExportCertificatePem(), observe that, for any
+            # valid X509Certificate2 object $x:
+            ## (
+            ##      (@(($x.ExportCertificatePem() -split "\n") | Select-Object -Skip 1 | Select-Object -SkipLast 1) -join "") -eq 
+            ##      [System.Convert]::ToBase64String($x.RawData)
+            ## )
+            ##>>>   True
+            #
+            # The first and last lines of the string returned by
+            # $x.ExportCertificatePem() are "-----BEGIN CERTIFICATE-----" and
+            # "-----END CERTIFICATE-----"
 
 
-    function getWeAreConnectedToSharepointOnline {
-        [OutputType([Boolean])]
-        param ()
-        try {
-            $pnpConnection = Get-PnpConnection -ErrorAction SilentlyContinue 2> $null
-        } catch {
-            return $False
-        } 
-        # return ( [Boolean] $pnpConnection )
-        if(
-            $pnpConnection -and 
-            (
-                ($pnpConnection.Tenant).Trim().ToLower() -eq
-                $configuration['initialDomainName'].Trim().ToLower()
-            )
-        ){
-            return $true
-        } else {
-            return $false
-        }
+            if( 
+                $(
+                    $(
+                        try{
+                            Get-PnpConnection -erroraction silentlycontinue 2>$null 
+                        } catch {
+                            $null
+                        }
+                    ) 
+                )
+            ){
+                Disconnect-PnPOnline -ErrorAction SilentlyContinue 2>$null
+            }
 
 
+            
+            @{
+                Url = ( "https://" +  ($configuration['initialDomainName'] -Split '\.')[0] + ".sharepoint.com") 
+                ClientId = $configuration['appId'] 
+                Tenant = $configuration['initialDomainName'] 
+                # Thumbprint = $configuration['certificateThumbprint']
+                CertificateBase64Encoded = $configuration['base64EncodedPfx']
+                CertificatePassword = (stringToSecureString $configuration['pfxPassword'])
+                
+                <#  The official documentation for the connect-pnponline command
+                    (https://pnp.github.io/powershell/cmdlets/Connect-PnPOnline.html)
+                    does not completely describe what the command is expecting
+                    to receive for the -CertificateBase64Encoded argument.
+                    After much thrashing, I figured out that it is expecting the
+                    base64-encoded bytes of a pfx file (which, conveniently, is
+                    exactly what I am storing in bitwarden.).  
+                    It is conceivable, I think, that the connect-pnponline
+                    command could use, instead of the bytes of a pfx file, the
+                    bytes of a pkcs#1-encoded RSA private key.  I have not
+                    ascertained whether the connect-pnponline command actually
+                    works that way.   
+                #>
 
-    }
+            } |%  { Connect-PnPOnline @_} | out-null
 
-
-
-    function connectToSharepointOnline {
-        # [OutputType([Void])]
-        param ()
-        Write-Debug "about to do Connect-PnPOnline (which I call 'Sharepoint Online')"    
-        
-        # $temporaryFile = New-TemporaryFile
-        # Set-Content  -AsByteStream -Value ([System.Convert]::FromBase64String($configuration['base64EncodedPfx'])) -LiteralPath $temporaryFile.FullName 1> $null
-        
-        # $certStoreLocation = "Cert:\CurrentUser\My"
-        # Remove-Item -Force -Path (join-path $certStoreLocation $certificate.Thumbprint)
-        # $s = @{
-        #     CertStoreLocation =  $certStoreLocation
-        #     Password = (stringToSecureString "") 
-        #     FilePath = $temporaryFile.FullName
-        #     Exportable = $True
-        # }; $x = Import-PfxCertificate @s 
-        # # $y = [System.Convert]::ToBase64String($x.RawData)
-        # # this doesn't work, of course, because $y does not contain the private key.
-
-        # # $y = [System.Convert]::ToBase64String($x.PrivateKey.ExportRSAPrivateKey())
-        # # $y = $x.PrivateKey.ExportRSAPrivateKeyPem()
-
-
-        # Write-Debug "`$certificate.PSPath: $($certificate.PSPath)"
-        # Remove-Item -Force -Path $temporaryFile.FullName
-        
-
-        # note: to understand the raltionship between X509Certificate2::RawData
-        # and X509Certificate2::ExportCertificatePem(), observe that, for any
-        # valid X509Certificate2 object $x:
-        ## (
-        ##      (@(($x.ExportCertificatePem() -split "\n") | Select-Object -Skip 1 | Select-Object -SkipLast 1) -join "") -eq 
-        ##      [System.Convert]::ToBase64String($x.RawData)
-        ## )
-        ##>>>   True
-        #
-        # The first and last lines of the string returned by
-        # $x.ExportCertificatePem() are "-----BEGIN CERTIFICATE-----" and
-        # "-----END CERTIFICATE-----"
-
-        if( 
-            $( try{ Get-PnpConnection -ErrorAction SilentlyContinue} catch {$null} )
-        ){
-            Disconnect-PnPOnline -ErrorAction SilentlyContinue 2> $null
-        }
-        
-        $s = @{
-            Url = ( "https://" +  ($configuration['initialDomainName'] -Split '\.')[0] + ".sharepoint.com") 
-            ClientId = $configuration['appId'] 
-            Tenant = $configuration['initialDomainName'] 
-            # Thumbprint = $configuration['certificateThumbprint']
-            CertificateBase64Encoded = $configuration['base64EncodedPfx']
-            CertificatePassword = (stringToSecureString $configuration['pfxPassword'])
-            # the official documentation for the connect-pnponline command
+            # see
             # (https://pnp.github.io/powershell/cmdlets/Connect-PnPOnline.html)
-            # does not completely describe what the command is expecting to
-            # receive for the -CertificateBase64Encoded argument.  After much
-            # thrashing, I figured out that it is expecting the base64-encoded
-            # bytes of a pfx file (which, conveniently, is exactly what I am
-            # storing in bitwarden.).  
-            # It is conceivable, I think, that the connect-pnponline command
-            # could use, instead of the bytes of a pfx file, the bytes of a
-            # pkcs#1-encoded RSA private key.  I have not ascertained whether
-            # the connect-pnponline command actually works that way.  
+            #
+            # see
+            # (https://learn.microsoft.com/en-us/sharepoint/dev/solution-guidance/security-apponly-azuread)
+            
+            Write-Debug "Finished doing Connect-PnPOnline (which I call 'Sharepoint Online')"   
+            
+        }
 
-        }; Connect-PnPOnline @s 1> $null
-
-        # see https://pnp.github.io/powershell/cmdlets/Connect-PnPOnline.html
-        # see https://learn.microsoft.com/en-us/sharepoint/dev/solution-guidance/security-apponly-azuread
-        Write-Debug "Finished doing Connect-PnPOnline (which I call 'Sharepoint Online')"   
-        
-    }
-
-    function ensureThatWeAreConnectedToSharepointOnline {
-        [OutputType([Void])]
-        param ()
-        if( getWeAreConnectedToSharepointOnline ){
-            Write-Debug ("It seems that a connection to Sharepoint Online already " +
-                "exists, so we will not bother attempting to reconnect.")
-        } else {
-            connectToSharepointOnline 
+        function tryToEnsureThatWeAreConnectedToSharepointOnline {
+            [OutputType([Void])]
+            param ()
+            
+            try{ 
+                if( getWeAreConnectedToSharepointOnline ){
+                    Write-Debug ("It seems that a connection to Sharepoint Online already " +
+                        "exists, so we will not bother attempting to reconnect.")
+                } else {
+                    connectToSharepointOnline 
+                } 
+            } 
+            catch {
+                Write-Host ("encountered error when attempting to ensure that we are " +
+                    "connected to Sharepoint Online: $($_) $($_.Exception)")
+            }
         }
     }
 
-
-
-    <#  IPS session is not entirely an independent thiung from Exchange session
-        (e.g. calling Disconnect-ExchangeOnline will also disconnect any active
-        IPS session).  It is not quite correct to treat IPS session as another
-        top-=level item, we ought to make it a substituent of the Exchange
-        connection somehow, but oh well.  
-    #>
-    function getWeAreConnectedToIPPSSession {
-        [OutputType([Boolean])]
-        param ()
-        try {
-            # $result = Get-RetentionCompliancePolicy -ErrorAction Stop 2> $null
-            ## $connectionContexts = @( [Microsoft.Exchange.Management.ExoPowershellSnapin.ConnectionContextFactory]::GetAllConnectionContexts() )
-            $connectionContexts = @( Get-ConnectionInformation )
-        } catch {
-            return $False
-        } 
-        $matchingConnectionContexts = @(
-            $connectionContexts |
-                Where-Object {
-                    ($_.ConnectionUri -match "\bps.compliance.protection.outlook.com\b") -and
-                    ($_.Organization.Trim().ToLower() -eq $configuration['initialDomainName'].Trim().ToLower())
-                }
-        )
-
-        return ( [Boolean] $matchingConnectionContexts )   
-        <#  we really ought to be testing not only that we are connected, but
-            also that we are connected in a way that matches the configuration
-            file. 
-        #>
-
-    }
-
-    function connectToIPPSSession {
-        # [OutputType([Void])]
-        param ()
-            
-
-        # # connect to "Security & Compliance PowerShell in a Microsoft 365 organization."
-        # # Write-Debug "about to do Connect-IPPSSession "
-        # # $s = @{
-        # #     AppID                   = $configuration['appId']  
-        # #     CertificateThumbprint   = $configuration['certificateThumbprint'] 
-        # #     Organization            = $initialDomainName
-        # # }
-        # # Write-Debug "arguments are $($s | out-string)"
-        # # Connect-IPPSSession @s
-        # # Write-Debug "done"
-
-        # # Connect-IPPSSession does not seem to be working properly with 
-        # # unattended app-based authentication.  Connect-IPPSSession tends to 
-        # # launch a username and apssword prompt (and then fails when the oauth redirect url doesn't match).
-        # # It appears that connect-ipppssession is a wrapper around connect-exchangeonline.  
-        # # connect-ippssession calls connect-exchangeonline with 
-        # # a couple of parameters specified:
-        # # -UseRPSSession:$true
-        # # -ShowBanner:$false
-        # # -ConnectionUri 'https://ps.compliance.protection.outlook.com/PowerShell-LiveId' 
-        # # -AzureADAuthorizationEndpointUri 'https://login.microsoftonline.com/organizations'
-
-
-        # Write-Debug "about to do our own equivalent of 'Connect-IPPSSession' "
-        # $s = @{
-        #     AppID                               = $configuration['appId']
-        #     # CertificateThumbprint               = $configuration['certificateThumbprint']
-        #     Certificate                         = $certificate
-        #     Organization                        = $configuration['initialDomainName']
-        #     UseRPSSession                       = $true
-        #     ShowBanner                          = $false
-        #     ConnectionUri                       = 'https://ps.compliance.protection.outlook.com/PowerShell-LiveId' 
-        #     AzureADAuthorizationEndpointUri     = 'https://login.microsoftonline.com/organizations'
-        # }
-        # Write-Debug "arguments are $($s | out-string)"
-        # $result = Connect-ExchangeOnline @s
-        # Write-Debug "Finished doing our own equivalent of 'Connect-IPPSSession"
-
-        Write-Debug "about to do Connect-IPPSSession"
-        $result = @{
-            AppID           = $configuration['appId']
-            
-            ##  Certificate     = $certificate
-            CertificateFilePath = $pathOfTemporaryCertificateFile
-            CertificatePassword  = ConvertTo-SecureString -AsPlainText $configuration['pfxPassword']
-            
-            Organization    = $configuration['initialDomainName']
-            PSSessionOption = $(
-                @{
-                    OpenTimeout = 15000
-                    IdleTimeout = (4*60000)
-                } |% {New-PSSessionOption @_}
+    .{ # functions for ExchangeOnline
+        function getWeAreConnectedToExchangeOnline {
+            [OutputType([Boolean])]
+            param ()
+            return (
+                [Boolean] $(
+                    Get-ConnectionInformation | ?{$_.Name.StartsWith("ExchangeOnline_")} |
+                    ? { 
+                        $_.Organization.Trim().ToLower() -eq
+                        $configuration['initialDomainName'].Trim().ToLower() 
+                    }
+                )
             )
-        }  |% {Connect-IPPSSession @_}
-        Write-Debug "Finished doing  'Connect-IPPSSession', with result: $($result)"
+        }
+
+        function connectToExchangeOnline {
+            [OutputType([Void])]
+            param ()
+            Write-Debug "about to do Connect-ExchangeOnline"
+            
+            Get-ConnectionInformation | ? {$_.Name.StartsWith("ExchangeOnline_")} |
+            %{ Disconnect-ExchangeOnline -ConnectionId $_.ConnectionId }
 
 
-        @{
-            Scope     = "Global"
-            PSSession = $psSessionForExchangeOnlineManagementModule
-            FullyQualifiedName      = (invoke-command -Session $psSessionForExchangeOnlineManagementModule {(Get-Command Get-RetentionCompliancePolicy).Module.Path})
-            ## NoClobber = $True
-        } |% {Import-Module @_}
+            $result = @{
+                AppID                   = $configuration['appId'] 
+                
+                ##  Certificate             = $certificate
+                CertificateFilePath = $pathOfTemporaryCertificateFile
+                CertificatePassword  = ConvertTo-SecureString -AsPlainText $configuration['pfxPassword']
 
-    }
+                Organization            = $configuration['initialDomainName']
+                ShowBanner              = $false
+            } |% {Connect-ExchangeOnline @_}
 
-    function ensureThatWeAreConnectedToIPPSSession {
-        [OutputType([Void])]
-        param ()
-        if( getWeAreConnectedToIPPSSession ){
-            Write-Host ("It seems that a connection to IPPSSession already " +
-                "exists, so we will not bother attempting to reconnect.")
-        } else {
-            connectToIPPSSession 
+
+            @{
+                Scope     = "Global"
+                PSSession = $psSessionForExchangeOnlineManagementModule
+
+                ## Name      = (invoke-command -Session $psSessionForExchangeOnlineManagementModule {(Get-Command get-mailbox).Module.Name})
+                ## ModuleInfo      = (invoke-command -Session $psSessionForExchangeOnlineManagementModule {(Get-Command get-mailbox).Module})
+                ## FullyQualifiedName      = (invoke-command -Session $psSessionForExchangeOnlineManagementModule {(Get-Command get-mailbox).Module})
+                FullyQualifiedName      = (invoke-command -Session $psSessionForExchangeOnlineManagementModule {(Get-Command get-mailbox).Module.Path})
+                
+                ## NoClobber = $True
+            } |% {Import-Module @_}
+
+            <#  2024-06-29-1207: I wonder if, once prepared, the temporary
+                module file created by the Connect-ExchangeOnline command (and
+                Connect-IPPSSession command) could be imported into the current
+                session without causing any dll hell; maybe the dll hell is
+                related only to the authentication and connection activities,
+                not the use of the commands after connected.
+            #>
+
+            ## Write-Debug "Finished doing Connect-ExchangeOnline, and the result is $($result).  First mailbox is $(@(get-mailbox)[0])"
+            ## Write-Host "Finished doing Connect-ExchangeOnline, and the result is $($result).  First mailbox is $(@(get-mailbox)[0])"
+        }
+
+        function tryToEnsureThatWeAreConnectedToExchangeOnline {
+            [OutputType([Void])]
+            param ()
+            try{  
+                if( getWeAreConnectedToExchangeOnline ){
+                    Write-Debug ("It seems that a connection to Exchange Online already " +
+                        "exists, so we will not bother attempting to reconnect.")
+                } else {
+                    connectToExchangeOnline | out-null
+                }
+            } 
+            catch {
+                Write-Host ("encountered error when attempting to ensure that we are " +
+                    "connected to ExchangeOnline: $($_)")
+            }
+            
+            
+            
+            
+
         }
     }
 
-
-    
-    function ensureThatWeAreConnectedToExchangeOnlineAndIPPSSession {
-        <#  This function exists because we have no way to disconnect from ipps
-            session independently of disconnecting from exchangeonline, and vice
-            versa. 
+    .{ # functions for IPPSSession
+        <#  IPS session is not entirely an independent thiung from Exchange session
+            (e.g. calling Disconnect-ExchangeOnline will also disconnect any active
+            IPS session).  It is not quite correct to treat IPS session as another
+            top-=level item, we ought to make it a substituent of the Exchange
+            connection somehow, but oh well.  
         #>
-        [OutputType([Void])]
-        param ()
-        if( (getWeAreConnectedToExchangeOnline) -and (getWeAreConnectedToIPPSSession) ){
-            Write-Host ("It seems that connections to Exchange Online and IPPSSession already " +
-                "exists, so we will not bother attempting to reconnect.")
-        } else {
-            Disconnect-ExchangeOnline -confirm:$false
-            
-            
-            $errors = @()
-            try {
-                connectToIPPSSession | out-null
-            } catch {
-                $errors += $_
-            }
+        function getWeAreConnectedToIPPSSession {
+            [OutputType([Boolean])]
+            param ()
+            return (
+                [Boolean] $(
+                    Get-ConnectionInformation | ? {$_.Name.StartsWith("ExchangeOnlineProtection_")} |
+                    ? { 
+                        $_.Organization.Trim().ToLower() -eq
+                        $configuration['initialDomainName'].Trim().ToLower() 
+                    }
+                )
+            )
+        }
 
-            try {
-                connectToExchangeOnline | out-null
-            } catch {
-                $errors += $_
+        function connectToIPPSSession {
+            # [OutputType([Void])]
+            param ()
+                
+
+            # # connect to "Security & Compliance PowerShell in a Microsoft 365 organization."
+            # # Write-Debug "about to do Connect-IPPSSession "
+            # # $s = @{
+            # #     AppID                   = $configuration['appId']  
+            # #     CertificateThumbprint   = $configuration['certificateThumbprint'] 
+            # #     Organization            = $initialDomainName
+            # # }
+            # # Write-Debug "arguments are $($s | out-string)"
+            # # Connect-IPPSSession @s
+            # # Write-Debug "done"
+
+            # # Connect-IPPSSession does not seem to be working properly with 
+            # # unattended app-based authentication.  Connect-IPPSSession tends to 
+            # # launch a username and apssword prompt (and then fails when the oauth redirect url doesn't match).
+            # # It appears that connect-ipppssession is a wrapper around connect-exchangeonline.  
+            # # connect-ippssession calls connect-exchangeonline with 
+            # # a couple of parameters specified:
+            # # -UseRPSSession:$true
+            # # -ShowBanner:$false
+            # # -ConnectionUri 'https://ps.compliance.protection.outlook.com/PowerShell-LiveId' 
+            # # -AzureADAuthorizationEndpointUri 'https://login.microsoftonline.com/organizations'
+
+
+            # Write-Debug "about to do our own equivalent of 'Connect-IPPSSession' "
+            # $s = @{
+            #     AppID                               = $configuration['appId']
+            #     # CertificateThumbprint               = $configuration['certificateThumbprint']
+            #     Certificate                         = $certificate
+            #     Organization                        = $configuration['initialDomainName']
+            #     UseRPSSession                       = $true
+            #     ShowBanner                          = $false
+            #     ConnectionUri                       = 'https://ps.compliance.protection.outlook.com/PowerShell-LiveId' 
+            #     AzureADAuthorizationEndpointUri     = 'https://login.microsoftonline.com/organizations'
+            # }
+            # Write-Debug "arguments are $($s | out-string)"
+            # $result = Connect-ExchangeOnline @s
+            # Write-Debug "Finished doing our own equivalent of 'Connect-IPPSSession"
+
+            Write-Debug "about to do Connect-IPPSSession"
+            
+            Get-ConnectionInformation | ? {$_.Name.StartsWith("ExchangeOnlineProtection_")} |
+            %{ Disconnect-ExchangeOnline -ConnectionId $_.ConnectionId }
+            
+            $result = @{
+                AppID           = $configuration['appId']
+                
+                ##  Certificate     = $certificate
+                CertificateFilePath = $pathOfTemporaryCertificateFile
+                CertificatePassword  = ConvertTo-SecureString -AsPlainText $configuration['pfxPassword']
+                
+                Organization    = $configuration['initialDomainName']
+                PSSessionOption = $(
+                    @{
+                        OpenTimeout = 15000
+                        IdleTimeout = (4*60000)
+                    } |% {New-PSSessionOption @_}
+                )
+            }  |% {Connect-IPPSSession @_}
+            Write-Debug "Finished doing  'Connect-IPPSSession', with result: $($result)"
+
+
+            @{
+                Scope     = "Global"
+                PSSession = $psSessionForExchangeOnlineManagementModule
+                FullyQualifiedName      = (invoke-command -Session $psSessionForExchangeOnlineManagementModule {(Get-Command Get-RetentionCompliancePolicy).Module.Path})
+                ## NoClobber = $True
+            } |% {Import-Module @_}
+
+        }
+
+        function tryToEnsureThatWeAreConnectedToIPPSSession {
+            [OutputType([Void])]
+            param ()
+            try{
+                if( getWeAreConnectedToIPPSSession ){
+                    Write-Host ("It seems that a connection to IPPSSession already " +
+                        "exists, so we will not bother attempting to reconnect.")
+                } else {
+                    connectToIPPSSession 
+                }
+            }    
+            catch {
+                Write-Host ("encountered error when attempting to ensure that we are " +
+                    "connected to IPPSSession: $($_)")
             }
-            
-            $errors |% {throw $_}
-            # should I be using write-error instead of throw?
-            
-            # I am intentionally doing connectToExchangeOnline after
-            # connectToIPSSession, in the hopes that we will end up with the
-            # ExchangeOnline version of any commands that have the same names as
-            # those imported by ConnectToIPSSession.
         }
     }
 
 
-    try{ ensureThatWeAreConnectedToMgGraph } 
-    catch {
-        Write-Host ("encountered error when attempting to ensure that we are " +
-            "connected to Microsoft Graph: $($_)")
-    }
+    tryToEnsureThatWeAreConnectedToMgGraph
+    tryToEnsureThatWeAreConnectedToSharepointOnline
+    tryToEnsureThatWeAreConnectedToIPPSSession
+    tryToEnsureThatWeAreConnectedToExchangeOnline
 
-    try{ ensureThatWeAreConnectedToSharepointOnline } 
-    catch {
-        Write-Host ("encountered error when attempting to ensure that we are " +
-            "connected to Sharepoint Online: $($_) $($_.Exception)")
-    }
-
-    try{ ensureThatWeAreConnectedToExchangeOnlineAndIPPSSession } 
-    catch {
-        Write-Host ("encountered error when attempting to ensure that we are " +
-            "connected to IPPSSession and ExchangeOnline: $($_)")
-    }
-
-    ## try{ ensureThatWeAreConnectedToExchangeOnline } 
-    ## catch {
-    ##     Write-Host ("encountered error when attempting to ensure that we are " +
-    ##         "connected to ExchangeOnline: $($_)")
-    ## }
-
+    <#  I am intentionally doing Connect-ExchangeOnline after
+        Connect-IPPSSession, in the hopes that, wherever there is overlap in
+        command names between the two modules, we will end up with the commands
+        created by Connect-ExchangeOnline instead of those created by
+        Connect-IPPSSession
+    #>
 
     if(getWeAreConnectedToMgGraph){
-        Write-Host "You are connected to Microsoft Graph.  ((Get-MgOrganization -Property "displayName").displayName): $((Get-MgOrganization -Property "displayName").displayName)"
+        Write-Host (-join @(
+            "You are connected to Microsoft Graph for the organization "
+            "'$((Get-MgOrganization -Property "displayName").displayName)'"
+        ))
     } else {
-        Write-warning "We are not connected to microsoft graph."
+        Write-warning (-join @(
+            "You are not connected to microsoft graph."
+        ))
+    }
+
+    if(getWeAreConnectedToSharepointOnline){
+        Write-Host (-join @(
+            "You are connected to SharepointOnline for the following Tenant(s): "
+            
+            @(
+                Get-PnpConnection |
+                select -expand Tenant
+            ) -join ", "
+
+        )) 
+    } else {
+        Write-warning "You are not connected to SharepointOnline."
+    }
+
+    if(getWeAreConnectedToExchangeOnline){
+        Write-Host (-join @(
+            "You are connected to ExchangeOnline for the following organization(s): "
+            
+            @(
+                Get-ConnectionInformation | ? {$_.Name.StartsWith("ExchangeOnline_")} |
+                select -expand Organization
+            ) -join ", "
+
+        ))
+    } else {
+        Write-warning "You are not connected to ExchangeOnline."
+    }
+
+    if(getWeAreConnectedToIPPSSession){
+        Write-Host (-join @(
+            "You are connected to IPPSSession for the following organization(s): "
+            
+            @(
+                Get-ConnectionInformation | ? {$_.Name.StartsWith("ExchangeOnlineProtection_")} |
+                select -expand Organization
+            ) -join ", "
+
+        ))
+    } else {
+        Write-warning "You are not connected to IPPSSession."
     }
 
     <#  It is important that the Exchange Online stuff occurs before the MgGraph
