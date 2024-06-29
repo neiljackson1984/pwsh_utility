@@ -2005,7 +2005,11 @@ function connectToOffice365 {
                 CertificatePassword  = ConvertTo-SecureString -AsPlainText $configuration['pfxPassword']
 
                 Organization            = $configuration['initialDomainName']
-                ShowBanner              = $false
+
+                ## UseRPSSession = $false
+                # the above "UseRPSSession  = $false" is unnecessary and redundant.
+
+                ShowBanner=$false
             } |% {Connect-ExchangeOnline @_}
 
 
@@ -2133,12 +2137,47 @@ function connectToOffice365 {
                 CertificatePassword  = ConvertTo-SecureString -AsPlainText $configuration['pfxPassword']
                 
                 Organization    = $configuration['initialDomainName']
-                PSSessionOption = $(
-                    @{
-                        OpenTimeout = 15000
-                        IdleTimeout = (4*60000)
-                    } |% {New-PSSessionOption @_}
-                )
+                ## PSSessionOption = $(
+                ##     @{
+                ##         OpenTimeout = 15000
+                ##         IdleTimeout = (4*60000)
+                ##     } |% {New-PSSessionOption @_}
+                ## )
+                <#  2024-06-29-1223: I do not remember why I ever thought to
+                    pass the PSSessionOption argument.  As of 2024-06-29-1224,
+                    it is not needed, and I worry that it might cause us to
+                    connect using the now-deprecated "remote powershell"
+                    connection system rather than the currently-preferred, REST
+                    http-based system.
+
+                    Even after commenting out the PSSessionOption parameter (and
+                    certainly before commenting it out), I am still seeing the
+                    welcome-banner/warning message saying "We have made updates
+                    to move the SCC admin experience to REST-based APIs. In
+                    doing so, we will be deprecating the legacy Remote
+                    PowerShell (RPS) protocol starting July 15, 2023."
+
+                    This warning banner only shows up when I do
+                    Connect-IPPSSession, not when doing Connect-ExchangeOnline.
+                    This makes me think that my ionvocation of
+                    Connect-IPPSSession is doing a Remote-Powershell-based
+                    connection rather than a REST http connection.
+
+                    Upon further investigation, it seems that the warning banner
+                    showing up was purely a function of whether I passed the
+                    ShowBanner=$false parameter to the Connect-IPPsSession (or
+                    connect-ExchangeOnline ) commands.  Both commands show the
+                    same RPS warning banner if I don't pass ShowBanner=$false.  
+
+                    I suspect that the presence of that warning message in the
+                    banner does not mean that we are connecting with RPS.
+                #>
+
+                ## UseRPSSession = $false
+                # the above "UseRPSSession  = $false" is unnecessary and redundant.
+
+                ShowBanner=$false
+
             }  |% {Connect-IPPSSession @_}
             Write-Debug "Finished doing  'Connect-IPPSSession', with result: $($result)"
 
