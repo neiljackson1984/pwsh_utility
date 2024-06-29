@@ -84,7 +84,7 @@ function forceExchangeModuleToLoadItsVersionOf_System_IdentityModel_Tokens_Jwt()
 
     
     # Import-Module ExchangeOnlineManagement
-    # Disconnect-ExchangeOnline -confirm:0 
+    # Disconnect-ExchangeOnline -confirm:$false
     
     $(
         [System.AppDomain]::CurrentDomain.GetAssemblies() | 
@@ -99,7 +99,7 @@ function forceGraphModuleToLoadItsVersionOf_System_IdentityModel_Tokens_Jwt(){
     # [System.Reflection.Assembly]::LoadFrom((join-path (Get-InstalledModule "Microsoft.Graph.Authentication").InstalledLocation "Dependencies/System.IdentityModel.Tokens.Jwt.dll"))
     
     # Import-Module ExchangeOnlineManagement
-    # Disconnect-ExchangeOnline -confirm:0 
+    # Disconnect-ExchangeOnline -confirm:$false
     
     foreach(
         $pathOfDllFile in 
@@ -709,7 +709,7 @@ function connectToOffice365 {
     )
     
 
-    forceLoadConflictingAssemblies
+    ##forceLoadConflictingAssemblies
 
     <#  todo: think through and simplify all the possibilities of parameters.
         We have three parameters (namely: bitwardenItemIdOfTheConfiguration,
@@ -730,8 +730,22 @@ function connectToOffice365 {
     }
 
 
-    Import-Module -Name 'ExchangeOnlineManagement'
-    Import-Module -Name 'PnP.PowerShell'
+    ## Import-Module -Name 'ExchangeOnlineManagement'
+
+
+    <#  2024-06-28-1715: now using implicit psremoting to avoid the dll hell
+        problem.  All the ExchangeOnlineManagement commands live in a separate
+        powershell session.
+
+    #>
+    $psSessionForExchangeOnlineManagementModule = (New-PsSession -Name "psSessionForExchangeOnlineManagementModule" -ConfigurationName "Powershell.7")
+    invoke-command -Session $psSessionForExchangeOnlineManagementModule { import-module ExchangeOnlineManagement }
+    Import-Module -Scope Global -Name 'ExchangeOnlineManagement' -PSSession $psSessionForExchangeOnlineManagementModule
+    
+    ## Get-command connect-exchangeonline | select *
+    ## Get-command connect-exchangeonline |  select -expand module | get-member
+    ## Get-command connect-exchangeonline |  select -expand module | select  -ExcludeProperty Definition,OnRemove | select *
+    ## Import-Module -Name 'PnP.PowerShell'
 
     ## Import-Module -Name 'Microsoft.Graph' 
     <#  Strangely, explicitly importing the Microsoft.Graph module takes a long
@@ -1735,6 +1749,10 @@ function connectToOffice365 {
 
     $certificate = base64EncodedPfxToX509Certificate2 $configuration['base64EncodedPfx'] -password $configuration['pfxPassword']
 
+    $pathOfTemporaryCertificateFile = New-TemporaryFile
+    Set-Content  -AsByteStream -Value ([System.Convert]::FromBase64String($configuration['base64EncodedPfx'] )) -LiteralPath $pathOfTemporaryCertificateFile | out-null
+    
+
     function getWeAreConnectedToMgGraph {
         [OutputType([Boolean])]
         param ()
@@ -1834,26 +1852,41 @@ function connectToOffice365 {
     }
 
     function connectToExchangeOnline {
-        # [OutputType([Void])]
+        [OutputType([Void])]
         param ()
         Write-Debug "about to do Connect-ExchangeOnline"
         
-        # try {
-        #     Disconnect-ExchangeOnline -Confirm:$false -ErrorAction Stop
-        # } catch {
-        #     Write-Debug "ignoring an error that occured with Disconnect-ExchangeOnline: $_"
-        # }
-        $s = @{
+        $result = @{
             AppID                   = $configuration['appId'] 
-            # CertificateThumbprint   = $configuration['certificateThumbprint'] 
-            Certificate             = $certificate
+            
+            ##  Certificate             = $certificate
+            CertificateFilePath = $pathOfTemporaryCertificateFile
+            CertificatePassword  = ConvertTo-SecureString -AsPlainText $configuration['pfxPassword']
+
             Organization            = $configuration['initialDomainName']
             ShowBanner              = $false
-        }
-        Write-Debug "arguments are $($s | out-string)"
-        $result = Connect-ExchangeOnline @s
-        Write-Debug "Finished doing Connect-ExchangeOnline, and the result is $($result).  First mailbox is $(@(get-mailbox)[0])"
-        # return $result
+        } |% {Connect-ExchangeOnline @_}
+
+        ## @{
+        ##     Session = $psSessionForExchangeOnlineManagementModule 
+        ##     Module = (invoke-command -Session $psSessionForExchangeOnlineManagementModule {(Get-Command get-mailbox).Module.Name})
+        ## } |% {Import-PSSession @_}
+
+        @{
+            Scope     = "Global"
+            PSSession = $psSessionForExchangeOnlineManagementModule
+
+            ## Name      = (invoke-command -Session $psSessionForExchangeOnlineManagementModule {(Get-Command get-mailbox).Module.Name})
+            ## ModuleInfo      = (invoke-command -Session $psSessionForExchangeOnlineManagementModule {(Get-Command get-mailbox).Module})
+            ## FullyQualifiedName      = (invoke-command -Session $psSessionForExchangeOnlineManagementModule {(Get-Command get-mailbox).Module})
+            FullyQualifiedName      = (invoke-command -Session $psSessionForExchangeOnlineManagementModule {(Get-Command get-mailbox).Module.Path})
+            
+            ## NoClobber = $True
+        } |% {Import-Module @_}
+
+        
+        ## Write-Debug "Finished doing Connect-ExchangeOnline, and the result is $($result).  First mailbox is $(@(get-mailbox)[0])"
+        ## Write-Host "Finished doing Connect-ExchangeOnline, and the result is $($result).  First mailbox is $(@(get-mailbox)[0])"
     }
 
     function ensureThatWeAreConnectedToExchangeOnline {
@@ -1863,7 +1896,7 @@ function connectToOffice365 {
             Write-Debug ("It seems that a connection to Exchange Online already " +
                 "exists, so we will not bother attempting to reconnect.")
         } else {
-            connectToExchangeOnline 1> $null
+            connectToExchangeOnline | out-null
         }
     }
 
@@ -1994,21 +2027,24 @@ function connectToOffice365 {
         param ()
         try {
             # $result = Get-RetentionCompliancePolicy -ErrorAction Stop 2> $null
-            $connectionContexts = @( [Microsoft.Exchange.Management.ExoPowershellSnapin.ConnectionContextFactory]::GetAllConnectionContexts() )
+            ## $connectionContexts = @( [Microsoft.Exchange.Management.ExoPowershellSnapin.ConnectionContextFactory]::GetAllConnectionContexts() )
+            $connectionContexts = @( Get-ConnectionInformation )
         } catch {
             return $False
         } 
         $matchingConnectionContexts = @(
             $connectionContexts |
                 Where-Object {
-                    ($_.ConnectionUri -eq "https://ps.compliance.protection.outlook.com") -and
+                    ($_.ConnectionUri -match "\bps.compliance.protection.outlook.com\b") -and
                     ($_.Organization.Trim().ToLower() -eq $configuration['initialDomainName'].Trim().ToLower())
                 }
         )
 
         return ( [Boolean] $matchingConnectionContexts )   
-        # we really ought to be testing not only that we are connected, but also
-        # that we are connected in a way that matches the configuration file.
+        <#  we really ought to be testing not only that we are connected, but
+            also that we are connected in a way that matches the configuration
+            file. 
+        #>
 
     }
 
@@ -2056,24 +2092,30 @@ function connectToOffice365 {
         # Write-Debug "Finished doing our own equivalent of 'Connect-IPPSSession"
 
         Write-Debug "about to do Connect-IPPSSession"
-        $s = @{
-            AppID                               = $configuration['appId']  
-            Certificate                         = $certificate
-            Organization                        = $configuration['initialDomainName']
+        $result = @{
+            AppID           = $configuration['appId']
+            
+            ##  Certificate     = $certificate
+            CertificateFilePath = $pathOfTemporaryCertificateFile
+            CertificatePassword  = ConvertTo-SecureString -AsPlainText $configuration['pfxPassword']
+            
+            Organization    = $configuration['initialDomainName']
             PSSessionOption = $(
-                & {
-                    $private:s = @{
-                        OpenTimeout = 15000
-                        IdleTimeout = (4*60000)
-                    }; New-PSSessionOption @s
-                }
+                @{
+                    OpenTimeout = 15000
+                    IdleTimeout = (4*60000)
+                } |% {New-PSSessionOption @_}
             )
-        }
-        Write-Debug "arguments are $($s | out-string)"
-        $result = Connect-IPPSSession @s
+        }  |% {Connect-IPPSSession @_}
         Write-Debug "Finished doing  'Connect-IPPSSession', with result: $($result)"
 
 
+        @{
+            Scope     = "Global"
+            PSSession = $psSessionForExchangeOnlineManagementModule
+            FullyQualifiedName      = (invoke-command -Session $psSessionForExchangeOnlineManagementModule {(Get-Command Get-RetentionCompliancePolicy).Module.Path})
+            ## NoClobber = $True
+        } |% {Import-Module @_}
 
     }
 
@@ -2091,27 +2133,28 @@ function connectToOffice365 {
 
     
     function ensureThatWeAreConnectedToExchangeOnlineAndIPPSSession {
-        # this function exists because we have no way to disconnect from ipps
-        # session independently of disconnecting from exchangeonline, and vice
-        # versa.
+        <#  This function exists because we have no way to disconnect from ipps
+            session independently of disconnecting from exchangeonline, and vice
+            versa. 
+        #>
         [OutputType([Void])]
         param ()
         if( (getWeAreConnectedToExchangeOnline) -and (getWeAreConnectedToIPPSSession) ){
             Write-Host ("It seems that connections to Exchange Online and IPPSSession already " +
                 "exists, so we will not bother attempting to reconnect.")
         } else {
-            Disconnect-ExchangeOnline -confirm:0
+            Disconnect-ExchangeOnline -confirm:$false
             
             
             $errors = @()
             try {
-                connectToIPPSSession 1> $null
+                connectToIPPSSession | out-null
             } catch {
                 $errors += $_
             }
 
             try {
-                connectToExchangeOnline 1> $null
+                connectToExchangeOnline | out-null
             } catch {
                 $errors += $_
             }
@@ -2145,9 +2188,17 @@ function connectToOffice365 {
             "connected to IPPSSession and ExchangeOnline: $($_)")
     }
 
+    ## try{ ensureThatWeAreConnectedToExchangeOnline } 
+    ## catch {
+    ##     Write-Host ("encountered error when attempting to ensure that we are " +
+    ##         "connected to ExchangeOnline: $($_)")
+    ## }
+
 
     if(getWeAreConnectedToMgGraph){
         Write-Host "You are connected to Microsoft Graph.  ((Get-MgOrganization -Property "displayName").displayName): $((Get-MgOrganization -Property "displayName").displayName)"
+    } else {
+        Write-warning "We are not connected to microsoft graph."
     }
 
     <#  It is important that the Exchange Online stuff occurs before the MgGraph
