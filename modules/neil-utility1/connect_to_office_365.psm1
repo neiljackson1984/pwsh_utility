@@ -749,8 +749,8 @@ function connectToOffice365 {
 
     #>
     $psSessionForExchangeOnlineManagementModule = (New-PsSession -Name "psSessionForExchangeOnlineManagementModule" -ConfigurationName "Powershell.7")
-    invoke-command -Session $psSessionForExchangeOnlineManagementModule { import-module ExchangeOnlineManagement }
-    Import-Module -Scope Global -Name 'ExchangeOnlineManagement' -PSSession $psSessionForExchangeOnlineManagementModule
+    invoke-command -Session $psSessionForExchangeOnlineManagementModule { import-module ExchangeOnlineManagement -DisableNameChecking:$true}
+    Import-Module -Scope Global -Name 'ExchangeOnlineManagement' -PSSession $psSessionForExchangeOnlineManagementModule -DisableNameChecking:$true
     
     ## Get-command connect-exchangeonline | select *
     ## Get-command connect-exchangeonline |  select -expand module | get-member
@@ -2031,6 +2031,8 @@ function connectToOffice365 {
                 FullyQualifiedName      = (invoke-command -Session $psSessionForExchangeOnlineManagementModule {(Get-Command get-mailbox).Module.Path})
                 ## NoClobber = $True
                 ## Verbose = $true
+
+                DisableNameChecking=$true
             } |% {Import-Module @_}
 
             <#  2024-06-29-1207: I wonder if, once prepared, the temporary
@@ -2196,6 +2198,8 @@ function connectToOffice365 {
                 FullyQualifiedName      = (invoke-command -Session $psSessionForExchangeOnlineManagementModule {(Get-Command Get-RetentionCompliancePolicy).Module.Path})
                 ## NoClobber = $True
                 ## Verbose = $true
+                DisableNameChecking=$true
+
             } |% {Import-Module @_}
 
         }
