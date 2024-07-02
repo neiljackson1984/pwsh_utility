@@ -1907,7 +1907,11 @@ function connectToOffice365 {
             # $x.ExportCertificatePem() are "-----BEGIN CERTIFICATE-----" and
             # "-----END CERTIFICATE-----"
 
-
+            $env:PNPPOWERSHELL_UPDATECHECK = "Off"
+            # this environemnt variable suppresses the annoying "a new version
+            # is available" message that almost always occurs (a new version, in
+            # the sense that the checking mechanism cares about, is released at
+            # least once per day, most of the time, it seems.).
             if( 
                 $(
                     $(
@@ -1954,7 +1958,7 @@ function connectToOffice365 {
             # see
             # (https://learn.microsoft.com/en-us/sharepoint/dev/solution-guidance/security-apponly-azuread)
             
-            Write-Debug "Finished doing Connect-PnPOnline (which I call 'Sharepoint Online')"   
+            Write-Debug "Finished doing Connect-PnPOnline (I use the word 'SharepointOnline' in the names of my functions.)"   
             
         }
 
