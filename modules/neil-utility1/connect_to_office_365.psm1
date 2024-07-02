@@ -880,12 +880,14 @@ function connectToOffice365 {
 
                 )
 
-                # given the name (DisplayName) of the target service principal and a
-                # list of strings namesOfRequiredAppRoles, we need to retrieve a
-                # list of corresponding members of the targetServicePrincipal's
-                # AppRoles collection (the "requiredAppRoles"). What I am calling the
-                # nameOfRequiredAppRole is acutually stored in a propertry of
-                # AppRole named "value".
+                <#  Given the name (DisplayName) of the target service principal
+                    and a list of strings namesOfRequiredAppRoles, we need to
+                    retrieve a list of corresponding members of the
+                    targetServicePrincipal's AppRoles collection (the
+                    "requiredAppRoles"). What I am calling the
+                    nameOfRequiredAppRole is acutually stored in a propertry of
+                    AppRole named "value". 
+                #>
 
 
                 
@@ -915,7 +917,7 @@ function connectToOffice365 {
                                     @{
                                         ResourceAppId = $targetServicePrincipal.AppId
                                         # Microsoft really ought to have made this name plural: "ResourceAccesses"
-                                        # because it's type is Microsoft.Graph.PowerShell.Models.IMicrosoftGraphResourceAccess[]
+                                        # because its type is Microsoft.Graph.PowerShell.Models.IMicrosoftGraphResourceAccess[]
                                         ResourceAccess = @(
                                             foreach ($appRole in $requiredAppRoles) {
                                                 @{
@@ -935,7 +937,6 @@ function connectToOffice365 {
                 # grant the required resource access
                 foreach ($appRole in $requiredAppRoles) {
                     Write-Host ('Granting admin consent for App Role: {0}' -f $($appRole.Value))
-                    
 
                     # check whether this assigment already exists
                     $mgServicePrincipalAppRoleAssignment = Get-MgServicePrincipalAppRoleAssignment -ServicePrincipalId $servicePrincipalForApp.Id |
@@ -952,16 +953,18 @@ function connectToOffice365 {
                     if($mgServicePrincipalAppRoleAssignment){
                         Write-Host 'the mgServicePrincipalAppRoleAssignment already exists, so we will not bother to re-create it.'
                     } else {
-                        $s = @{
+                        @{
                             ServicePrincipalId  = $servicePrincipalForApp.Id 
                             AppRoleId           = $appRole.Id 
                             PrincipalId     = $servicePrincipalForApp.Id
-                            # I do not understand why there is both a "PrincipalId" and a "ServicePrincipalId" parameter.  Are these the same thing?
+                            <#  I do not understand why there is both a
+                                "PrincipalId" and a "ServicePrincipalId"
+                                parameter.  Are these the same thing? 
+                            #>
                             ResourceId      = $targetServicePrincipal.Id 
-                        }; New-MgServicePrincipalAppRoleAssignment @s
+                        } |% { New-MgServicePrincipalAppRoleAssignment @_}
                     }
-
-                    # Start-Sleep -s 1
+                    ## Start-Sleep -s 1
                 }
                 
                 #TO-do: see if we can get rid of, or at least reduce, the above sleeps.
@@ -970,7 +973,7 @@ function connectToOffice365 {
 
         Write-Host "disconnecting from any existing graph session."
         Disconnect-MgGraph  -ErrorAction SilentlyContinue 1>$null
-        # the disconnect command will clear out any cached identity/crednetials that the Graph powershell module might have cached.
+        <# the disconnect command will clear out any cached identity/crednetials that the Graph powershell module might have cached. #>
     
         Write-Host "attempting to connect to MGGraph"
         $s = @{
@@ -1654,11 +1657,12 @@ function connectToOffice365 {
 
         #grant all the required approles (as defined by $roleSpecifications) to our app's service principal
         foreach ( $roleSpecification in $roleSpecifications){
-            GrantAllThePermissionsWeWant `
-                -childApp $mgApplication `
-                -servicePrincipalForApp $mgServicePrincipal `
-                -nameOfTargetServicePrincipal $roleSpecification.nameOfTargetServicePrincipal `
-                -namesOfRequiredAppRoles $roleSpecification.namesOfRequiredAppRoles
+            @{
+                childApp                     = $mgApplication
+                servicePrincipalForApp       = $mgServicePrincipal
+                nameOfTargetServicePrincipal = $roleSpecification.nameOfTargetServicePrincipal
+                namesOfRequiredAppRoles      = $roleSpecification.namesOfRequiredAppRoles
+            } |% {GrantAllThePermissionsWeWant @_}
         }
 
         $configuration = @{
