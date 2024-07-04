@@ -5158,7 +5158,11 @@ function Convert-FromBase64EncodedStringToByteArray{
     #TODO: ponder whether  the parameter tagged "ValueFromPipeline" should
     #really be of array type?
 
-
+    <# TODO: Handle tha case where the input string has excessive padding (i.e.
+        more than two trailing padding characters.  the fix is basically to chop
+        off padding until the string length is 0 mod 4. Then, if the string ends
+        with "===", change this to "A=="
+    #>
 
     process {
         $paddingCharacter = "="
