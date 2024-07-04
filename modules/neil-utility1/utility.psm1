@@ -5161,13 +5161,91 @@ function Convert-FromBase64EncodedStringToByteArray{
 
 
     process {
+        $paddingCharacter = "="
+
         foreach($s in $base64EncodedString){
             if(-not ($strictPadding)){
                 # add padding characters to make the length of the string 0 mod 4.
                 # 
                 # see [https://stackoverflow.com/questions/34278297/how-to-add-padding-before-decoding-a-base64-string].
 
-                $s += "=" * (( (- $s.Length % 4) + 4 ) % 4) 
+                <#  In base64, each character encodes 6 bits of information.
+                    Each chunk of 4 characters encodes 3 bytes of information.
+                    The final chunk of 4 characters is allowed to be incomplete,
+                    in which case it is padded with the padding character
+                    (typically "=").
+
+                    If the length of the sequence of bytes to be encoded is 0
+                    mod 3, do not append any padding characters.  In other
+                    words, having exactly zerop trailing padding characters
+                    means that the length of the byte sequence is 0 mod 3.
+
+                    if it is 1 mod 3, encode the final byte using the first two
+                    characters in the final chunk (with the unused high-order
+                    bits set to zero in the ecnoding process and ignored in then
+                    decoding process), and append two padding characters.  In
+                    other words, having exactly two trailing padding characters
+                    means that the length of the byte sequence is 1 mod 3.
+
+                    If it is 2 mod 3, encode the final two bytes using the first
+                    3 characters in the final chunk (with the unused high-order
+                    bits set to zero in the ecnoding process and ignored in then
+                    decoding process), and append a single padding character. In
+                    other words, having exactly one trailing padding character
+                    means that the length of the byte sequence is 2 mod 3.
+
+                    To reconstruct missing padding characters: 
+
+                    if the length of the "unpadded" string is 0 mod 4, this
+                    means the byte sequence length is 0 mod 3.  append zero
+                    padding characters.
+
+                    If the length of the unpadded string is 2 mod 4, this means
+                    the byte sequence length is 1 mod 3.  Append two padding
+                    characters.
+
+                    If the length of the unpadded string is 3 mod 4, this means
+                    the byte sequence length is 2 mod 3.  Append one padding
+                    character.
+
+                    If the length of the unpadded string is 1 mod 4, this is,
+                    strictly speaking, an invalid length for the unpadded
+                    string.  It is, strictly speaking, invalid to have more than
+                    two trailing padding characters.  There is no perfect
+                    answer.  The options that I can think of are,:
+                      1. throw an exception (i.e. give up)
+                      2. assume a particular length of the byte sequence mod 3
+                         (probably either 1 or 2), and assume some reaonable
+                         value (probably zero) for the missing high-order bits
+                         encoded by the final (unpadded) chunk of characters.
+                         Concretely: 
+
+                         a. Assume the length of the byte sequence is 1 mod 3
+                            and that the missing high order bits are all zero.
+                            Therefore, append the chaaracter that encodes 6 "0"
+                            bits, and then append two padding characters.
+
+                        b. Assume the length of the byte sequence
+                            is 2 mod 3 and that the missing high order bits are all
+                            zero.  Therefore, append two chaaracter that encodes 6
+                            "0" bits, and then append one padding characters.
+
+                    Strategy 2a is probably the most reasonable, so that is what
+                    I will do.
+                #>
+
+                ## $s += $paddingCharacter * (( (- $s.Length % 4) + 4 ) % 4) 
+
+
+                $s += $(
+                    switch($s.Length % 4){
+                        0 {""}
+                        1 { [string] [System.Convert]::ToBase64String(0)[0] + ($paddingCharacter * 2)}
+                        2 {$paddingCharacter * 2}
+                        3 {$paddingCharacter * 1}
+                    }
+                )
+
             }
 
             if(-not ($strictSymbols)){
