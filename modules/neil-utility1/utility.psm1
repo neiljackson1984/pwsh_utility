@@ -5252,7 +5252,11 @@ function Convert-FromBase64EncodedStringToByteArray{
                 $s = $s.Replace('-','+').Replace('_','/')
             }
             write-debug "s: $s"
-            [System.Convert]::FromBase64String($s)
+            return (, [System.Convert]::FromBase64String($s))
+            <# The crazy comma, above, prevents powershell form expanding the
+            enumerable, as it is so fond of doing, and thereby serves to ensure
+            that we send a gestalt byteArray down the pipeline rather than sending one byte after
+            another. #>
         }
     }
 }
