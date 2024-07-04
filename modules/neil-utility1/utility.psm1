@@ -5145,23 +5145,24 @@ function Convert-FromBase64EncodedStringToByteArray{
         [string[]] $base64EncodedString,
 
         [parameter()]
-        [switch] $urlSafe = $False,
+        [switch] $strictSymbols = $False,
 
         [parameter()]
-        [switch] $nonStrictPadding = $False
+        [switch] $strictPadding = $False
     )
 
     # we ought to add the ability to detect a urlsafe base64 string (and to
     # detect a string that is neither a url-safe base64 string nor a
     # non-url-safe base64 string (e.g. contains both "-" and "_").
 
-    #TODO: ponder whether  the parameter tagged "ValueFromPipeline" should really be of array type?
+    #TODO: ponder whether  the parameter tagged "ValueFromPipeline" should
+    #really be of array type?
+
+
 
     process {
         foreach($s in $base64EncodedString){
-            if($nonStrictPadding){
-                
-
+            if(-not ($strictPadding)){
                 # add padding characters to make the length of the string 0 mod 4.
                 # 
                 # see [https://stackoverflow.com/questions/34278297/how-to-add-padding-before-decoding-a-base64-string].
@@ -5169,7 +5170,7 @@ function Convert-FromBase64EncodedStringToByteArray{
                 $s += "=" * (( (- $s.Length % 4) + 4 ) % 4) 
             }
 
-            if($urlSafe){
+            if(-not ($strictSymbols)){
                 $s = $s.Replace('-','+').Replace('_','/')
             }
             write-debug "s: $s"
@@ -5188,10 +5189,10 @@ function Convert-FromBase64EncodedStringToString{
         [string[]] $base64EncodedString,
 
         [parameter()]
-        [switch] $urlSafe = $False,
+        [switch] $strictSymbols = $False,
 
         [parameter()]
-        [switch] $nonStrictPadding = $False,
+        [switch] $strictPadding = $False,
 
         <# I would like the default values for the urlSafe and nonStrictPadding
             parameters to automatically match the defaults defined in
@@ -5209,7 +5210,7 @@ function Convert-FromBase64EncodedStringToString{
         foreach($s in $base64EncodedString){
             $textEncoding.GetString(
                 (
-                    Convert-FromBase64EncodedStringToByteArray -base64EncodedString $s -urlSafe:$urlSafe -nonStrictPadding:$nonStrictPadding
+                    Convert-FromBase64EncodedStringToByteArray -base64EncodedString $s -strictPadding:$strictPadding -strictSymbols:$strictSymbols
                 )
             )
         }
