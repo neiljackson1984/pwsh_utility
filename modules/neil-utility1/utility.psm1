@@ -2101,7 +2101,7 @@ function Format-SortedList
         $PSStyle.OutputRendering = [System.Management.Automation.OutputRendering]::Ansi
         # $x = ($InputObject | fl | Out-String -Width 999999) -split "`n" | Sort-Object
         $x = @(($InputObject | fl | Out-String) -split "`n" | Sort-Object)
-        $PSStyle.OutputRendering = $PSStyle.OutputRendering
+        $PSStyle.OutputRendering = $initialOutputRendering
         $x
     }
 }
@@ -4436,8 +4436,8 @@ function formattedObjectToClipboard {
         [Object] $InputObject,
 
         [parameter()]
-        [Alias("Passthru")]
-        [switch] $PassThrough = $False,
+        [Alias("PassThrough")]
+        [switch] $Passthru = $False,
 
         [parameter()]
         [int] $IndentLevel = 0
@@ -4467,6 +4467,15 @@ function formattedObjectToClipboard {
     }
 
     end {
+
+        <#  see
+            (https://learn.microsoft.com/en-us/powershell/module/microsoft.powershell.core/about/about_ansi_terminals?view=powershell-7.4) 
+        #>
+        $initialOutputRendering = $PSStyle.OutputRendering
+        $PSStyle.OutputRendering = [System.Management.Automation.OutputRendering]::PlainText
+
+        
+
         $input | 
         fl | 
         out-string | 
@@ -4486,7 +4495,9 @@ function formattedObjectToClipboard {
         } | 
         set-clipboard 
 
-        if($PassThrough){$input}
+        $PSStyle.OutputRendering = $initialOutputRendering
+
+        if($Passthru){$input}
     }
 }
 
