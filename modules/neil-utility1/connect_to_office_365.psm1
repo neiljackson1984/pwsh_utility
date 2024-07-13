@@ -39,7 +39,7 @@ function forceExchangeModuleToLoadItsVersionOf_System_IdentityModel_Tokens_Jwt()
 
     foreach ($pathOfRootAssemblyToForce in $pathsOfRootAssembliesToForce){
         $assembliesToLoad = @(
-                $s = @{
+                @{
                     rootAssembly = (
                         [System.Reflection.Assembly]::LoadFile(
                             $pathOfRootAssemblyToForce
@@ -52,7 +52,7 @@ function forceExchangeModuleToLoadItsVersionOf_System_IdentityModel_Tokens_Jwt()
                         Split-Path $pathOfRootAssemblyToForce -Parent
                     )
 
-                }; getReferencedAssembliesRecursivelyForReflection @s 
+                } |% {getReferencedAssembliesRecursivelyForReflection @_ }
             )
 
         $pathsOfDllFilesToLoad = @(
