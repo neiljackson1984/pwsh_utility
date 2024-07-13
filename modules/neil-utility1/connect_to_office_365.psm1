@@ -976,22 +976,27 @@ function connectToOffice365 {
         <# the disconnect command will clear out any cached identity/crednetials that the Graph powershell module might have cached. #>
     
         Write-Host "attempting to connect to MGGraph"
-        $s = @{
-            ContextScope = "Process"
-            Scopes = @(
-                "Application.Read.All", 
-                "Application.ReadWrite.All", 
-                "Directory.ReadWrite.All", 
-                "RoleManagement.ReadWrite.Directory", 
-                "Directory.Read.All",
-                "AppRoleAssignment.ReadWrite.All"
-            )
-        }
-        if($tenantIdHint){
-            $s['TenantId'] = $tenantIdHint 
-        }
         try{ 
-            Connect-MgGraph  @s  -ErrorAction "Stop" 
+            (
+                $(
+                    if($tenantIdHint){
+                        @{TenantId = $tenantIdHint}
+                    } else {
+                        @{}
+                    }
+                ) +
+                @{
+                    ContextScope = "Process"
+                    Scopes = @(
+                        "Application.Read.All", 
+                        "Application.ReadWrite.All", 
+                        "Directory.ReadWrite.All", 
+                        "RoleManagement.ReadWrite.Directory", 
+                        "Directory.Read.All",
+                        "AppRoleAssignment.ReadWrite.All"
+                    )
+                }
+             ) |%{Connect-MgGraph @_ -ErrorAction "Stop" }
         } catch {
             Throw "failed to connect to MGGraph, therefore we will return.  The error is: $_"
         }
@@ -1478,7 +1483,21 @@ function connectToOffice365 {
             foreach($nameOfTargetServicePrincipal in $namesOfTargetServicePrincipalsForWhichToDynamicallyDiscoverAppRoles){                
                 @{
                     nameOfTargetServicePrincipal = $nameOfTargetServicePrincipal
-                    namesOfRequiredAppRoles = @(getNamesOfAllAppRolesSupportedByServicePrincipal -excludeRedundantReadRoles:$True -idOfServicePrincipal (Get-MgServicePrincipal -Filter "DisplayName eq '$($nameOfTargetServicePrincipal)'" ).Id)
+                    namesOfRequiredAppRoles = @(
+                        @{
+                            excludeRedundantReadRoles = $True 
+                            idOfServicePrincipal = (Get-MgServicePrincipal -Filter "DisplayName eq '$($nameOfTargetServicePrincipal)'" ).Id
+                        }|%{getNamesOfAllAppRolesSupportedByServicePrincipal @_} |
+                        ? {
+                            <#  exclude certain hardcoded values in certain cases: 
+                            
+                            #>
+                            -not (
+                                ($nameOfTargetServicePrincipal -eq 'Microsoft Graph') -and
+                                ($_ -eq "Directory.Write.Restricted")
+                            )
+                        }
+                    )
                 }
             }
 
@@ -1522,13 +1541,13 @@ function connectToOffice365 {
         $endDate = $currentDate.AddYears(10)
         $notAfter = $endDate.AddYears(10)
         # $certificateStorageLocation = "Cert:\CurrentUser\My"
-        $s = @{
+        $certificate = @{
             # CertStoreLocation = $certificateStorageLocation 
             DnsName = "com.foo.bar"
             KeyExportPolicy = "Exportable" 
             Provider = "Microsoft Enhanced RSA and AES Cryptographic Provider" 
             NotAfter = $notAfter
-        }; $certificate = New-SelfSignedCertificate @s
+        } | %{New-SelfSignedCertificate @_}
         $pfxPassword = @(1..25 | foreach-object {"abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789" -split "" | Get-Random}) -join ""
         $base64EncodedPfx = x509Certificate2ToBase64EncodedPfx -certificate $certificate -password $pfxPassword
         Remove-Item -Force -Path $certificate.PSPath
@@ -1539,38 +1558,48 @@ function connectToOffice365 {
         $displayNameOfApplication = (Get-MgContext).Account.ToString() + "_powershell_management"
         
         # Get the Azure Active Directory Application, creating it if it does not already exist.
-        $mgApplication = Get-MgApplication -ConsistencyLevel eventual -Search "DisplayName:$displayNameOfApplication"
+        $mgApplication = $(Get-MgApplication -ConsistencyLevel eventual -Search "DisplayName:$displayNameOfApplication")
         if (! $mgApplication) {
-            $s = @{
-                DisplayName                 = $displayNameOfApplication 
-                IdentifierUris              = ('https://{0}/{1}' -f $initialDomainName , $displayNameOfApplication) 
-                Web = @{
-                    HomePageUrl = "https://localhost"
-                    LogoutUrl = "https://localhost"
-                    # RedirectUriSettings = @(
-                    #     @{
-                    #         Index = 0
-                    #         Uri = @("https://localhost") 
-                    #     }
+            $mgApplication = $(
+                @{
+                    DisplayName                 = $displayNameOfApplication 
+                    IdentifierUris              = ('https://{0}/{1}' -f $initialDomainName , $displayNameOfApplication) 
+                    Web = @{
+                        HomePageUrl = "https://localhost"
+                        LogoutUrl = "https://localhost"
+                        # RedirectUriSettings = @(
+                        #     @{
+                        #         Index = 0
+                        #         Uri = @("https://localhost") 
+                        #     }
+                        # )
+                        RedirectUris = @("https://localhost") 
+                        # ImplicitGrantSettings = @{
+                        #     EnableAccessTokenIssuance = $True
+                        #     EnableIdTokenIssuance = $True
+                        # }
+                        # I do not know how much of this stuff is strictly necessary
+                    }
+                    # KeyCredentials = ([Microsoft.Graph.PowerShell.Models.IMicrosoftGraphKeyCredential[]]      @(
+                    #     ([Microsoft.Graph.PowerShell.Models.IMicrosoftGraphKeyCredential]   @{
+                    #         Type = "AsymmetricX509Cert"
+                    #         Usage = "Verify"
+                    #         Key = $certificate.GetRawCertData()
+                    #     }))
                     # )
-                    RedirectUris = @("https://localhost") 
-                    # ImplicitGrantSettings = @{
-                    #     EnableAccessTokenIssuance = $True
-                    #     EnableIdTokenIssuance = $True
-                    # }
-                    # I do not know how much of this stuff is strictly necessary
-                }
-                # KeyCredentials = ([Microsoft.Graph.PowerShell.Models.IMicrosoftGraphKeyCredential[]]      @(
-                #     ([Microsoft.Graph.PowerShell.Models.IMicrosoftGraphKeyCredential]   @{
-                #         Type = "AsymmetricX509Cert"
-                #         Usage = "Verify"
-                #         Key = $certificate.GetRawCertData()
-                #     }))
-                # )
-            }; $mgApplication = New-MgApplication @s         
+                } |%  {New-MgApplication @_}
+            )
         } else {
             # Write-Host  ('App Registration {0} already exists' -f $displayNameOfApplication)
             Write-Host "mgApplication $($mgApplication.DisplayName) (id = $($mgApplication.Id))"
+        }
+
+        if(-not $mgApplication){
+            write-error "application does not exist.  We cannot proceed."
+            return
+        } else {
+            write-host "mgApplication exists:"
+            $mgApplication | select * | out-string | write-host
         }
         
         # Get the service principal associated with $mgApplication, creating it if it does not already exist.
