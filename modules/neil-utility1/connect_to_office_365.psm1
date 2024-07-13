@@ -229,7 +229,7 @@ function doUglyHackToFixDependencyHellFor_System_IdentityModel_Tokens_Jwt(){
     $dllPathsSortedByVersion =@(
         @(
             #pathOfDllUSedByExchange:
-            (join-path (Get-InstalledModule "ExchangeOnlineManagement").InstalledLocation "netCore/System.IdentityModel.Tokens.Jwt.dll"),
+            (join-path (Get-InstalledModule "ExchangeOnlineManagement").InstalledLocation "netCore/System.IdentityModel.Tokens.Jwt.dll")
 
             #pathOfDllUsedByGraph:
             (join-path (Get-InstalledModule "Microsoft.Graph.Authentication").InstalledLocation "Dependencies/System.IdentityModel.Tokens.Jwt.dll")
@@ -988,11 +988,11 @@ function connectToOffice365 {
                 @{
                     ContextScope = "Process"
                     Scopes = @(
-                        "Application.Read.All", 
-                        "Application.ReadWrite.All", 
-                        "Directory.ReadWrite.All", 
-                        "RoleManagement.ReadWrite.Directory", 
-                        "Directory.Read.All",
+                        "Application.Read.All"
+                        "Application.ReadWrite.All" 
+                        "Directory.ReadWrite.All"
+                        "RoleManagement.ReadWrite.Directory"
+                        "Directory.Read.All"
                         "AppRoleAssignment.ReadWrite.All"
                     )
                 }
@@ -1026,16 +1026,16 @@ function connectToOffice365 {
 
             @{ nameOfTargetServicePrincipal = 'Office 365 Management APIs';
                 namesOfRequiredAppRoles = @(
-                    'ServiceHealth.Read',
-                    'ActivityFeed.Read',
+                    'ServiceHealth.Read'
+                    'ActivityFeed.Read'
                     'ActivityFeed.ReadDlp'
                 )
             }
 
             @{ nameOfTargetServicePrincipal = 'Office 365 SharePoint Online';
                 namesOfRequiredAppRoles = @(
-                    'Sites.FullControl.All',
-                    'TermStore.ReadWrite.All',
+                    'Sites.FullControl.All'
+                    'TermStore.ReadWrite.All'
                     'User.ReadWrite.All'
                 )
             }
@@ -1043,92 +1043,92 @@ function connectToOffice365 {
             if($false){ # as of 2024-04-28, we are dynamically discovering all supported app roles for Microsoft Graph rather than hardcoding them.
                 @{ nameOfTargetServicePrincipal = 'Microsoft Graph';
                     namesOfRequiredAppRoles = @(
-                        # 'Sites.Selected',
-                        # 'ChatMember.ReadWrite.All',
-                        # 'DataLossPreventionPolicy.Evaluate',
-                        # 'SensitivityLabel.Evaluate',
-                        # 'APIConnectors.ReadWrite.All',
-                        # 'TeamsTab.ReadWriteForUser.All',
-                        # 'TeamsTab.ReadWriteForChat.All',
-                        # 'Policy.Read.ConditionalAccess',
-                        # 'ShortNotes.ReadWrite.All',
-                        # 'ServiceMessage.Read.All',
-                        # 'TeamMember.ReadWriteNonOwnerRole.All',
-                        # 'TeamsAppInstallation.ReadWriteSelfForUser.All',
-                        # 'TeamsAppInstallation.ReadWriteSelfForTeam.All',
-                        # 'TeamsAppInstallation.ReadWriteSelfForChat.All',
-                        # 'TeamsAppInstallation.ReadForUser.All',
-                        # 'TeamsAppInstallation.ReadForChat.All',
-                        # 'Teamwork.Migrate.All',
-                        # 'PrintJob.ReadWriteBasic.All',
-                        # 'PrintJob.Read.All',
-                        # 'PrintJob.Manage.All',
-                        # 'Printer.ReadWrite.All',
-                        # 'Printer.Read.All',
-                        # 'Policy.ReadWrite.PermissionGrant',
-                        # 'Policy.Read.PermissionGrant',
-                        # 'Policy.ReadWrite.AuthenticationMethod',
-                        # 'Policy.ReadWrite.AuthenticationFlows',
-                        # 'TeamMember.Read.All',
-                        # 'TeamSettings.ReadWrite.All',
-                        # 'Channel.ReadBasic.All',
-                        # 'ChannelSettings.Read.All',
-                        # 'UserShiftPreferences.Read.All',
-                        # 'Device.Read.All',
-                        # 'Policy.ReadWrite.ApplicationConfiguration',
-                        # 'TeamsTab.ReadWrite.All',
-                        # 'TeamsTab.Read.All',
-                        # 'TeamsTab.Create',
-                        # 'UserAuthenticationMethod.Read.All',
-                        # 'UserAuthenticationMethod.ReadWrite.All',
-                        # 'Policy.ReadWrite.ConditionalAccess',
-                        # 'Schedule.ReadWrite.All',
-                        # 'BitlockerKey.ReadBasic.All',
-                        # 'BitlockerKey.Read.All',
-                        # 'TeamsApp.Read.All',
-                        # 'ApprovalRequest.ReadWrite.CustomerLockbox',
-                        # 'PrivilegedAccess.Read.AzureAD',
-                        # 'TeamsActivity.Send',
-                        # 'TeamsActivity.Read.All',
-                        # 'DelegatedPermissionGrant.ReadWrite.All',
-                        # 'OrgContact.Read.All',
-                        # 'Calls.InitiateGroupCall.All',
-                        # 'Calls.JoinGroupCall.All',
-                        # 'Calls.JoinGroupCallAsGuest.All',
-                        # 'OnlineMeetings.Read.All',
-                        # 'OnlineMeetings.ReadWrite.All',
-                        # 'IdentityUserFlow.ReadWrite.All',
-                        # 'Calendars.Read',
-                        # 'Device.ReadWrite.All',
-                        # 'Directory.ReadWrite.All',
-                        # 'Group.Read.All',
-                        # 'Mail.ReadWrite',
-                        # 'MailboxSettings.Read',
-                        # 'Domain.ReadWrite.All',
-                        # 'Application.ReadWrite.All',
-                        # 'Chat.UpdatePolicyViolation.All',
-                        # 'People.Read.All',
-                        # 'AccessReview.ReadWrite.All',
-                        # 'Application.ReadWrite.OwnedBy',
-                        # 'User.ReadWrite.All',
-                        # 'EduAdministration.Read.All',
-                        # 'EduAssignments.ReadWrite.All',
-                        # 'EduAssignments.ReadWriteBasic.All',
-                        # 'EduRoster.Read.All',
-                        # 'IdentityRiskyUser.ReadWrite.All',
-                        # 'IdentityRiskEvent.ReadWrite.All',
-                        # 'SecurityEvents.Read.All',
-                        # 'Sites.Read.All',
-                        # 'SecurityActions.ReadWrite.All',
-                        # 'ThreatIndicators.ReadWrite.OwnedBy',
-                        # 'AdministrativeUnit.Read.All',
-                        # 'OnPremisesPublishingProfiles.ReadWrite.All',
-                        # 'DeviceManagementServiceConfig.Read.All',
-                        # 'DeviceManagementManagedDevices.Read.All',
-                        # 'AccessReview.ReadWrite.Membership',
-                        # 'Place.Read.All',
-                        # 'RoleManagement.Read.Directory',
-                        # 'Sites.ReadWrite.All',
+                        # 'Sites.Selected'
+                        # 'ChatMember.ReadWrite.All'
+                        # 'DataLossPreventionPolicy.Evaluate'
+                        # 'SensitivityLabel.Evaluate'
+                        # 'APIConnectors.ReadWrite.All'
+                        # 'TeamsTab.ReadWriteForUser.All'
+                        # 'TeamsTab.ReadWriteForChat.All'
+                        # 'Policy.Read.ConditionalAccess'
+                        # 'ShortNotes.ReadWrite.All'
+                        # 'ServiceMessage.Read.All'
+                        # 'TeamMember.ReadWriteNonOwnerRole.All'
+                        # 'TeamsAppInstallation.ReadWriteSelfForUser.All'
+                        # 'TeamsAppInstallation.ReadWriteSelfForTeam.All'
+                        # 'TeamsAppInstallation.ReadWriteSelfForChat.All'
+                        # 'TeamsAppInstallation.ReadForUser.All'
+                        # 'TeamsAppInstallation.ReadForChat.All'
+                        # 'Teamwork.Migrate.All'
+                        # 'PrintJob.ReadWriteBasic.All'
+                        # 'PrintJob.Read.All'
+                        # 'PrintJob.Manage.All'
+                        # 'Printer.ReadWrite.All'
+                        # 'Printer.Read.All'
+                        # 'Policy.ReadWrite.PermissionGrant'
+                        # 'Policy.Read.PermissionGrant'
+                        # 'Policy.ReadWrite.AuthenticationMethod'
+                        # 'Policy.ReadWrite.AuthenticationFlows'
+                        # 'TeamMember.Read.All'
+                        # 'TeamSettings.ReadWrite.All'
+                        # 'Channel.ReadBasic.All'
+                        # 'ChannelSettings.Read.All'
+                        # 'UserShiftPreferences.Read.All'
+                        # 'Device.Read.All'
+                        # 'Policy.ReadWrite.ApplicationConfiguration'
+                        # 'TeamsTab.ReadWrite.All'
+                        # 'TeamsTab.Read.All'
+                        # 'TeamsTab.Create'
+                        # 'UserAuthenticationMethod.Read.All'
+                        # 'UserAuthenticationMethod.ReadWrite.All'
+                        # 'Policy.ReadWrite.ConditionalAccess'
+                        # 'Schedule.ReadWrite.All'
+                        # 'BitlockerKey.ReadBasic.All'
+                        # 'BitlockerKey.Read.All'
+                        # 'TeamsApp.Read.All'
+                        # 'ApprovalRequest.ReadWrite.CustomerLockbox'
+                        # 'PrivilegedAccess.Read.AzureAD'
+                        # 'TeamsActivity.Send'
+                        # 'TeamsActivity.Read.All'
+                        # 'DelegatedPermissionGrant.ReadWrite.All'
+                        # 'OrgContact.Read.All'
+                        # 'Calls.InitiateGroupCall.All'
+                        # 'Calls.JoinGroupCall.All'
+                        # 'Calls.JoinGroupCallAsGuest.All'
+                        # 'OnlineMeetings.Read.All'
+                        # 'OnlineMeetings.ReadWrite.All'
+                        # 'IdentityUserFlow.ReadWrite.All'
+                        # 'Calendars.Read'
+                        # 'Device.ReadWrite.All'
+                        # 'Directory.ReadWrite.All'
+                        # 'Group.Read.All'
+                        # 'Mail.ReadWrite'
+                        # 'MailboxSettings.Read'
+                        # 'Domain.ReadWrite.All'
+                        # 'Application.ReadWrite.All'
+                        # 'Chat.UpdatePolicyViolation.All'
+                        # 'People.Read.All'
+                        # 'AccessReview.ReadWrite.All'
+                        # 'Application.ReadWrite.OwnedBy'
+                        # 'User.ReadWrite.All'
+                        # 'EduAdministration.Read.All'
+                        # 'EduAssignments.ReadWrite.All'
+                        # 'EduAssignments.ReadWriteBasic.All'
+                        # 'EduRoster.Read.All'
+                        # 'IdentityRiskyUser.ReadWrite.All'
+                        # 'IdentityRiskEvent.ReadWrite.All'
+                        # 'SecurityEvents.Read.All'
+                        # 'Sites.Read.All'
+                        # 'SecurityActions.ReadWrite.All'
+                        # 'ThreatIndicators.ReadWrite.OwnedBy'
+                        # 'AdministrativeUnit.Read.All'
+                        # 'OnPremisesPublishingProfiles.ReadWrite.All'
+                        # 'DeviceManagementServiceConfig.Read.All'
+                        # 'DeviceManagementManagedDevices.Read.All'
+                        # 'AccessReview.ReadWrite.Membership'
+                        # 'Place.Read.All'
+                        # 'RoleManagement.Read.Directory'
+                        # 'Sites.ReadWrite.All'
                         # 'Mail.ReadBasic.All'
 
 
