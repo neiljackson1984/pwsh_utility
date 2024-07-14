@@ -990,14 +990,33 @@ function connectToOffice365 {
                 @{
                     ContextScope = "Process"
                     Scopes = @(
+                        "Application.Read.All"
                         "Application.ReadWrite.All" 
-                        "AppRoleAssignment.ReadWrite.All"
-                        "DeviceManagementRBAC.ReadWrite.All"
                         "Directory.ReadWrite.All"
-                        "EntitlementManagement.ReadWrite.All"
-                        "RoleManagement.ReadWrite.CloudPC"
                         "RoleManagement.ReadWrite.Directory"
-                        "RoleManagement.ReadWrite.Exchange"
+                        "Directory.Read.All"
+                        "AppRoleAssignment.ReadWrite.All"
+                    
+                    
+                    
+                    
+                        ##"Application.ReadWrite.All" 
+                        ##"AppRoleAssignment.ReadWrite.All"
+                        ##"DeviceManagementRBAC.ReadWrite.All"
+                        ##"Directory.ReadWrite.All"
+                        ##"EntitlementManagement.ReadWrite.All"
+                        ##"RoleManagement.ReadWrite.CloudPC"
+                        ##"RoleManagement.ReadWrite.Directory"
+                        ##"RoleManagement.ReadWrite.Exchange"
+
+
+
+                        ## "Application.Read.All"
+                        ## "Directory.Read.All"
+
+
+
+
                     )
                 }
              ) |%{Connect-MgGraph @_ -ErrorAction "Stop" }
@@ -1698,7 +1717,7 @@ function connectToOffice365 {
 
         }
 
-        .{# ensure that the service principal has all desired Exchange management roles
+        if($false){# ensure that the service principal has all desired Exchange management roles
             $desiredExchangeRoleDefinitions = @(Get-MgBetaRoleManagementExchangeRoleDefinition  -countvariable $null  -all)
             
             foreach($desiredExchangeRoleDefinition in $desiredExchangeRoleDefinitions){
