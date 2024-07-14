@@ -973,7 +973,9 @@ function connectToOffice365 {
 
         Write-Host "disconnecting from any existing graph session."
         Disconnect-MgGraph  -ErrorAction SilentlyContinue 1>$null
-        <# the disconnect command will clear out any cached identity/crednetials that the Graph powershell module might have cached. #>
+        <#  The disconnect command will clear out any cached identity/crednetials
+            that the Graph powershell module might have cached. 
+        #>
     
         Write-Host "attempting to connect to MGGraph"
         try{ 
@@ -988,12 +990,14 @@ function connectToOffice365 {
                 @{
                     ContextScope = "Process"
                     Scopes = @(
-                        "Application.Read.All"
                         "Application.ReadWrite.All" 
-                        "Directory.ReadWrite.All"
-                        "RoleManagement.ReadWrite.Directory"
-                        "Directory.Read.All"
                         "AppRoleAssignment.ReadWrite.All"
+                        "DeviceManagementRBAC.ReadWrite.All"
+                        "Directory.ReadWrite.All"
+                        "EntitlementManagement.ReadWrite.All"
+                        "RoleManagement.ReadWrite.CloudPC"
+                        "RoleManagement.ReadWrite.Directory"
+                        "RoleManagement.ReadWrite.Exchange"
                     )
                 }
              ) |%{Connect-MgGraph @_ -ErrorAction "Stop" }
@@ -1505,183 +1509,214 @@ function connectToOffice365 {
         )
         
 
+        .{# Create the self-signed x509 certificate
+            
+            # following along with instructions at: https://docs.microsoft.com/en-us/powershell/exchange/app-only-auth-powershell-v2?view=exchange-ps
 
+            ## $pathOfPfxFile = (Join-Path $PSScriptRoot "certificate.pfx")
+            ## $passwordOfthePfxFile = ""
+            
+            ## if($pathOfPfxFile){
+            ##     $securePassword =  $( 
+            ##         if( $passwordOfthePfxFile ) {
+            ##             ConvertTo-SecureString -String $passwordOfthePfxFile -AsPlainText -Force
+            ##         } else {
+            ##             New-Object System.Security.SecureString
+            ##         }  
+            ##     )
+            ##     try {
+            ##         $certificate = Import-PfxCertificate `
+            ##             -FilePath $pathOfPfxFile `
+            ##             -Password $securePassword `
+            ##             -CertStoreLocation $certificateStorageLocation
+            ##     } catch {
+            ##         Write-Output "Failed to import the certificate from the certificate file"
+            ##         # Remove-Variable certificate -ErrorAction SilentlyContinue
+            ##         $certificate = $null
+            ##     }
+            ## }
+            
 
-        #following along with instructions at: https://docs.microsoft.com/en-us/powershell/exchange/app-only-auth-powershell-v2?view=exchange-ps
+            Write-Host "constructing fresh certificate"
+            $currentDate = Get-Date
+            $endDate = $currentDate.AddYears(10)
+            $notAfter = $endDate.AddYears(10)
+            # $certificateStorageLocation = "Cert:\CurrentUser\My"
+            $certificate = @{
+                # CertStoreLocation = $certificateStorageLocation 
+                DnsName = "com.foo.bar"
+                KeyExportPolicy = "Exportable" 
+                Provider = "Microsoft Enhanced RSA and AES Cryptographic Provider" 
+                NotAfter = $notAfter
+            } | %{New-SelfSignedCertificate @_}
+            $pfxPassword = @(1..25 | foreach-object {"abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789" -split "" | Get-Random}) -join ""
+            $base64EncodedPfx = x509Certificate2ToBase64EncodedPfx -certificate $certificate -password $pfxPassword
+            Remove-Item -Force -Path $certificate.PSPath
 
-        # Create the self signed cert
-        
-
-        # $pathOfPfxFile = (Join-Path $PSScriptRoot "certificate.pfx")
-        # $passwordOfthePfxFile = ""
-        
-        # if($pathOfPfxFile){
-        #     $securePassword =  $( 
-        #         if( $passwordOfthePfxFile ) {
-        #             ConvertTo-SecureString -String $passwordOfthePfxFile -AsPlainText -Force
-        #         } else {
-        #             New-Object System.Security.SecureString
-        #         }  
-        #     )
-        #     try {
-        #         $certificate = Import-PfxCertificate `
-        #             -FilePath $pathOfPfxFile `
-        #             -Password $securePassword `
-        #             -CertStoreLocation $certificateStorageLocation
-        #     } catch {
-        #         Write-Output "Failed to import the certificate from the certificate file"
-        #         # Remove-Variable certificate -ErrorAction SilentlyContinue
-        #         $certificate = $null
-        #     }
-        # }
-        
-
-        Write-Host "constructing fresh certificate"
-        $currentDate = Get-Date
-        $endDate = $currentDate.AddYears(10)
-        $notAfter = $endDate.AddYears(10)
-        # $certificateStorageLocation = "Cert:\CurrentUser\My"
-        $certificate = @{
-            # CertStoreLocation = $certificateStorageLocation 
-            DnsName = "com.foo.bar"
-            KeyExportPolicy = "Exportable" 
-            Provider = "Microsoft Enhanced RSA and AES Cryptographic Provider" 
-            NotAfter = $notAfter
-        } | %{New-SelfSignedCertificate @_}
-        $pfxPassword = @(1..25 | foreach-object {"abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789" -split "" | Get-Random}) -join ""
-        $base64EncodedPfx = x509Certificate2ToBase64EncodedPfx -certificate $certificate -password $pfxPassword
-        Remove-Item -Force -Path $certificate.PSPath
-
-        $certificate = base64EncodedPfxToX509Certificate2 $base64EncodedPfx -password $pfxPassword
-        
+            $certificate = base64EncodedPfxToX509Certificate2 $base64EncodedPfx -password $pfxPassword
+        }
         $initialDomainName = ((Get-MgOrganization).VerifiedDomains | where-object {$_.IsInitial -eq $true}).Name
         $displayNameOfApplication = (Get-MgContext).Account.ToString() + "_powershell_management"
         
-        # Get the Azure Active Directory Application, creating it if it does not already exist.
-        $mgApplication = $(Get-MgApplication -ConsistencyLevel eventual -Search "DisplayName:$displayNameOfApplication")
-        if (! $mgApplication) {
-            $mgApplication = $(
-                @{
-                    DisplayName                 = $displayNameOfApplication 
-                    IdentifierUris              = ('https://{0}/{1}' -f $initialDomainName , $displayNameOfApplication) 
-                    Web = @{
-                        HomePageUrl = "https://localhost"
-                        LogoutUrl = "https://localhost"
-                        # RedirectUriSettings = @(
-                        #     @{
-                        #         Index = 0
-                        #         Uri = @("https://localhost") 
-                        #     }
+        .{# Get the Azure Active Directory Application, creating it if it does not already exist.
+            $mgApplication = $(Get-MgApplication -ConsistencyLevel eventual -Search "DisplayName:$displayNameOfApplication")
+            if (-not $mgApplication) {
+                $mgApplication = $(
+                    @{
+                        DisplayName                 = $displayNameOfApplication 
+                        IdentifierUris              = ('https://{0}/{1}' -f $initialDomainName , $displayNameOfApplication) 
+                        Web = @{
+                            HomePageUrl = "https://localhost"
+                            LogoutUrl = "https://localhost"
+                            # RedirectUriSettings = @(
+                            #     @{
+                            #         Index = 0
+                            #         Uri = @("https://localhost") 
+                            #     }
+                            # )
+                            RedirectUris = @("https://localhost") 
+                            # ImplicitGrantSettings = @{
+                            #     EnableAccessTokenIssuance = $True
+                            #     EnableIdTokenIssuance = $True
+                            # }
+                            # I do not know how much of this stuff is strictly necessary
+                        }
+                        # KeyCredentials = ([Microsoft.Graph.PowerShell.Models.IMicrosoftGraphKeyCredential[]]      @(
+                        #     ([Microsoft.Graph.PowerShell.Models.IMicrosoftGraphKeyCredential]   @{
+                        #         Type = "AsymmetricX509Cert"
+                        #         Usage = "Verify"
+                        #         Key = $certificate.GetRawCertData()
+                        #     }))
                         # )
-                        RedirectUris = @("https://localhost") 
-                        # ImplicitGrantSettings = @{
-                        #     EnableAccessTokenIssuance = $True
-                        #     EnableIdTokenIssuance = $True
-                        # }
-                        # I do not know how much of this stuff is strictly necessary
-                    }
-                    # KeyCredentials = ([Microsoft.Graph.PowerShell.Models.IMicrosoftGraphKeyCredential[]]      @(
-                    #     ([Microsoft.Graph.PowerShell.Models.IMicrosoftGraphKeyCredential]   @{
-                    #         Type = "AsymmetricX509Cert"
-                    #         Usage = "Verify"
-                    #         Key = $certificate.GetRawCertData()
-                    #     }))
-                    # )
-                } |%  {New-MgApplication @_}
-            )
-        } else {
-            # Write-Host  ('App Registration {0} already exists' -f $displayNameOfApplication)
-            Write-Host "mgApplication $($mgApplication.DisplayName) (id = $($mgApplication.Id))"
-        }
-
-        if(-not $mgApplication){
-            write-error "application does not exist.  We cannot proceed."
-            return
-        } else {
-            write-host "mgApplication exists:"
-            $mgApplication | select * | out-string | write-host
-        }
-        
-        # Get the service principal associated with $mgApplication, creating it if it does not already exist.
-        $mgServicePrincipal = Get-MgServicePrincipal -Filter ("appId eq '" + $mgApplication.AppId + "'")
-        if(! $mgServicePrincipal){
-            
-            $mgServicePrincipal = New-MgServicePrincipal -AppId $mgApplication.AppId
-        }  else {
-            Write-Host "Service Principal $($mgServicePrincipal.DisplayName) (id = $($mgServicePrincipal.Id)) already exists."
-        }
-        
-        #ensure that the service principal has global admin permissions to the current tenant
-        $globalAdminMgDirectoryRole =  Get-MgDirectoryRole | where {$_.DisplayName -eq "Global Administrator"}
-        # todo: do this search on the server side, rather than here on the client side, by using a -filter (or maybe -search ?) argument.
-
-        if(!$globalAdminMgDirectoryRole){
-            # $globalAdminAzureAdDirectoryRole =  Get-AzureADDirectoryRole | where {$_.DisplayName -eq "Company Administrator"}
-            $globalAdminMgDirectoryRole =  Get-MgDirectoryRole  | where {$_.DisplayName -eq "Company Administrator"}
-            # for reasons unknown, in some tenants, the displayname of the global admin role is "Company Administrator"
-        }
-
-        ##  $mgDirectoryRoleMember = Get-MgDirectoryRoleMember -ConsistencyLevel eventual -DirectoryRoleId $globalAdminMgDirectoryRole.Id | where {$_.Id -eq $mgServicePrincipal.Id}
-        #
-        # you might think that adding "-ConsistencyLevel eventual" would be enough,
-        # but it's not; you also have to add the -Count argument, even if you pass
-        # $null as Count. I do not understand why the Count argument is required in
-        # order to get the correct behavior.  Maybe it has something to do with
-        # paging of the results, but it strikes me as pretty kludgy to require the
-        # Count argument.
-
-        $mgDirectoryRoleMember = Get-MgDirectoryRoleMember -ConsistencyLevel eventual -Count $null -DirectoryRoleId $globalAdminMgDirectoryRole.Id | where {$_.Id -eq $mgServicePrincipal.Id}
-        
-
-        # iff. $azureAdServicePrincipal has the global admin permission, then $azureADDirectoryRoleMember will be $azureAdServicePrincipal, otherwise will be null
-        if(! $mgDirectoryRoleMember ){
-            New-MgDirectoryRoleMemberByRef -DirectoryRoleId  $globalAdminMgDirectoryRole.Id  -oDataId "https://graph.microsoft.com/v1.0/directoryObjects/$($mgServicePrincipal.Id)"
-            # I have no idea how I would come up with the above value in the oDataId
-            # argument (except by blindly copying the example from
-            # https://learn.microsoft.com/en-us/powershell/module/microsoft.graph.identity.directorymanagement/new-mgdirectoryrolememberbyref?view=graph-powershell-1.0,
-            # which is what I did
-            # ) 
-            #
-            # possibly, I ought to be using New-MgRoleManagementDirectoryRoleAssignment
-            # instead.  see
-            # https://stackoverflow.com/questions/73088374/how-do-i-use-the-command-new-mgrolemanagementdirectoryroleassignment
-            # . 
-        } else {
-            Write-Host 'the service principal already has global admin permissions.'
-        }
-        # we could have probably gotten away simply wrapping Add-AzureADDirectoryRoleMember in a try/catch statement.
-        
-        #ensure that our public key is installed in our application
-
-
-        $keyCredential = $mgApplication.KeyCredentials | where { 
-                [System.Convert]::ToBase64String($_.CustomKeyIdentifier) -eq 
-                [System.Convert]::ToBase64String([System.Convert]::FromBase64String($certificate.Thumbprint))
+                    } |%  {New-MgApplication @_}
+                )
+            } else {
+                # Write-Host  ('App Registration {0} already exists' -f $displayNameOfApplication)
+                Write-Host "mgApplication $($mgApplication.DisplayName) (id = $($mgApplication.Id))"
             }
 
-        if($keyCredential){
-            Write-Host "The desired keyCredential already exists among the app's keyCredentials, so we will not bother to add it: $keyCredential"
-        } else {
-            Write-Host "The desired keyCredential does not already exist, so we will attempt to add it."
-            @{
-                ApplicationId = ($mgApplication.Id)
-                KeyCredentials = @(
-                    @{
-                        Type = "AsymmetricX509Cert"
-                        Usage = "Verify"
-                        Key = $certificate.GetRawCertData()
-                        # Key = [System.Convert]::ToBase64String($certificate.GetRawCertData())
-                    }
-                )
-                # PassThru = $True 
+            if(-not $mgApplication){
+                write-error "application does not exist.  We cannot proceed."
+                return
+            } else {
+                write-host "mgApplication exists:"
+                $mgApplication | select * | out-string | write-host
+            }
+        }
+        
+        .{# Get the service principal associated with $mgApplication, creating it if it does not already exist.
+            $mgServicePrincipal = Get-MgServicePrincipal -Filter ("appId eq '" + $mgApplication.AppId + "'")
+            if(-not $mgServicePrincipal){
+                $mgServicePrincipal = New-MgServicePrincipal -AppId $mgApplication.AppId
+            }  else {
+                Write-Host "Service Principal $($mgServicePrincipal.DisplayName) (id = $($mgServicePrincipal.Id)) already exists."
+            }
+        }
+        
+        .{# ensure that the service principal has global admin permissions to the current tenant
+            $globalAdminMgDirectoryRole =  Get-MgDirectoryRole | where {$_.DisplayName -eq "Global Administrator"}
+            # todo: do this search on the server side, rather than here on the client side, by using a -filter (or maybe -search ?) argument.
+
+            if(!$globalAdminMgDirectoryRole){
+                # $globalAdminAzureAdDirectoryRole =  Get-AzureADDirectoryRole | where {$_.DisplayName -eq "Company Administrator"}
+                $globalAdminMgDirectoryRole =  Get-MgDirectoryRole  | where {$_.DisplayName -eq "Company Administrator"}
+                # for reasons unknown, in some tenants, the displayname of the global admin role is "Company Administrator"
+            }
+
+            ##  $mgDirectoryRoleMember = Get-MgDirectoryRoleMember -ConsistencyLevel eventual -DirectoryRoleId $globalAdminMgDirectoryRole.Id | where {$_.Id -eq $mgServicePrincipal.Id}
+            #
+            # you might think that adding "-ConsistencyLevel eventual" would be enough,
+            # but it's not; you also have to add the -Count argument, even if you pass
+            # $null as Count. I do not understand why the Count argument is required in
+            # order to get the correct behavior.  Maybe it has something to do with
+            # paging of the results, but it strikes me as pretty kludgy to require the
+            # Count argument.
+
+            $mgDirectoryRoleMember = Get-MgDirectoryRoleMember -ConsistencyLevel eventual -Count $null -DirectoryRoleId $globalAdminMgDirectoryRole.Id | where {$_.Id -eq $mgServicePrincipal.Id}
+            
+
+            # iff. $azureAdServicePrincipal has the global admin permission, then $azureADDirectoryRoleMember will be $azureAdServicePrincipal, otherwise will be null
+            if(! $mgDirectoryRoleMember ){
+                New-MgDirectoryRoleMemberByRef -DirectoryRoleId  $globalAdminMgDirectoryRole.Id  -oDataId "https://graph.microsoft.com/v1.0/directoryObjects/$($mgServicePrincipal.Id)"
+                # I have no idea how I would come up with the above value in the oDataId
+                # argument (except by blindly copying the example from
+                # https://learn.microsoft.com/en-us/powershell/module/microsoft.graph.identity.directorymanagement/new-mgdirectoryrolememberbyref?view=graph-powershell-1.0,
+                # which is what I did
+                # ) 
                 #
-                # setting PassThru=$True causes Update-MgApplication to return
-                # $null or $True according to the failure or success of the
-                # operation. otherwise, Update-MgApplication always returns
-                # $null regardless.
-                # 2023-02-26-1532: the PassThru parameter seems to no longer be accepted.
-            } | % { Update-MgApplication  @_ -ErrorAction Stop}
-            #%%
+                # possibly, I ought to be using New-MgRoleManagementDirectoryRoleAssignment
+                # instead.  see
+                # https://stackoverflow.com/questions/73088374/how-do-i-use-the-command-new-mgrolemanagementdirectoryroleassignment
+                # . 
+            } else {
+                Write-Host 'the service principal already has global admin permissions.'
+            }
+            # we could have probably gotten away simply wrapping Add-AzureADDirectoryRoleMember in a try/catch statement.
+        }
+        
+        .{# ensure that our public key is installed in our application
+            $existingDesiredkeyCredential = $(
+                $mgApplication.KeyCredentials | 
+                ? { 
+                    [System.Convert]::ToBase64String($_.CustomKeyIdentifier) -eq 
+                    [System.Convert]::ToBase64String([System.Convert]::FromBase64String($certificate.Thumbprint))
+                }
+            )
+
+            if($existingDesiredkeyCredential){
+                Write-Host "The desired keyCredential already exists among the app's keyCredentials, so we will not bother to add it: $existingDesiredkeyCredential"
+            } else {
+                Write-Host "The desired keyCredential does not already exist, so we will attempt to add it."
+                @{
+                    ApplicationId = ($mgApplication.Id)
+                    KeyCredentials = @(
+                        @{
+                            Type = "AsymmetricX509Cert"
+                            Usage = "Verify"
+                            Key = $certificate.GetRawCertData()
+                            # Key = [System.Convert]::ToBase64String($certificate.GetRawCertData())
+                        }
+                    )
+
+                    ## PassThru = $True 
+                    <#  setting PassThru=$True causes Update-MgApplication to
+                        return $null or $True according to the failure or
+                        success of the operation. otherwise,
+                        Update-MgApplication always returns $null regardless.
+
+                        2023-02-26-1532: the PassThru parameter seems to no
+                        longer be accepted. 
+                    #>
+                } | % { Update-MgApplication  @_ -ErrorAction Stop}
+                <#  2024-07-14-1226: The above call to Update-MgApplication effectively wipes out
+                    all existing credentials except the one we are explicitly
+                    assigning.  This is good.
+                #>
+               
+            }
+
+
+        }
+
+        .{# ensure that the service principal has all desired Exchange management roles
+            $desiredExchangeRoleDefinitions = @(Get-MgBetaRoleManagementExchangeRoleDefinition  -countvariable $null  -all)
+            
+            foreach($desiredExchangeRoleDefinition in $desiredExchangeRoleDefinitions){
+
+                ##$principalId = $mgServicePrincipal.Id
+                $principalId = "/ServicePrincipals/$($mgServicePrincipal.Id)"
+                write-host (-join @(
+                    "now assigning Exchange role '$($desiredExchangeRoleDefinition.DisplayName)' "
+                    "(id of roleDefinition: '$($desiredExchangeRoleDefinition.id)') "
+                    "to principalId '$($principalId)'."
+                ))
+                @{
+                    PrincipalId = $principalId
+                    ##RoleDefinition = @{Id = $desiredExchangeRoleDefinition.Id}
+                    RoleDefinitionId  =  $desiredExchangeRoleDefinition.Id
+                } |% {New-MgBetaRoleManagementExchangeRoleAssignment @_}
+
+            }
         }
 
         #grant all the required approles (as defined by $roleSpecifications) to our app's service principal
@@ -1693,6 +1728,8 @@ function connectToOffice365 {
                 namesOfRequiredAppRoles      = $roleSpecification.namesOfRequiredAppRoles
             } |% {GrantAllThePermissionsWeWant @_}
         }
+
+        
 
         $configuration = @{
  
