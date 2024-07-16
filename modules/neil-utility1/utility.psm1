@@ -1425,8 +1425,38 @@ function Send-Mail($emailAccount, $from, $to = @(), $cc = @(), $bcc = @(), $subj
 
     Write-host "using the email account defined in bitwarden item $($bitwardenItemContainingEmailCredentials.id)"
     
-    $explicitAppPassword=@($bitwardenItemContainingEmailCredentials.fields | Where-Object {$_.name -eq 'app_password'} | Foreach-object {$_.value})[0]
-    $password="$(if($explicitAppPassword){$explicitAppPassword} else {$bitwardenItemContainingEmailCredentials.login.password})"
+    $username=$(
+        @(
+            $bitwardenItemContainingEmailCredentials.fields | 
+            ? {
+                $_.name -in @(
+                    'smtp_username'
+                )
+            } | 
+            % {$_.value}
+
+            $bitwardenItemContainingEmailCredentials.login.username
+        ) | 
+        ? {$_} |
+        select -first 1
+    )
+    
+    $password=$(
+        @(
+            $bitwardenItemContainingEmailCredentials.fields | 
+            ? {
+                $_.name -in @(
+                    'app_password'
+                    'smtp_password'
+                )
+            } | 
+            % {$_.value}
+
+            $bitwardenItemContainingEmailCredentials.login.password
+        ) | 
+        ? {$_} |
+        select -first 1
+    )
 
     <#  TODO 2024-02-08: remove dependence on System.Net.Mail.SmtpClient, which is
         somewhat obsolete.  See
@@ -1442,7 +1472,7 @@ function Send-Mail($emailAccount, $from, $to = @(), $cc = @(), $bcc = @(), $subj
         @($bitwardenItemContainingEmailCredentials.fields | Where-Object {$_.name -eq 'smtp_port'} | Foreach-object {$_.value})[0] 
     )   
     $SMTPClient.EnableSsl = ([bool] ([int] @($bitwardenItemContainingEmailCredentials.fields | Where-Object {$_.name -eq 'smtp_enable_ssl'} | Foreach-object {$_.value})[0]))    
-    $SMTPClient.Credentials = New-Object System.Net.NetworkCredential($bitwardenItemContainingEmailCredentials.login.username, $password) 
+    $SMTPClient.Credentials = New-Object System.Net.NetworkCredential($username, $password) 
     
     if(-not $from){
         $from=$bitwardenItemContainingEmailCredentials.login.username
