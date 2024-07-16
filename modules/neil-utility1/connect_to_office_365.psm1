@@ -514,8 +514,8 @@ function getNamesOfAllAppRolesSupportedByServicePrincipal{
 
     $namesOfAppRoles = @(
         (Get-MgServicePrincipal -ServicePrincipalId $targetServicePrincipal.Id -Property AppRoles).AppRoles | select -expand Value
-        (Get-MgServicePrincipal -ServicePrincipalId $targetServicePrincipal.Id -Property Oauth2PermissionScopes).Oauth2PermissionScopes | select -expand Value
-        (Get-MgServicePrincipal -ServicePrincipalId $targetServicePrincipal.Id -Property ResourceSpecificApplicationPermissions).ResourceSpecificApplicationPermissions | select -expand Value
+        ##(Get-MgServicePrincipal -ServicePrincipalId $targetServicePrincipal.Id -Property Oauth2PermissionScopes).Oauth2PermissionScopes | select -expand Value
+        ##(Get-MgServicePrincipal -ServicePrincipalId $targetServicePrincipal.Id -Property ResourceSpecificApplicationPermissions).ResourceSpecificApplicationPermissions | select -expand Value
     ) | select -unique
 
     if($excludeRedundantReadRoles){
@@ -870,106 +870,103 @@ function connectToOffice365 {
         Write-Host "Constructing fresh configuration."
            
 
-        .{Function GrantAllThePermissionsWeWant() {
+        Function GrantAllThePermissionsWeWant() {
             # thanks to https://stackoverflow.com/questions/61457429/how-to-add-api-permissions-to-an-azure-app-registration-using-powershell
-                param(
-                    [String]                                                            $nameOfTargetServicePrincipal,
-                    [String[]]                                                          $namesOfRequiredAppRoles,
-                    <#[Microsoft.Graph.PowerShell.Models.MicrosoftGraphApplication1]#>  $childApp,
-                    [Microsoft.Graph.PowerShell.Models.MicrosoftGraphServicePrincipal]  $servicePrincipalForApp
+            param(
+                [String]                                                            $nameOfTargetServicePrincipal,
+                [String[]]                                                          $namesOfRequiredAppRoles,
+                <#[Microsoft.Graph.PowerShell.Models.MicrosoftGraphApplication1]#>  $childApp,
+                [Microsoft.Graph.PowerShell.Models.MicrosoftGraphServicePrincipal]  $servicePrincipalForApp
 
-                )
+            )
 
-                <#  Given the name (DisplayName) of the target service principal
-                    and a list of strings namesOfRequiredAppRoles, we need to
-                    retrieve a list of corresponding members of the
-                    targetServicePrincipal's AppRoles collection (the
-                    "requiredAppRoles"). What I am calling the
-                    nameOfRequiredAppRole is acutually stored in a propertry of
-                    AppRole named "value". 
-                #>
-
-
-                
-                # $targetServicePrincipal = Get-MgServicePrincipal -Filter "DisplayName eq '$($nameOfTargetServicePrincipal)'"
-                $targetServicePrincipal = Get-MgServicePrincipal -Filter "DisplayName eq '$($nameOfTargetServicePrincipal)'" -Property *
-
-                # Iterate Permissions array
-                Write-Host 'Retrieve app roles'
-
-                [Microsoft.Graph.PowerShell.Models.MicrosoftGraphAppRole[] ] $requiredAppRoles = @()
-
-                Foreach ($nameOfRequiredAppRole in $namesOfRequiredAppRoles) {
-                    # $appRole = $targetServicePrincipal.AppRoles | Where-Object { $_.Value -eq $nameOfRequiredAppRole}
-                    $requiredAppRoles += ($targetServicePrincipal.AppRoles | Where-Object { $_.Value -eq $nameOfRequiredAppRole})
-                }
+            <#  Given the name (DisplayName) of the target service principal
+                and a list of strings namesOfRequiredAppRoles, we need to
+                retrieve a list of corresponding members of the
+                targetServicePrincipal's AppRoles collection (the
+                "requiredAppRoles"). What I am calling the
+                nameOfRequiredAppRole is acutually stored in a property of
+                AppRole named "value". 
+            #>
 
 
-                .{ 
-                    @{
-                        ApplicationId = $childApp.Id
-                        RequiredResourceAccess = (
-                            (
-                                @(
-                                    (Get-MgApplication -ApplicationId $mgApplication.Id ).RequiredResourceAccess
-                                ) +
-                                @(
-                                    @{
-                                        ResourceAppId = $targetServicePrincipal.AppId
-                                        # Microsoft really ought to have made this name plural: "ResourceAccesses"
-                                        # because its type is Microsoft.Graph.PowerShell.Models.IMicrosoftGraphResourceAccess[]
-                                        ResourceAccess = @(
-                                            foreach ($appRole in $requiredAppRoles) {
-                                                @{
-                                                    Type="Role"
-                                                    Id=$appRole.Id
-                                                }
-                                            }
-                                        )
-                                    }
-                                )
-                            ) | Select-Object -Unique
-                        )
-                    } | % { Update-MgApplication @_ }
-                }
-                Start-Sleep -s 1
+            
+            # $targetServicePrincipal = Get-MgServicePrincipal -Filter "DisplayName eq '$($nameOfTargetServicePrincipal)'"
+            $targetServicePrincipal = Get-MgServicePrincipal -Filter "DisplayName eq '$($nameOfTargetServicePrincipal)'" -Property *
 
-                # grant the required resource access
-                foreach ($appRole in $requiredAppRoles) {
-                    Write-Host ('Granting admin consent for App Role: {0}' -f $($appRole.Value))
+            # Iterate Permissions array
+            Write-Host 'Retrieve app roles'
 
-                    # check whether this assigment already exists
-                    $mgServicePrincipalAppRoleAssignment = Get-MgServicePrincipalAppRoleAssignment -ServicePrincipalId $servicePrincipalForApp.Id |
-                        Where-Object {
-                            ( 
-                                $_.AppRoleId -eq $appRole.Id
-                            ) -and (
-                                $_.ResourceId -eq $targetServicePrincipal.Id 
-                            ) -and (
-                                $_.PrincipalId -eq $servicePrincipalForApp.Id
-                            )
-                        }
-                    
-                    if($mgServicePrincipalAppRoleAssignment){
-                        Write-Host 'the mgServicePrincipalAppRoleAssignment already exists, so we will not bother to re-create it.'
-                    } else {
-                        @{
-                            ServicePrincipalId  = $servicePrincipalForApp.Id 
-                            AppRoleId           = $appRole.Id 
-                            PrincipalId     = $servicePrincipalForApp.Id
-                            <#  I do not understand why there is both a
-                                "PrincipalId" and a "ServicePrincipalId"
-                                parameter.  Are these the same thing? 
-                            #>
-                            ResourceId      = $targetServicePrincipal.Id 
-                        } |% { New-MgServicePrincipalAppRoleAssignment @_}
-                    }
-                    ## Start-Sleep -s 1
-                }
-                
-                #TO-do: see if we can get rid of, or at least reduce, the above sleeps.
+            [Microsoft.Graph.PowerShell.Models.MicrosoftGraphAppRole[] ] $requiredAppRoles = @()
+
+            Foreach ($nameOfRequiredAppRole in $namesOfRequiredAppRoles) {
+                # $appRole = $targetServicePrincipal.AppRoles | Where-Object { $_.Value -eq $nameOfRequiredAppRole}
+                $requiredAppRoles += ($targetServicePrincipal.AppRoles | Where-Object { $_.Value -eq $nameOfRequiredAppRole})
             }
+
+
+            .{ 
+                @{
+                    ApplicationId = $childApp.Id
+                    RequiredResourceAccess = (
+                        (
+                            @(
+                                (Get-MgApplication -ApplicationId $mgApplication.Id ).RequiredResourceAccess
+                            ) +
+                            @(
+                                @{
+                                    ResourceAppId = $targetServicePrincipal.AppId
+                                    # Microsoft really ought to have made this name plural: "ResourceAccesses"
+                                    # because its type is Microsoft.Graph.PowerShell.Models.IMicrosoftGraphResourceAccess[]
+                                    ResourceAccess = @(
+                                        foreach ($appRole in $requiredAppRoles) {
+                                            @{ Type="Role"; Id=$appRole.Id }
+                                        }
+                                    )
+                                }
+                            )
+                        ) | Select-Object -Unique
+                    )
+                } | % { Update-MgApplication @_ }
+            }
+            Start-Sleep -s 1
+
+            # grant the required resource access
+            foreach ($appRole in $requiredAppRoles) {
+                Write-Host ('Granting admin consent for App Role: {0}' -f $($appRole.Value))
+
+                # check whether this assigment already exists
+                $mgServicePrincipalAppRoleAssignment = Get-MgServicePrincipalAppRoleAssignment -ServicePrincipalId $servicePrincipalForApp.Id |
+                    Where-Object {
+                        ( 
+                            $_.AppRoleId -eq $appRole.Id
+                        ) -and (
+                            $_.ResourceId -eq $targetServicePrincipal.Id 
+                        ) -and (
+                            $_.PrincipalId -eq $servicePrincipalForApp.Id
+                        )
+                    }
+                
+                if($mgServicePrincipalAppRoleAssignment){
+                    Write-Host 'the mgServicePrincipalAppRoleAssignment already exists, so we will not bother to re-create it.'
+                } else {
+                    @{
+                        ServicePrincipalId  = $servicePrincipalForApp.Id 
+                        AppRoleId           = $appRole.Id 
+                        PrincipalId     = $servicePrincipalForApp.Id
+                        <#  I do not understand why there is both a
+                            "PrincipalId" and a "ServicePrincipalId"
+                            parameter.  Are these the same thing? 
+                        #>
+                        ResourceId      = $targetServicePrincipal.Id 
+                    } |% { New-MgServicePrincipalAppRoleAssignment @_}
+                }
+                ## Start-Sleep -s 1
+            }
+            
+            #TO-do: see if we can get rid of, or at least reduce, the above sleeps.
         }
+        
 
         Write-Host "disconnecting from any existing graph session."
         Disconnect-MgGraph  -ErrorAction SilentlyContinue 1>$null
@@ -990,30 +987,32 @@ function connectToOffice365 {
                 @{
                     ContextScope = "Process"
                     Scopes = @(
-                        "Application.Read.All"
-                        "Application.ReadWrite.All" 
-                        "Directory.ReadWrite.All"
-                        "RoleManagement.ReadWrite.Directory"
-                        "Directory.Read.All"
-                        "AppRoleAssignment.ReadWrite.All"
-                    
-                    
-                    
-                    
+                        ##"Application.Read.All"
                         ##"Application.ReadWrite.All" 
-                        ##"AppRoleAssignment.ReadWrite.All"
-                        ##"DeviceManagementRBAC.ReadWrite.All"
                         ##"Directory.ReadWrite.All"
-                        ##"EntitlementManagement.ReadWrite.All"
-                        ##"RoleManagement.ReadWrite.CloudPC"
                         ##"RoleManagement.ReadWrite.Directory"
-                        ##"RoleManagement.ReadWrite.Exchange"
+                        ##"Directory.Read.All"
+                        ##"AppRoleAssignment.ReadWrite.All"
+                    
+                    
+                    
 
 
 
                         ## "Application.Read.All"
                         ## "Directory.Read.All"
 
+
+
+                    
+                        "Application.ReadWrite.All" 
+                        "AppRoleAssignment.ReadWrite.All"
+                        "DeviceManagementRBAC.ReadWrite.All"
+                        "Directory.ReadWrite.All"
+                        "EntitlementManagement.ReadWrite.All"
+                        "RoleManagement.ReadWrite.CloudPC"
+                        "RoleManagement.ReadWrite.Directory"
+                        "RoleManagement.ReadWrite.Exchange"
 
 
 
@@ -1028,40 +1027,41 @@ function connectToOffice365 {
         
 
         $roleSpecifications = @(
-            @{ nameOfTargetServicePrincipal = 'Windows Azure Active Directory';
-                namesOfRequiredAppRoles = @(
-                    'Application.ReadWrite.All'
-                    'Application.ReadWrite.OwnedBy'
-                    'Device.ReadWrite.All'
-                    # 'Directory.Read.All'
-                    'Directory.ReadWrite.All'
-                    'Domain.ReadWrite.All'
-                    'Member.Read.Hidden'
-                    'Policy.Read.All'
-                )
-            }
+            ##@{ nameOfTargetServicePrincipal = 'Windows Azure Active Directory';
+            ##    namesOfRequiredAppRoles = @(
+            ##        'Application.ReadWrite.All'
+            ##        'Application.ReadWrite.OwnedBy'
+            ##        'Device.ReadWrite.All'
+            ##        # 'Directory.Read.All'
+            ##        'Directory.ReadWrite.All'
+            ##        'Domain.ReadWrite.All'
+            ##        'Member.Read.Hidden'
+            ##        'Policy.Read.All'
+            ##    )
+            ##}
 
-            @{ nameOfTargetServicePrincipal = 'Office 365 Exchange Online';
-                namesOfRequiredAppRoles = @(
-                    'Exchange.ManageAsApp'
-                )
-            }
+           @{ nameOfTargetServicePrincipal = 'Office 365 Exchange Online';
+              namesOfRequiredAppRoles = @(
+                  'Exchange.ManageAsApp'
+                  'full_access_as_app'
+              )
+           }
 
-            @{ nameOfTargetServicePrincipal = 'Office 365 Management APIs';
-                namesOfRequiredAppRoles = @(
-                    'ServiceHealth.Read'
-                    'ActivityFeed.Read'
-                    'ActivityFeed.ReadDlp'
-                )
-            }
+            ## @{ nameOfTargetServicePrincipal = 'Office 365 Management APIs';
+            ##     namesOfRequiredAppRoles = @(
+            ##         'ServiceHealth.Read'
+            ##         'ActivityFeed.Read'
+            ##         'ActivityFeed.ReadDlp'
+            ##     )
+            ## }
 
-            @{ nameOfTargetServicePrincipal = 'Office 365 SharePoint Online';
-                namesOfRequiredAppRoles = @(
-                    'Sites.FullControl.All'
-                    'TermStore.ReadWrite.All'
-                    'User.ReadWrite.All'
-                )
-            }
+            ##@{ nameOfTargetServicePrincipal = 'Office 365 SharePoint Online';
+            ##    namesOfRequiredAppRoles = @(
+            ##        'Sites.FullControl.All'
+            ##        'TermStore.ReadWrite.All'
+            ##        'User.ReadWrite.All'
+            ##    )
+            ##}
 
             if($false){ # as of 2024-04-28, we are dynamically discovering all supported app roles for Microsoft Graph rather than hardcoding them.
                 @{ nameOfTargetServicePrincipal = 'Microsoft Graph';
@@ -1501,6 +1501,7 @@ function connectToOffice365 {
 
             $namesOfTargetServicePrincipalsForWhichToDynamicallyDiscoverAppRoles = @(
                 'Microsoft Graph'
+                'Office 365 SharePoint Online'
             )
 
             foreach($nameOfTargetServicePrincipal in $namesOfTargetServicePrincipalsForWhichToDynamicallyDiscoverAppRoles){                
@@ -1517,7 +1518,239 @@ function connectToOffice365 {
                             #>
                             -not (
                                 ($nameOfTargetServicePrincipal -eq 'Microsoft Graph') -and
-                                ($_ -eq "Directory.Write.Restricted")
+                                (
+                                    (
+                                        $_ -in @(
+                                            "Directory.Write.Restricted"
+                                        )
+                                    ) -or (
+                                        @($_ -split "\.")[0] -in @(
+                                            #### "AccessReview"                     #     3
+                                            #### "Acronym"                          #     1
+                                            #### "AdministrativeUnit"               #     2
+                                            "Agreement"                        #     2
+                                            "AgreementAcceptance"              #     1
+                                             "APIConnectors"                    #     2
+                                            #### "AppCatalog"                       #     2
+                                            #### "Application"                      #     3
+                                            "Application-RemoteDesktopConfig"  #     1
+                                            #### "AppRoleAssignment"                #     1
+                                            "AttackSimulation"                 #     2
+                                            #### "AuditLog"                         #     1
+                                            #### "AuditLogsQuery"                   #     1
+                                            "AuditLogsQuery-CRM"               #     1
+                                            "AuditLogsQuery-Endpoint"          #     1
+                                            #### "AuditLogsQuery-Entra"             #     1
+                                            #### "AuditLogsQuery-Exchange"          #     1
+                                            #### "AuditLogsQuery-OneDrive"          #     1
+                                            #### "AuditLogsQuery-SharePoint"        #     1
+                                            #### "AuthenticationContext"            #     2
+                                            "BackupRestore-Configuration"      #     2
+                                            "BackupRestore-Monitor"            #     1
+                                            "BackupRestore-Restore"            #     2
+                                            "BackupRestore-Search"             #     1
+                                            "BillingConfiguration"             #     1
+                                            "Bookings"                         #     1
+                                            "BookingsAppointment"              #     1
+                                            "Bookmark"                         #     1
+                                            "BrowserSiteLists"                 #     2
+                                            "BusinessScenarioConfig"           #     2
+                                            "BusinessScenarioData"             #     2
+                                            #### "Calendars"                        #     3
+                                             "CallEvents"                       #     1
+                                             "CallRecord-PstnCalls"             #     1
+                                             "CallRecords"                      #     1
+                                             "Calls"                            #     5
+                                            #### "Channel"                          #     3
+                                            #### "ChannelMember"                    #     2
+                                            #### "ChannelMessage"                   #     2
+                                            #### "ChannelSettings"                  #     2
+                                            #### "Chat"                             #     9
+                                            #### "ChatMember"                       #     4
+                                            #### "ChatMessage"                      #     1
+                                            #### "CloudApp-Discovery"               #     1
+                                             "CloudPC"                          #     2
+                                            #### "Community"                        #     2
+                                             "ConsentRequest"                   #     2
+                                            #### "Contacts"                         #     2
+                                            #### "CrossTenantInformation"           #     1
+                                            #### "CrossTenantUserProfileSharing"    #     2
+                                            #### "CustomAuthenticationExtension"    #     3
+                                             "CustomDetection"                  #     2
+                                            #### "CustomSecAttributeAssignment"     #     2
+                                            #### "CustomSecAttributeAuditLogs"      #     1
+                                            #### "CustomSecAttributeDefinition"     #     2
+                                            #### "CustomTags"                       #     2
+                                            #### "DelegatedAdminRelationship"       #     2
+                                            #### "DelegatedPermissionGrant"         #     2
+                                            "Device"                           #     2
+                                             "DeviceLocalCredential"            #     2
+                                             "DeviceManagementApps"             #     2
+                                             "DeviceManagementConfiguration"    #     2
+                                             "DeviceManagementManagedDevices"   #     3
+                                             "DeviceManagementRBAC"             #     2
+                                             "DeviceManagementServiceConfig"    #     2
+                                             "Directory"                        #     3
+                                             "DirectoryRecommendations"         #     2
+                                            #### "Domain"                           #     2
+                                            "eDiscovery"                       #     2
+                                            "EduAdministration"                #     2
+                                            "EduAssignments"                   #     4
+                                            "EduCurricula"                     #     2
+                                            "EduReports-Reading"               #     2
+                                            "EduReports-Reflect"               #     2
+                                            "EduRoster"                        #     3
+                                            "EntitlementManagement"            #     2
+                                            #### "EventListener"                    #     2
+                                            #### "ExternalConnection"               #     3
+                                            #### "ExternalItem"                     #     3
+                                            #### "ExternalUserProfile"              #     2
+                                            #### "Files"                            #     4
+                                            #### "FileStorageContainer"             #     1
+                                            #### "Group"                            #     3
+                                            #### "Group-Conversation"               #     2
+                                            #### "GroupMember"                      #     2
+                                             "HealthMonitoringAlert"            #     2
+                                             "HealthMonitoringAlertConfig"      #     2
+                                             "IdentityProvider"                 #     2
+                                             "IdentityRiskEvent"                #     2
+                                             "IdentityRiskyServicePrincipal"    #     2
+                                             "IdentityRiskyUser"                #     2
+                                             "IdentityUserFlow"                 #     2
+                                            "IndustryData"                     #     1
+                                            "IndustryData-DataConnector"       #     3
+                                            "IndustryData-InboundFlow"         #     2
+                                            "IndustryData-OutboundFlow"        #     2
+                                            "IndustryData-ReferenceDefinition" #     2
+                                            "IndustryData-Run"                 #     1
+                                            "IndustryData-SourceSystem"        #     2
+                                            "IndustryData-TimePeriod"          #     2
+                                             "InformationProtectionConfig"      #     1
+                                             "InformationProtectionContent"     #     2
+                                             "InformationProtectionPolicy"      #     1
+                                             "Insights-UserMetric"              #     1
+                                            "LearningAssignedCourse"           #     2
+                                            "LearningContent"                  #     2
+                                            "LearningSelfInitiatedCourse"      #     2
+                                            #### "LicenseAssignment"                #     1
+                                             "LifecycleWorkflows"               #     2
+                                            #### "ListItems"                        #     1
+                                            #### "Lists"                            #     1
+                                            #### "Mail"                             #     5
+                                            #### "MailboxSettings"                  #     2
+                                            #### "Member"                           #     1
+                                             "MultiTenantOrganization"          #     3
+                                            "NetworkAccess"                    #     2
+                                            "NetworkAccess-Reports"            #     1
+                                             "NetworkAccessBranch"              #     2
+                                            "NetworkAccessPolicy"              #     2
+                                             "Notes"                            #     2
+                                             "OnlineMeetingArtifact"            #     1
+                                             "OnlineMeetingRecording"           #     1
+                                             "OnlineMeetings"                   #     2
+                                             "OnlineMeetingTranscript"          #     1
+                                             "OnPremDirectorySynchronization"   #     2
+                                             "OnPremisesPublishingProfiles"     #     1
+                                            #### "Organization"                     #     2
+                                            #### "OrganizationalBranding"           #     2
+                                            #### "OrgContact"                       #     1
+                                             "OrgSettings-AppsAndServices"      #     2
+                                             "OrgSettings-DynamicsVoice"        #     2
+                                             "OrgSettings-Forms"                #     2
+                                             "OrgSettings-Microsoft365Install"  #     2
+                                             "OrgSettings-Todo"                 #     2
+                                             "PartnerBilling"                   #     1
+                                             "PartnerSecurity"                  #     2
+                                            #### "PendingExternalUserProfile"       #     2
+                                            #### "People"                           #     1
+                                            #### "PeopleSettings"                   #     2
+                                            "Place"                            #     1
+                                             "PlaceDevice"                      #     2
+                                             "PlaceDeviceTelemetry"             #     1
+                                            "Policy"                           #    19
+                                             "Presence"                         #     2
+                                            "Printer"                          #     2
+                                            "PrintJob"                         #     5
+                                            "PrintSettings"                    #     1
+                                            "PrintTaskDefinition"              #     1
+                                             "PrivilegedAccess"                 #     6
+                                             "PrivilegedAssignmentSchedule"     #     2
+                                             "PrivilegedEligibilitySchedule"    #     2
+                                            #### "ProfilePhoto"                     #     2
+                                            #### "ProgramControl"                   #     2
+                                            #### "PublicKeyInfrastructure"          #     2
+                                             "QnA"                              #     1
+                                            #### "RecordsManagement"                #     2
+                                            #### "Reports"                          #     1
+                                            #### "ReportSettings"                   #     2
+                                            #### "ResourceSpecificPermissionGrant"  #     1
+                                             "RoleAssignmentSchedule"           #     2
+                                             "RoleEligibilitySchedule"          #     2
+                                            #### "RoleManagement"                   #     7
+                                            #### "RoleManagementAlert"              #     2
+                                            #### "RoleManagementPolicy"             #     4
+                                             "Schedule"                         #     2
+                                             "Schedule-WorkingTime"             #     1
+                                             "SchedulePermissions"              #     1
+                                            #### "SearchConfiguration"              #     2
+                                             "SecurityActions"                  #     2
+                                             "SecurityAlert"                    #     2
+                                             "SecurityAnalyzedMessage"          #     2
+                                             "SecurityEvents"                   #     2
+                                             "SecurityIdentitiesHealth"         #     2
+                                             "SecurityIdentitiesSensors"        #     2
+                                             "SecurityIncident"                 #     2
+                                            #### "ServiceActivity-Exchange"         #     1
+                                            #### "ServiceActivity-Microsoft365Web"  #     1
+                                            #### "ServiceActivity-OneDrive"         #     1
+                                            #### "ServiceActivity-Teams"            #     1
+                                             "ServiceHealth"                    #     1
+                                             "ServiceMessage"                   #     1
+                                            #### "ServicePrincipalEndpoint"         #     2
+                                            #### "SharePointTenantSettings"         #     2
+                                             "ShortNotes"                       #     2
+                                            #### "Sites"                            #     5
+                                             "SpiffeTrustDomain"                #     2
+                                            #### "SubjectRightsRequest"             #     2
+                                             "Synchronization"                  #     2
+                                             "SynchronizationData-User"         #     1
+                                            #### "Tasks"                            #     2
+                                            #### "Team"                             #     2
+                                            #### "TeamMember"                       #     3
+                                            #### "TeamsActivity"                    #     2
+                                            "TeamsAppInstallation"             #    16
+                                            #### "TeamSettings"                     #     2
+                                            #### "TeamsTab"                         #     9
+                                            #### "TeamsUserConfiguration"           #     1
+                                            #### "TeamTemplates"                    #     1
+                                            #### "Teamwork"                         #     2
+                                            #### "TeamworkAppSettings"              #     2
+                                            #### "TeamworkDevice"                   #     2
+                                            #### "TeamworkTag"                      #     2
+                                            #### "TermStore"                        #     2
+                                             "ThreatAssessment"                 #     1
+                                             "ThreatHunting"                    #     1
+                                             "ThreatIndicators"                 #     2
+                                             "ThreatIntelligence"               #     1
+                                             "ThreatSubmission"                 #     2
+                                             "ThreatSubmissionPolicy"           #     1
+                                            #### "TrustFrameworkKeySet"             #     2
+                                            #### "User"                             #     8
+                                            #### "User-ConvertToInternal"           #     1
+                                            #### "User-LifeCycleInfo"               #     2
+                                            #### "UserAuthenticationMethod"         #     2
+                                            #### "UserNotification"                 #     1
+                                             "UserShiftPreferences"             #     2
+                                            #### "UserTeamwork"                     #     1
+                                            #### "VirtualAppointment"               #     2
+                                            #### "VirtualAppointmentNotification"   #     1
+                                            #### "VirtualEvent"                     #     1
+                                            #### "VirtualEventRegistration-Anon"    #     1
+                                            "WindowsUpdates"                   #     1
+                                            #### "WorkforceIntegration"             #     1
+                                        )
+                                    ) 
+                                )
                             )
                         }
                     )
@@ -1631,48 +1864,7 @@ function connectToOffice365 {
                 Write-Host "Service Principal $($mgServicePrincipal.DisplayName) (id = $($mgServicePrincipal.Id)) already exists."
             }
         }
-        
-        .{# ensure that the service principal has global admin permissions to the current tenant
-            $globalAdminMgDirectoryRole =  Get-MgDirectoryRole | where {$_.DisplayName -eq "Global Administrator"}
-            # todo: do this search on the server side, rather than here on the client side, by using a -filter (or maybe -search ?) argument.
-
-            if(!$globalAdminMgDirectoryRole){
-                # $globalAdminAzureAdDirectoryRole =  Get-AzureADDirectoryRole | where {$_.DisplayName -eq "Company Administrator"}
-                $globalAdminMgDirectoryRole =  Get-MgDirectoryRole  | where {$_.DisplayName -eq "Company Administrator"}
-                # for reasons unknown, in some tenants, the displayname of the global admin role is "Company Administrator"
-            }
-
-            ##  $mgDirectoryRoleMember = Get-MgDirectoryRoleMember -ConsistencyLevel eventual -DirectoryRoleId $globalAdminMgDirectoryRole.Id | where {$_.Id -eq $mgServicePrincipal.Id}
-            #
-            # you might think that adding "-ConsistencyLevel eventual" would be enough,
-            # but it's not; you also have to add the -Count argument, even if you pass
-            # $null as Count. I do not understand why the Count argument is required in
-            # order to get the correct behavior.  Maybe it has something to do with
-            # paging of the results, but it strikes me as pretty kludgy to require the
-            # Count argument.
-
-            $mgDirectoryRoleMember = Get-MgDirectoryRoleMember -ConsistencyLevel eventual -Count $null -DirectoryRoleId $globalAdminMgDirectoryRole.Id | where {$_.Id -eq $mgServicePrincipal.Id}
-            
-
-            # iff. $azureAdServicePrincipal has the global admin permission, then $azureADDirectoryRoleMember will be $azureAdServicePrincipal, otherwise will be null
-            if(! $mgDirectoryRoleMember ){
-                New-MgDirectoryRoleMemberByRef -DirectoryRoleId  $globalAdminMgDirectoryRole.Id  -oDataId "https://graph.microsoft.com/v1.0/directoryObjects/$($mgServicePrincipal.Id)"
-                # I have no idea how I would come up with the above value in the oDataId
-                # argument (except by blindly copying the example from
-                # https://learn.microsoft.com/en-us/powershell/module/microsoft.graph.identity.directorymanagement/new-mgdirectoryrolememberbyref?view=graph-powershell-1.0,
-                # which is what I did
-                # ) 
-                #
-                # possibly, I ought to be using New-MgRoleManagementDirectoryRoleAssignment
-                # instead.  see
-                # https://stackoverflow.com/questions/73088374/how-do-i-use-the-command-new-mgrolemanagementdirectoryroleassignment
-                # . 
-            } else {
-                Write-Host 'the service principal already has global admin permissions.'
-            }
-            # we could have probably gotten away simply wrapping Add-AzureADDirectoryRoleMember in a try/catch statement.
-        }
-        
+                
         .{# ensure that our public key is installed in our application
             $existingDesiredkeyCredential = $(
                 $mgApplication.KeyCredentials | 
@@ -1717,7 +1909,71 @@ function connectToOffice365 {
 
         }
 
-        if($false){# ensure that the service principal has all desired Exchange management roles
+        .{# ensure that the service principal has global admin permissions to the current tenant
+            $globalAdminMgDirectoryRole =  Get-MgDirectoryRole | where {$_.DisplayName -eq "Global Administrator"}
+            # todo: do this search on the server side, rather than here on the client side, by using a -filter (or maybe -search ?) argument.
+
+            if(!$globalAdminMgDirectoryRole){
+                # $globalAdminAzureAdDirectoryRole =  Get-AzureADDirectoryRole | where {$_.DisplayName -eq "Company Administrator"}
+                $globalAdminMgDirectoryRole =  Get-MgDirectoryRole  | where {$_.DisplayName -eq "Company Administrator"}
+                # for reasons unknown, in some tenants, the displayname of the global admin role is "Company Administrator"
+            }
+
+            ##  $mgDirectoryRoleMember = Get-MgDirectoryRoleMember -ConsistencyLevel eventual -DirectoryRoleId $globalAdminMgDirectoryRole.Id | where {$_.Id -eq $mgServicePrincipal.Id}
+            #
+            # you might think that adding "-ConsistencyLevel eventual" would be enough,
+            # but it's not; you also have to add the -Count argument, even if you pass
+            # $null as Count. I do not understand why the Count argument is required in
+            # order to get the correct behavior.  Maybe it has something to do with
+            # paging of the results, but it strikes me as pretty kludgy to require the
+            # Count argument.
+
+            $mgDirectoryRoleMember = Get-MgDirectoryRoleMember -ConsistencyLevel eventual -Count $null -DirectoryRoleId $globalAdminMgDirectoryRole.Id | where {$_.Id -eq $mgServicePrincipal.Id}
+            
+
+            # iff. $azureAdServicePrincipal has the global admin permission, then $azureADDirectoryRoleMember will be $azureAdServicePrincipal, otherwise will be null
+            if(! $mgDirectoryRoleMember ){
+                New-MgDirectoryRoleMemberByRef -DirectoryRoleId  $globalAdminMgDirectoryRole.Id  -oDataId "https://graph.microsoft.com/v1.0/directoryObjects/$($mgServicePrincipal.Id)"
+                # I have no idea how I would come up with the above value in the oDataId
+                # argument (except by blindly copying the example from
+                # https://learn.microsoft.com/en-us/powershell/module/microsoft.graph.identity.directorymanagement/new-mgdirectoryrolememberbyref?view=graph-powershell-1.0,
+                # which is what I did
+                # ) 
+                #
+                # possibly, I ought to be using New-MgRoleManagementDirectoryRoleAssignment
+                # instead.  see
+                # https://stackoverflow.com/questions/73088374/how-do-i-use-the-command-new-mgrolemanagementdirectoryroleassignment
+                # . 
+            } else {
+                Write-Host 'the service principal already has global admin permissions.'
+            }
+            # we could have probably gotten away simply wrapping Add-AzureADDirectoryRoleMember in a try/catch statement.
+        }
+
+
+        .{# ensure that the service principal has all desired directory roles (this should ensure global administrator independently of tha above)
+            $desiredDirectoryRoleDefinitions = @(Get-MgRoleManagementDirectoryRoleDefinition  -countvariable $null  -headers @{ConsistencyLevel="eventual"} -all)
+            
+            foreach($desiredDirectoryRoleDefinition in $desiredDirectoryRoleDefinitions){
+
+                $principalId = $mgServicePrincipal.Id
+                ##$principalId = "/ServicePrincipals/$($mgServicePrincipal.Id)"
+                write-host (-join @(
+                    "now assigning directory role '$($desiredDirectoryRoleDefinition.DisplayName)' "
+                    "(id of roleDefinition: '$($desiredDirectoryRoleDefinition.id)') "
+                    "to principalId '$($principalId)'."
+                ))
+                @{
+                    PrincipalId = $principalId
+                    RoleDefinitionId  =  $desiredDirectoryRoleDefinition.Id
+                    directoryScopeId = "/"
+                } |% {New-MgRoleManagementDirectoryRoleAssignment @_}
+
+            }
+        }
+
+
+        .{# ensure that the service principal has all desired Exchange management roles
             $desiredExchangeRoleDefinitions = @(Get-MgBetaRoleManagementExchangeRoleDefinition  -countvariable $null  -all)
             
             foreach($desiredExchangeRoleDefinition in $desiredExchangeRoleDefinitions){
@@ -1731,21 +1987,21 @@ function connectToOffice365 {
                 ))
                 @{
                     PrincipalId = $principalId
-                    ##RoleDefinition = @{Id = $desiredExchangeRoleDefinition.Id}
                     RoleDefinitionId  =  $desiredExchangeRoleDefinition.Id
                 } |% {New-MgBetaRoleManagementExchangeRoleAssignment @_}
 
             }
         }
 
-        #grant all the required approles (as defined by $roleSpecifications) to our app's service principal
-        foreach ( $roleSpecification in $roleSpecifications){
-            @{
-                childApp                     = $mgApplication
-                servicePrincipalForApp       = $mgServicePrincipal
-                nameOfTargetServicePrincipal = $roleSpecification.nameOfTargetServicePrincipal
-                namesOfRequiredAppRoles      = $roleSpecification.namesOfRequiredAppRoles
-            } |% {GrantAllThePermissionsWeWant @_}
+        .{#grant all the required approles (as defined by $roleSpecifications) to our app's service principal
+            foreach ( $roleSpecification in $roleSpecifications){
+                @{
+                    childApp                     = $mgApplication
+                    servicePrincipalForApp       = $mgServicePrincipal
+                    nameOfTargetServicePrincipal = $roleSpecification.nameOfTargetServicePrincipal
+                    namesOfRequiredAppRoles      = $roleSpecification.namesOfRequiredAppRoles
+                } |% {GrantAllThePermissionsWeWant @_}
+            }
         }
 
         
