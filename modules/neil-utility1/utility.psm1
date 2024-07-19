@@ -5090,6 +5090,10 @@ Function Install-WingetOnWindows10 {
         }
     }
 
+    # see (https://www.reddit.com/r/PowerShell/comments/18lxtfo/run_winget_from_a_central_point_on_many_machines/)
+    # see (https://github.com/microsoft/winget-cli/issues/1627)
+    powershell -c {Add-AppxPackage -RegisterByFamilyName -MainPackage Microsoft.DesktopAppInstaller_8wekyb3d8bbwe}
+    Install-PSResource -Name "Microsoft.WinGet.Client" -AcceptLicense -TrustRepository -NoClobber -Repository PSGallery
     "y" | winget list | out-null
     # the above piping of "y" into winget is a one-time acceptance of some kind
     # of agreement that winget forces you to acknowledge once before you can use
