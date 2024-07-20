@@ -5040,6 +5040,9 @@ Function Install-WingetOnWindows10 {
     <#
     .SYNOPSIS
     # install ( or upgrade ) winget on windows server 2019 or windows 10 
+
+    Trying ewverything we can in order to end up with a working installation of
+    winget (and the powershell module Microsoft.Winget.Client)
     #>
 
     [CmdletBinding()]
@@ -5054,7 +5057,8 @@ Function Install-WingetOnWindows10 {
     # todo: check that we acutally have chocolatey installed, which we need below.
 
     # todo perhaps: put all of this logic in the chocolatey winget package.
-
+    "y" | winget list | out-null
+    remove-item -force (join-path $env:ChocolateyInstall  "bin/winget.exe")
     
     choco upgrade --yes --acceptlicense  --exact winget
 
@@ -5075,6 +5079,10 @@ Function Install-WingetOnWindows10 {
     # effectively available on the path.
 
     # add "winget" to the path:
+    powershell -c {Add-AppxPackage -RegisterByFamilyName -MainPackage Microsoft.DesktopAppInstaller_8wekyb3d8bbwe}
+    "y" | winget list | out-null
+
+
     gi (join-path $env:ProgramFiles "WindowsApps/Microsoft.DesktopAppInstaller_*_x64__8wekyb3d8bbwe") | 
     ? {$_.PSIsContainer} |
     % {
@@ -5090,11 +5098,48 @@ Function Install-WingetOnWindows10 {
         }
     }
 
+    powershell -c {Add-AppxPackage -RegisterByFamilyName -MainPackage Microsoft.DesktopAppInstaller_8wekyb3d8bbwe}
+    "y" | winget list | out-null
+
+
+
     # see (https://www.reddit.com/r/PowerShell/comments/18lxtfo/run_winget_from_a_central_point_on_many_machines/)
     # see (https://github.com/microsoft/winget-cli/issues/1627)
+    Install-PSResource -Name "Microsoft.WinGet.Client" -AcceptLicense -TrustRepository  -Repository PSGallery  -Scope AllUsers
+    Get-WinGetSource |% {Reset-WinGetSource -Name $_.Name}
+
+    &{# copied with slight adaptation from (https://learn.microsoft.com/en-us/windows/package-manager/winget/#install-winget-on-windows-sandbox): 
+        $pathOfTemporaryDirectory = New-TemporaryDirectory
+        @(
+        
+            @{
+                uri      = "https://aka.ms/Microsoft.VCLibs.x64.14.00.Desktop.appx"
+                filename = "Microsoft.VCLibs.x64.14.00.Desktop.appx"
+            } 
+            @{
+                uri      = "https://github.com/microsoft/microsoft-ui-xaml/releases/download/v2.8.6/Microsoft.UI.Xaml.2.8.x64.appx"
+                filename = "Microsoft.UI.Xaml.2.8.x64.appx"
+            } 
+            @{
+                uri      = "https://aka.ms/getwinget"
+                filename = "Microsoft.DesktopAppInstaller_8wekyb3d8bbwe.msixbundle"
+            } 
+        ) |
+        %{
+            Invoke-WebRequest -Uri $_.uri -OutFile (join-path $pathOfTemporaryDirectory $_.filename)
+            powershell -c "Add-AppxPackage '$(join-path $pathOfTemporaryDirectory $_.filename)'"
+        }
+    }
+
+    Repair-WinGetPackageManager  -allusers -IncludePreRelease -Latest -Force
+    Repair-WinGetPackageManager   -IncludePreRelease -Latest -Force
     powershell -c {Add-AppxPackage -RegisterByFamilyName -MainPackage Microsoft.DesktopAppInstaller_8wekyb3d8bbwe}
-    Install-PSResource -Name "Microsoft.WinGet.Client" -AcceptLicense -TrustRepository -NoClobber -Repository PSGallery
     "y" | winget list | out-null
+
+    ##Install-PSResource -Name "Microsoft.WinGet.Client" -AcceptLicense -TrustRepository  -Repository PSGallery -Scope CurrentUser
+    "y" | winget list | out-null
+
+    Get-WinGetSource |% {Reset-WinGetSource -Name $_.Name}
     # the above piping of "y" into winget is a one-time acceptance of some kind
     # of agreement that winget forces you to acknowledge once before you can use
     # winget.  doing it here gets it out of the way.
