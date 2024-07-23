@@ -4070,7 +4070,10 @@ function runInCwcSession {
             Mandatory=$False,
             HelpMessage="postambleCommand will be appended to command (with a linefeed separator) before submitting the request to Screenconnect"
         )] 
-        [string[]] $postambleCommand
+        [string[]] $postambleCommand,
+
+        [Parameter(Mandatory=$False)] 
+        [switch]$NoWait = $false
 
 
         # The only reason for having these three distinct parameters (rather
@@ -4172,6 +4175,7 @@ function runInCwcSession {
                     $pwsh ? (getCwcPwshWrappedCommand $augmentedCommand) : $augmentedCommand
                 ) -join "`n"
             )
+            NoWait = $NoWait
         } +
         $(if($timeout){@{Timeout = $timeout}} else {@{}})
     ) | % { Invoke-CWCCommand @_ }
@@ -4843,17 +4847,27 @@ function grantEveryoneFullAccessToFile {
     )
 
     # Write-Host "now working on $pathOfFile"
-    if(-not (test-path -Path $path -PathType Leaf)){
-        Write-Error "'$($path)' is not a file."
+    if(-not (
+            (test-path -Path $path -PathType Leaf)  -or 
+            (test-path -Path $path -PathType Container)  
+        )
+    ){
+        Write-Error "'$($path)' is not a file or a directory."
     } else {
         $acl = Get-Acl -Path $path
         $acl.SetAccessRule((New-Object System.Security.AccessControl.FileSystemAccessRule("Everyone", "FullControl", "Allow")))
+        
         Set-Acl  -Path "\\?\$($path)" -AclObject $acl
-        # The "\\?\" prefix is necessary to handle the case where
-        # $pathOfFile exceeds the 260-character path-length limit.
-        # see [https://github.com/PowerShell/PowerShell/issues/10805]
-        #
-        # see [https://learn.microsoft.com/en-us/windows/win32/fileio/maximum-file-path-limitation?tabs=registry]
+        <#  The "\\?\" prefix is necessary to handle the case where
+        $pathOfFile exceeds the 260-character path-length limit.
+        see [https://github.com/PowerShell/PowerShell/issues/10805]
+        
+        see [https://learn.microsoft.com/en-us/windows/win32/fileio/maximum-file-path-limitation?tabs=registry] 
+        #>
+
+        <# As of 2024-07-20-1518, I have observed a case where the "\\?\" is not working, so let us also use the regular path. #>
+
+        Set-Acl  -Path $path -AclObject $acl
     }
 }
 
