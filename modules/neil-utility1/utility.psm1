@@ -5161,10 +5161,11 @@ Function Install-Winget {
     # winget.  doing it here gets it out of the way.
 
     Get-Command -all -CommandType Application -name winget |
+    ? {$_} |
     %{
         & $_ source reset --force
-        & $_  list --accept-source-agreements | out-null
-        & $_  source reset --force
+        & $_ list --accept-source-agreements | out-null
+        & $_ source reset --force
         "y" | & $_ | list  | out-null 
     }
 
