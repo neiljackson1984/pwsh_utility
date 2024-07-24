@@ -5166,7 +5166,7 @@ Function Install-Winget {
         & $_ source reset --force
         & $_ list --accept-source-agreements | out-null
         & $_ source reset --force
-        "y" | & $_ | list  | out-null 
+        "y" | & $_ list  | out-null 
     }
 
     Get-WinGetSource |% {Reset-WinGetSource -Name $_.Name}
