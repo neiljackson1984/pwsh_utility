@@ -5050,7 +5050,8 @@ Function Merge-HashTables {
     }
 }
 
-Function Install-WingetOnWindows10 {
+Set-Alias Install-WingetOnWindows10 Install-Winget
+Function Install-Winget {
     <#
     .SYNOPSIS
     # install ( or upgrade ) winget on windows server 2019 or windows 10 
@@ -5071,92 +5072,97 @@ Function Install-WingetOnWindows10 {
     # todo: check that we acutally have chocolatey installed, which we need below.
 
     # todo perhaps: put all of this logic in the chocolatey winget package.
-    "y" | winget list | out-null
     remove-item -force (join-path $env:ChocolateyInstall  "bin/winget.exe")
     
     choco upgrade --yes --acceptlicense  --exact winget
 
-    # it seems that the only thing we need to do differently or special (I
-    # think) when using Chocolatey to install winget on Windows server 2019 and
-    # Windows 10 compared with windows 11, is take pains to get the winget.exe
-    # executable file on the path (it seems that App Execution Aliases -- the
-    # normal mechanism for winget to get added to the path -- do not work in
-    # Windows 10 and Windows Server 2019.  Or, at any rate, when we install the
-    # AppX Package named 'Microsoft.DesktopAppInstaller', version
-    # '2024.227.1731.0', the App Execution Aliases (i.e. NTFS reparse points in
-    # (join-path $env:localappdata "Microsoft/WindowsApps") seem to get created
-    # on Windows 11, but not on Windows 10 or Windows server 2019 (probably
-    # because the process-starting api function in the Windows 10 kernel does
-    # not support the "app execution alias" ntfs reparse points. ) 
-    #
-    # The below creation of a chocolatey shim is one way to make winget
-    # effectively available on the path.
+    <#  It seems that the only thing we need to do differently or special (I
+        think) when using Chocolatey to install winget on Windows server 2019
+        and Windows 10 compared with windows 11, is take pains to get the
+        winget.exe executable file on the path (it seems that App Execution
+        Aliases -- the normal mechanism for winget to get added to the path --
+        do not work in Windows 10 and Windows Server 2019.  Or, at any rate,
+        when we install the AppX Package named 'Microsoft.DesktopAppInstaller',
+        version '2024.227.1731.0', the App Execution Aliases (i.e. NTFS reparse
+        points in (join-path $env:localappdata "Microsoft/WindowsApps") seem to
+        get created on Windows 11, but not on Windows 10 or Windows server 2019
+        (probably because the process-starting api function in the Windows 10
+        kernel does not support the "app execution alias" ntfs reparse points. ) 
+
+        The below creation of a chocolatey shim is one way to make winget
+        effectively available on the path.
+    #>
+    
+
 
     # add "winget" to the path:
-    powershell -c {Add-AppxPackage -RegisterByFamilyName -MainPackage Microsoft.DesktopAppInstaller_8wekyb3d8bbwe}
-    "y" | winget list | out-null
-
-
     gi (join-path $env:ProgramFiles "WindowsApps/Microsoft.DesktopAppInstaller_*_x64__8wekyb3d8bbwe") | 
     ? {$_.PSIsContainer} |
     % {
         TAKEOWN /F $_ /R /A /D Y
         ICACLS $_ /grant Administrators:F /T
-        gi -force (join-path  $_ "winget.exe") |
-        ? {-not $_.PSIsContainer} |
-        % {
-            & "${env:ChocolateyInstall}/tools/shimgen.exe" @(
-                "--path"; $_
-                "--output"; (join-path "${env:ChocolateyInstall}/bin" (split-path -leaf $_ ))
-            )
-        }
     }
 
-    powershell -c {Add-AppxPackage -RegisterByFamilyName -MainPackage Microsoft.DesktopAppInstaller_8wekyb3d8bbwe}
-    "y" | winget list | out-null
+    gci -force -recurse (join-path $env:ProgramFiles "WindowsApps/Microsoft.DesktopAppInstaller_*_x64__8wekyb3d8bbwe") -filter "winget.exe" |
+    ? {-not $_.PSIsContainer} |
+    %{
+        & "${env:ChocolateyInstall}/tools/shimgen.exe" @(
+            "--path"; $_
+            "--output"; (join-path "${env:ChocolateyInstall}/bin" (split-path -leaf $_ ))
+        )
+    }
+
 
 
 
     # see (https://www.reddit.com/r/PowerShell/comments/18lxtfo/run_winget_from_a_central_point_on_many_machines/)
     # see (https://github.com/microsoft/winget-cli/issues/1627)
     Install-PSResource -Name "Microsoft.WinGet.Client" -AcceptLicense -TrustRepository  -Repository PSGallery  -Scope AllUsers
-    Get-WinGetSource |% {Reset-WinGetSource -Name $_.Name}
 
-    &{# copied with slight adaptation from (https://learn.microsoft.com/en-us/windows/package-manager/winget/#install-winget-on-windows-sandbox): 
-        $pathOfTemporaryDirectory = New-TemporaryDirectory
-        @(
-        
-            @{
-                uri      = "https://aka.ms/Microsoft.VCLibs.x64.14.00.Desktop.appx"
-                filename = "Microsoft.VCLibs.x64.14.00.Desktop.appx"
-            } 
-            @{
-                uri      = "https://github.com/microsoft/microsoft-ui-xaml/releases/download/v2.8.6/Microsoft.UI.Xaml.2.8.x64.appx"
-                filename = "Microsoft.UI.Xaml.2.8.x64.appx"
-            } 
-            @{
-                uri      = "https://aka.ms/getwinget"
-                filename = "Microsoft.DesktopAppInstaller_8wekyb3d8bbwe.msixbundle"
-            } 
-        ) |
-        %{
-            Invoke-WebRequest -Uri $_.uri -OutFile (join-path $pathOfTemporaryDirectory $_.filename)
-            powershell -c "Add-AppxPackage '$(join-path $pathOfTemporaryDirectory $_.filename)'"
-        }
-    }
+    ##&{# copied with slight adaptation from (https://learn.microsoft.com/en-us/windows/package-manager/winget/#install-winget-on-windows-sandbox): 
+    ##    $pathOfTemporaryDirectory = New-TemporaryDirectory
+    ##    @(
+    ##    
+    ##        @{
+    ##            uri      = "https://aka.ms/Microsoft.VCLibs.x64.14.00.Desktop.appx"
+    ##            filename = "Microsoft.VCLibs.x64.14.00.Desktop.appx"
+    ##        } 
+    ##        @{
+    ##            uri      = "https://github.com/microsoft/microsoft-ui-xaml/releases/download/v2.8.6/Microsoft.UI.Xaml.2.8.x64.appx"
+    ##            filename = "Microsoft.UI.Xaml.2.8.x64.appx"
+    ##        } 
+    ##        @{
+    ##            uri      = "https://aka.ms/getwinget"
+    ##            filename = "Microsoft.DesktopAppInstaller_8wekyb3d8bbwe.msixbundle"
+    ##        } 
+    ##    ) |
+    ##    %{
+    ##        Invoke-WebRequest -Uri $_.uri -OutFile (join-path $pathOfTemporaryDirectory $_.filename)
+    ##        powershell -c "Add-AppxPackage '$(join-path $pathOfTemporaryDirectory $_.filename)'"
+    ##    }
+    ##}
+
+    powershell -c {Add-AppxPackage -RegisterByFamilyName -MainPackage Microsoft.DesktopAppInstaller_8wekyb3d8bbwe}
 
     Repair-WinGetPackageManager  -allusers -IncludePreRelease -Latest -Force
-    Repair-WinGetPackageManager   -IncludePreRelease -Latest -Force
-    powershell -c {Add-AppxPackage -RegisterByFamilyName -MainPackage Microsoft.DesktopAppInstaller_8wekyb3d8bbwe}
-    "y" | winget list | out-null
+    ##Repair-WinGetPackageManager   -IncludePreRelease -Latest -Force
 
     ##Install-PSResource -Name "Microsoft.WinGet.Client" -AcceptLicense -TrustRepository  -Repository PSGallery -Scope CurrentUser
-    "y" | winget list | out-null
 
-    Get-WinGetSource |% {Reset-WinGetSource -Name $_.Name}
-    # the above piping of "y" into winget is a one-time acceptance of some kind
+    # the  piping of "y" into winget is a one-time acceptance of some kind
     # of agreement that winget forces you to acknowledge once before you can use
     # winget.  doing it here gets it out of the way.
+
+    Get-Command -all -CommandType Application -name winget |
+    %{
+        & $_ source reset --force
+        & $_  list --accept-source-agreements | out-null
+        & $_  source reset --force
+        "y" | & $_ | list  | out-null 
+    }
+
+    Get-WinGetSource |% {Reset-WinGetSource -Name $_.Name}
+
 
 }
 
