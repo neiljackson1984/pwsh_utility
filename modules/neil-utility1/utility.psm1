@@ -5072,7 +5072,14 @@ Function Install-Winget {
     # todo: check that we acutally have chocolatey installed, which we need below.
 
     # todo perhaps: put all of this logic in the chocolatey winget package.
-    remove-item -force (join-path $env:ChocolateyInstall  "bin/winget.exe")
+    
+    if($env:ChocolateyInstall){
+        $pathOfWingetShimFile = (join-path $env:ChocolateyInstall  "bin/winget.exe")
+        if(Test-Path -LiteralPath $pathOfWingetShimFile -PathType leaf){
+            write-host "removing existing winget shim file at '$($pathOfWingetShimFile)'."
+            remove-item -force (join-path $env:ChocolateyInstall  "bin/winget.exe")
+        }
+    }
     
     choco upgrade --yes --acceptlicense  --exact winget
 
