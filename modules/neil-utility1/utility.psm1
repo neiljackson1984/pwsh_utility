@@ -5163,9 +5163,15 @@ Function Install-Winget {
     pwsh        -c {Add-AppxPackage -RegisterByFamilyName -MainPackage Microsoft.DesktopAppInstaller_8wekyb3d8bbwe}
     powershell  -c {Add-AppxPackage -RegisterByFamilyName -MainPackage Microsoft.Winget.Source_8wekyb3d8bbwe}
     pwsh        -c {Add-AppxPackage -RegisterByFamilyName -MainPackage Microsoft.Winget.Source_8wekyb3d8bbwe}
-    $pathOfSourceMsix = (downloadFileAndReturnPath "https://cdn.winget.microsoft.com/cache/source.msix")
-    powershell  -c "Add-AppxPackage '$($pathOfSourceMsix)'"
-    pwsh        -c "Add-AppxPackage '$($pathOfSourceMsix)'"
+    
+    $pathOfTemporaryDirectory = New-TemporaryDirectory
+    $pathOfSourceMsixFile = (join-path $pathOfTemporaryDirectory "source.msix")
+    Invoke-WebRequest -Uri "https://cdn.winget.microsoft.com/cache/source.msix" -OutFile $pathOfSourceMsixFile
+
+    
+
+    powershell  -c "Add-AppxPackage '$($pathOfSourceMsixFile)'"
+    pwsh        -c "Add-AppxPackage '$($pathOfSourceMsixFile)'"
     # see (https://github.com/microsoft/winget-cli/issues/3303)
     # see (https://www.pc-tips.info/en/tips/windows-tips/failed-in-attempting-to-update-the-source-winget/)
 
