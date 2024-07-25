@@ -5054,7 +5054,10 @@ Set-Alias Install-WingetOnWindows10 Install-Winget
 Function Install-Winget {
     <#
     .SYNOPSIS
-    # install ( or upgrade ) winget on windows server 2019 or windows 10 
+    Install ( or upgrade ) winget on the widest range of machines (including
+    hopefully windows server 2019 or windows 10 ), inlcuding the powershell
+    module Microsoft.Winget.Client, including some functionality even when
+    running under the SYSTEM account.
 
     Trying ewverything we can in order to end up with a working installation of
     winget (and the powershell module Microsoft.Winget.Client)
@@ -5103,11 +5106,13 @@ Function Install-Winget {
 
 
     # add "winget" to the path:
-    gi (join-path $env:ProgramFiles "WindowsApps/Microsoft.DesktopAppInstaller_*_x64__8wekyb3d8bbwe") | 
-    ? {$_.PSIsContainer} |
-    % {
-        TAKEOWN /F $_ /R /A /D Y
-        ICACLS $_ /grant Administrators:F /T
+    if($true){
+        gi -force (join-path $env:ProgramFiles "WindowsApps/Microsoft.DesktopAppInstaller_*_x64__8wekyb3d8bbwe") | 
+        ? {$_.PSIsContainer} |
+        % {
+            TAKEOWN /F $_ /R /A /D Y
+            ICACLS $_ /grant Administrators:F /T
+        }
     }
 
     gci -force -recurse (join-path $env:ProgramFiles "WindowsApps/Microsoft.DesktopAppInstaller_*_x64__8wekyb3d8bbwe") -filter "winget.exe" |
@@ -5126,7 +5131,7 @@ Function Install-Winget {
     # see (https://github.com/microsoft/winget-cli/issues/1627)
     Install-PSResource -Name "Microsoft.WinGet.Client" -AcceptLicense -TrustRepository  -Repository PSGallery  -Scope AllUsers
 
-    ##&{# copied with slight adaptation from (https://learn.microsoft.com/en-us/windows/package-manager/winget/#install-winget-on-windows-sandbox): 
+    ## &{# copied with slight adaptation from (https://learn.microsoft.com/en-us/windows/package-manager/winget/#install-winget-on-windows-sandbox): 
     ##    $pathOfTemporaryDirectory = New-TemporaryDirectory
     ##    @(
     ##    
@@ -5147,12 +5152,27 @@ Function Install-Winget {
     ##        Invoke-WebRequest -Uri $_.uri -OutFile (join-path $pathOfTemporaryDirectory $_.filename)
     ##        powershell -c "Add-AppxPackage '$(join-path $pathOfTemporaryDirectory $_.filename)'"
     ##    }
-    ##}
+    ## }
 
-    powershell -c {Add-AppxPackage -RegisterByFamilyName -MainPackage Microsoft.DesktopAppInstaller_8wekyb3d8bbwe}
+    ##powershell -c {Add-AppxPackage -RegisterByFamilyName -MainPackage Microsoft.DesktopAppInstaller_8wekyb3d8bbwe}
+    
+    ##powershell -c {Add-AppxPackage -MainPackage Microsoft.DesktopAppInstaller_8wekyb3d8bbwe}
+    ##pwsh -c {Add-AppxPackage -MainPackage Microsoft.DesktopAppInstaller_8wekyb3d8bbwe}
+    
+    powershell  -c {Add-AppxPackage -RegisterByFamilyName -MainPackage Microsoft.DesktopAppInstaller_8wekyb3d8bbwe}
+    pwsh        -c {Add-AppxPackage -RegisterByFamilyName -MainPackage Microsoft.DesktopAppInstaller_8wekyb3d8bbwe}
+    powershell  -c {Add-AppxPackage -RegisterByFamilyName -MainPackage Microsoft.Winget.Source_8wekyb3d8bbwe}
+    pwsh        -c {Add-AppxPackage -RegisterByFamilyName -MainPackage Microsoft.Winget.Source_8wekyb3d8bbwe}
+    $pathOfSourceMsix = (downloadFileAndReturnPath "https://cdn.winget.microsoft.com/cache/source.msix")
+    powershell  -c "Add-AppxPackage '$($pathOfSourceMsix)'"
+    pwsh        -c "Add-AppxPackage '$($pathOfSourceMsix)'"
+    # see (https://github.com/microsoft/winget-cli/issues/3303)
+    # see (https://www.pc-tips.info/en/tips/windows-tips/failed-in-attempting-to-update-the-source-winget/)
 
     Repair-WinGetPackageManager  -allusers -IncludePreRelease -Latest -Force
-    ##Repair-WinGetPackageManager   -IncludePreRelease -Latest -Force
+    Repair-WinGetPackageManager   -IncludePreRelease -Latest -Force
+    Repair-WinGetPackageManager  -allusers 
+    Repair-WinGetPackageManager  
 
     ##Install-PSResource -Name "Microsoft.WinGet.Client" -AcceptLicense -TrustRepository  -Repository PSGallery -Scope CurrentUser
 
@@ -5167,9 +5187,12 @@ Function Install-Winget {
         & $_ list --accept-source-agreements | out-null
         & $_ source reset --force
         "y" | & $_ list  | out-null 
+        "y" | & $_ list --accept-source-agreements   | out-null 
+        "y" | & $_ search Microsoft.Office   | out-null 
+        "y" | & $_ search Microsoft.Office  --accept-source-agreements | out-null 
     }
 
-    Get-WinGetSource |% {Reset-WinGetSource -Name $_.Name}
+    ## Get-WinGetSource |% {Reset-WinGetSource -Name $_.Name}
 
 
 }
