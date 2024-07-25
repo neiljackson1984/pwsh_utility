@@ -5129,7 +5129,7 @@ Function Install-Winget {
 
     # see (https://www.reddit.com/r/PowerShell/comments/18lxtfo/run_winget_from_a_central_point_on_many_machines/)
     # see (https://github.com/microsoft/winget-cli/issues/1627)
-    Install-PSResource -Name "Microsoft.WinGet.Client" -AcceptLicense -TrustRepository  -Repository PSGallery  -Scope AllUsers
+    pwsh  -c {Install-PSResource -Name "Microsoft.WinGet.Client" -AcceptLicense -TrustRepository  -Repository PSGallery  -Scope AllUsers}
 
     ## &{# copied with slight adaptation from (https://learn.microsoft.com/en-us/windows/package-manager/winget/#install-winget-on-windows-sandbox): 
     ##    $pathOfTemporaryDirectory = New-TemporaryDirectory
@@ -5169,10 +5169,10 @@ Function Install-Winget {
     # see (https://github.com/microsoft/winget-cli/issues/3303)
     # see (https://www.pc-tips.info/en/tips/windows-tips/failed-in-attempting-to-update-the-source-winget/)
 
-    Repair-WinGetPackageManager  -allusers -IncludePreRelease -Latest -Force
-    Repair-WinGetPackageManager   -IncludePreRelease -Latest -Force
-    Repair-WinGetPackageManager  -allusers 
-    Repair-WinGetPackageManager  
+    pwsh  -c {Repair-WinGetPackageManager  -allusers -IncludePreRelease -Latest -Force}
+    pwsh  -c {Repair-WinGetPackageManager   -IncludePreRelease -Latest -Force}
+    pwsh  -c {Repair-WinGetPackageManager  -allusers }
+    pwsh  -c {Repair-WinGetPackageManager  }
 
     ##Install-PSResource -Name "Microsoft.WinGet.Client" -AcceptLicense -TrustRepository  -Repository PSGallery -Scope CurrentUser
 
