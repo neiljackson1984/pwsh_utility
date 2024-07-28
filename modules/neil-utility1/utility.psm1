@@ -4431,7 +4431,7 @@ function publishFile {
     $a.Query += "$($a.Query ? '&' : '')download=1"
 
     # The "x-name" query parameter is my own invention (and hopefully is ignored by sharepoint).  It is purely annotative, meant for the human that might read the url.
-    $a.Query += "$($a.Query ? '&' : '')x-name=$([System.Web.HttpUtility]::UrlEncode($strongFilename))"
+    $a.Query += "$($a.Query ? '&' : '')x-name=$([System.Web.HttpUtility]::UrlPathEncode($strongFilename))"
 
     # perhaps see [https://learn.microsoft.com/en-us/microsoft-365/community/query-string-url-tricks-sharepoint-m365]
 
