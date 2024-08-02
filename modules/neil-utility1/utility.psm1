@@ -1978,11 +1978,12 @@ function setSmtpAddressesOfMailbox
 function grantUserAccessToMailbox(
     $idOfUserToBeGrantedAccess, 
     $idOfMailbox, 
-    $sendInstructionalMessageToUsersThatHaveBeenGrantedAccess=$False, 
-    $emailAccountForSendingAdvisoryMessages="neil@autoscaninc.com", 
-    $dummyAddressForAdvisoryMessages="administrator@autoscaninc.com",
-    $sendAdvisoryMessageToDummyAddressInsteadOfRealRecipientAddress=$False,
-    $createInboxRuleToRedirect=$False
+    [switch] $sendInstructionalMessageToUsersThatHaveBeenGrantedAccess=$False, 
+    [string] $emailAccountForSendingAdvisoryMessages="neil@autoscaninc.com", 
+    [string] $dummyAddressForAdvisoryMessages="administrator@autoscaninc.com",
+    [switch] $sendAdvisoryMessageToDummyAddressInsteadOfRealRecipientAddress=$False,
+    [switch] $createInboxRuleToRedirect=$False,
+    [switch] $automapping = $false
 ){
 
 
@@ -1992,8 +1993,10 @@ function grantUserAccessToMailbox(
     Write-Host "now giving the user $($mgUserToBeGrantedAccess.UserPrincipalName) full access to the mailbox $($mailbox.PrimarySmtpAddress)."
 
     Remove-MailboxPermission -Identity $mailbox.Id   -User    $mgUserToBeGrantedAccess.Id -AccessRights FullAccess -Confirm:$false -ErrorAction SilentlyContinue
-    # we first remove any existing permission, as a way (apparently, this is the only way) to be sure that Automapping is turned off
-    Add-MailboxPermission    -Identity $mailbox.Id   -User    $mgUserToBeGrantedAccess.Id -AccessRights FullAccess -Automapping:$false 
+    <#     we first remove any existing permission, as a way (apparently, this is the
+    only way) to set the value of the Automapping property (we can't read the
+    current value of automapping) #>
+    Add-MailboxPermission    -Identity $mailbox.Id   -User    $mgUserToBeGrantedAccess.Id -AccessRights FullAccess -Automapping:$automapping
     Add-RecipientPermission  -Identity $mailbox.Id   -Trustee $mgUserToBeGrantedAccess.Id -AccessRights SendAs  -confirm:$false
 
     if($createInboxRuleToRedirect){
