@@ -1,7 +1,8 @@
 
 Import-Module (join-path $psScriptRoot "utility.psm1")
 Import-Module (join-path $psScriptRoot "connect_to_office_365.psm1")
-Import-Module (join-path $psScriptRoot "softether_vpn.psm1")
+Import-Module (join-path $psScriptRoot "softethervpn.psm1")
+Import-Module (join-path $psScriptRoot "openvpn.psm1")
 
 function initializeUser {
     [CmdletBinding()]

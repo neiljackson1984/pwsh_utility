@@ -76,7 +76,7 @@ function Connect-SoftEtherVpn {
             # Adapter, disconnect that VPN Connection Setting.
 
             # Write-Host "disconnecting from all existing softether vpn connections"
-            Disconnect-SoftEtherAllVpnConnections
+            Disconnect-SoftEtherVpnAllConnections
 
             # we might, alternatively, consider creating a new softether virtual
             # nic and setting the connection to use that nic.
@@ -88,8 +88,8 @@ function Connect-SoftEtherVpn {
 
 }
 
-set-alias  disconnectAllVpnConnections Disconnect-SoftEtherAllVpnConnections
-function Disconnect-SoftEtherAllVpnConnections {
+set-alias  disconnectAllVpnConnections Disconnect-SoftEtherVpnAllConnections
+function Disconnect-SoftEtherVpnAllConnections {
     <#
     .SYNOPSIS
     Disconnects all existing Softether VPN connections
