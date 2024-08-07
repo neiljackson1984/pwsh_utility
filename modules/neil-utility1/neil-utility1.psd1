@@ -24,6 +24,7 @@
         "autocad-control.psm1"
         "web_request_session_with_firefox_cookies.psm1"
         "sharepoint_public_transfer.psm1"
+        "softether_vpn.psm1"
     )
 
 
