@@ -1,5 +1,5 @@
 
-
+$pathOfOpenVpnGuiConfigurationDirectory = (join-path (resolve-path  "~") "OpenVPN/config")
 
 function Install-OpenVpnDependencies {
     <# 
@@ -71,7 +71,7 @@ function Connect-OpenVpn {
 
 
     
-    $pathOfOpenVpnGuiConfigurationDirectory = (join-path (resolve-path  "~") "OpenVPN/config")
+    
 
     $bitwardenItem = Get-BitwardenItem $bitwardenItemId
     $bitwardenAttachment = $(
@@ -109,15 +109,8 @@ function Connect-OpenVpn {
         }
     )
 
-    $pathOfTemporaryConfigurationDirectory = new-temporaryDirectory
-    ##write-host "contentOfAttachedFile: $($contentOfAttachedFile)"
     $tempPathOfOvpnConfigurationFile = join-path $env:temp "$(new-guid).ovpn"
 
-
-
-    
-    ## Set-Content -Path $tempPathOfOvpnConfigurationFile -Value $contentOfAttachedFile
-    
     Set-Content -Path $tempPathOfOvpnConfigurationFile -Value $(
         ## $contentOfAttachedFile
     
@@ -155,33 +148,104 @@ function Connect-OpenVpn {
     )
 
     $sha256HashOfOvpnConfigurationFile = Get-FileHash -Algorithm SHA256 -Path $tempPathOfOvpnConfigurationFile | % {$_.Hash.ToLower()}
-    $desiredFilenameOfOpenVpnConfigurationFile = "$($sha256HashOfOvpnConfigurationFile).ovpn"
     $desiredFilenameOfOpenVpnConfigurationFile = "$($bitwardenAttachment.fileName)--$($sha256HashOfOvpnConfigurationFile).ovpn"
+    $pathOfOurOvpnConfigurationFile =  join-path $pathOfOpenVpnGuiConfigurationDirectory $desiredFilenameOfOpenVpnConfigurationFile
+    write-host "pathOfOurOvpnConfigurationFile: $($pathOfOurOvpnConfigurationFile)"
     
+    $openvpnGuiWasAlreadyRunning = [boolean] $(Get-Process -Name "openvpn-gui" 2>$null)
+    $ovpnConfigurationFileAlreadyExisted = (test-path $pathOfOurOvpnConfigurationFile)
+    write-host "openvpnGuiWasAlreadyRunning: $($openvpnGuiWasAlreadyRunning)"
+    write-host "ovpnConfigurationFileAlreadyExisted: $($ovpnConfigurationFileAlreadyExisted)"
 
-    ##$pathOfOvpnConfigurationFile =  join-path $pathOfTemporaryConfigurationDirectory $desiredFilenameOfOpenVpnConfigurationFile
-    $pathOfOvpnConfigurationFile =  join-path $pathOfOpenVpnGuiConfigurationDirectory $desiredFilenameOfOpenVpnConfigurationFile
+    <#  we regardthe collection of ovpn configuration files in
+        $pathOfOpenVpnGuiConfigurationDirectory as being a set of openvpn
+        connections that we want to have connected.   If openvpn-gui is not
+        running, we regard this set of configuration files as completely stale
+        and delete them all before proceeding.  
+
+        This strategy is a bit of a hack to work around the fact that I have no
+        (currently usable) way to check which vpn configuration files are
+        currently connected, and also to work around the fact that openvpn-gui
+        doesn't seem to automatically detect the arrival of a new ovpn
+        configuration file in the openvpn configuration directory (it seems that
+        openvpn-gui scans for new files only when being launched, and in
+        response to certain button clicks in the gui interface.  If we put a new
+        ovpn file, xxx.ovpn, into the openvpn configuration directory and then
+        immediately run `openvpn-gui --command connect xxx.ovpn`, openvpn-gui
+        will not connect, presumably because it does not recognize that such a
+        file exists.)
+    #>
+
+    if($openvpnGuiWasAlreadyRunning -and (-not $ovpnConfigurationFileAlreadyExisted)){
+        <#  openvpn-gui is already running, but does not know about the
+            configuration file '$($pathOfOurOvpnConfigurationFile)', so we will
+            kill openvpn-gui before proceeding (because that's the only way to
+            make openvpn-gui recognize the new configuration file.).
+
+            We assume that all ovpn configuration files currently in the openvpn
+            configuration directory are vpn connections that are currently open
+            (and which we want to continue to be open when we finish here).
+        #>
+        
+        
+        write-host (-join@(
+            "openvpn-gui is already running, but does not know about"
+            " the configuration file '$($pathOfOurOvpnConfigurationFile)', so"
+            " we will kill openvpn-gui before proceeding (because that's the"
+            " only way to make openvpn-gui recognize the new configuration file.)"
+        ))
+        
+        openvpn-gui --command "disconnect_all" ;  start-sleep 20; openvpn-gui --command "exit"   ;  start-sleep 3
+        "openvpn.exe","openvpn-gui.exe" |% {taskkill /t /f /im $_ 2>$null}
+    } 
     
-    NEw-Item -ItemType Directory -force -path (split-path -parent $pathOfOvpnConfigurationFile) | out-null
-    Move-Item -force  $tempPathOfOvpnConfigurationFile $pathOfOvpnConfigurationFile
-    
-    
+    if(-not $openvpnGuiWasAlreadyRunning){
 
-    write-host "pathOfOvpnConfigurationFile: $($pathOfOvpnConfigurationFile)"
+        write-host (-join@(
+            "openvpn-gui is not already running.  We will  delete all"
+            " openvpn configuration files before proceeding."
+        ))
 
+        gci -force -recurse -file -Path $pathOfOpenVpnGuiConfigurationDirectory -filter "*.ovpn" 2>$null |
+        %{
+            remove-item -force -Path $_
+        }
+    }
+    New-Item -ItemType Directory -force -path $pathOfOpenVpnGuiConfigurationDirectory | out-null
 
+    New-Item -ItemType Directory -force -path (split-path -parent $pathOfOurOvpnConfigurationFile) | out-null
+    Move-Item -force  $tempPathOfOvpnConfigurationFile $pathOfOurOvpnConfigurationFile
 
-    ##openvpn --config $pathOfOvpnConfigurationFile --client --auth-user-pass $pathOfUsernamePasswordFile
-    ##openvpn-gui 
-    # ensure that openvpn-gui is running, so that the below command will not block.
-    ##openvpn-gui @("--command";"connect";"bogusbogusbogus")
+    foreach($pathOfOvpnConfigurationFile in  @(
+        gci -force -recurse -file -Path $pathOfOpenVpnGuiConfigurationDirectory -filter "*.ovpn"
+    )){
+        write-host  "now working on '$($pathOfOvpnConfigurationFile)'."
+        $openvpnGuiProcess = @{
+            Wait         = $false
+            FilePath     = "openvpn-gui"
+            ArgumentList = @(
+                "--command";"silent_connection";"1"
+            )
+            PassThru = $True
+            NoNewWindow = $true
 
-    ##start-sleep 30
-    ##openvpn-gui @("--command"; "status"; (split-path -leaf $pathOfOvpnConfigurationFile))
-    
+        } |% {Start-Process @_}
+        
+        $openvpnGuiProcess = @{
+            Wait         = $false
+            FilePath     = "openvpn-gui"
+            ArgumentList = @(
+                "--command";"silent_connection";"1"
+                "--command";"connect";(split-path -leaf $pathOfOvpnConfigurationFile)
+                ##"--connect"; (split-path -leaf $pathOfOvpnConfigurationFile)
+            )
+            PassThru = $True
+            NoNewWindow = $true
 
+        } |% {Start-Process @_}
+        write-host "finished invocation of openvpn-gui (process id: $($openvpnGuiProcess.Id))."
+    }
 
-    ## openvpn-gui @("--command"; "import"; "$($pathOfOvpnConfigurationFile)")
 
     <# For reasons that I have, as of 2024-08-08-1709, yet to understand, in the
         case where some other OpenVPN-gui-controlled OpenVPN connection is
@@ -191,18 +255,15 @@ function Connect-OpenVpn {
         needs some kick (and merely waiting 30 seconds seems to be insufficient)
         in order to realize that this newly-created file exists.
     #>
-    openvpn-gui @(
-        ##"--connect" ; $pathOfOvpnConfigurationFile
-
-        ## "--config_dir"; (split-path -parent $pathOfOvpnConfigurationFile)
-        ## "--connect" ; (split-path -leaf $pathOfOvpnConfigurationFile)
-
-        "--command"; "connect"; (split-path -leaf $pathOfOvpnConfigurationFile)
-    )
+    ## openvpn-gui @(
+    ##     ##"--connect" ; $pathOfOurOvpnConfigurationFile
+    ## 
+    ##     ## "--config_dir"; (split-path -parent $pathOfOurOvpnConfigurationFile)
+    ##     ## "--connect" ; (split-path -leaf $pathOfOurOvpnConfigurationFile)
+    ## 
+    ##     "--command"; "connect"; (split-path -leaf $pathOfOurOvpnConfigurationFile)
+    ## )
     
-
-
-    write-host "finished invoking openvpn-gui."
 
     # see (https://openvpn.net/community-resources/)
     #
@@ -225,9 +286,17 @@ function Disconnect-OpenVpnAllConnections {
     )
 
 
-    openvpn-gui --command "disconnect_all" ;  start-sleep 20; openvpn-gui --command "exit"   
+    openvpn-gui --command "disconnect_all" ;  start-sleep 20; openvpn-gui --command "exit"   ;  start-sleep 3
+    "openvpn.exe","openvpn-gui.exe" |% {taskkill /t /f /im $_ 2>$null}
 
-    ## get-process "openvpn","openvpn-gui" |% {taskkill /t /f /PID $_.id}
+    write-host (-join@(
+        "deleting all"
+        " openvpn configuration files."
+    ))
     
+    gci -force -recurse -file -Path $pathOfOpenVpnGuiConfigurationDirectory -filter "*.ovpn" 2>$null |
+    %{
+        remove-item -force -Path $_
+    }
 
 }
