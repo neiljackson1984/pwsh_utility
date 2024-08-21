@@ -594,7 +594,7 @@ function getDcSession {
 
     if (-not $DisableAutomaticVpnConnection){
         if($($companyParameters['vpn'])){
-            write-host "attempting to connect to vpn specified by  '$($companyParameters['vpn'])'. "
+            write-host "attempting to connect to vpn specified by '$($companyParameters['vpn'])'. "
             Connect-OpenVpn -bitwardenItemId $($companyParameters['vpn'])
         } elseif ($companyParameters['nameOfSoftetherVpnConnectionNeededToTalkToDomainController']){
             write-host "ensuring connection to vpn '$($companyParameters['nameOfSoftetherVpnConnectionNeededToTalkToDomainController'])'. "

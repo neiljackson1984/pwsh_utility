@@ -2850,7 +2850,7 @@ function downloadFileAndReturnPath {
             curl @(
                 # "--progress-bar"
                 "--remote-name"
-                # "--verbose"
+                ## "--verbose"
 
                 "--remote-header-name"
 
@@ -4379,6 +4379,11 @@ function publishFile {
         $countOfBytesUploaded = 0
         
         # get-content is quite slow, I think compared to lower-level file stream operations.
+
+        # [System.Net.Http.StreamContent] might be a way to pass streaming input to Invoke-WebRequest.
+        #
+        # We  might also use curl instead of Invoke-WebRequest
+
 
         Get-Content -AsByteStream -ReadCount $sliceSize $pathOfFile |
         % {
