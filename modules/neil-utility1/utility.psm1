@@ -3638,7 +3638,7 @@ function reportDrives(){
 }
 
 function Disable-UserAccountControl {
-    Set-ItemProperty "HKLM:\SOFTWARE\Microsoft\Windows\CurrentVersion\Policies\System" -Name "ConsentPromptBehaviorAdmin" -Value 00000000
+    Set-ItemProperty "HKLM:\SOFTWARE\Microsoft\Windows\CurrentVersion\Policies\System" -Name "ConsentPromptBehaviorAdmin" -Value 0 -Type DWord
     Write-Host "User Account Control (UAC) has been disabled." -ForegroundColor Green    
 }
 # Set-Alias Disable-UserAccessControl Disable-UserAccountControl
@@ -3670,7 +3670,25 @@ ${function:Disable-UserAccessControl} = [Scriptblock]::Create(${function:Disable
 #>
 
 function Enable-UserAccountControl {
-    Remove-ItemProperty "HKLM:\SOFTWARE\Microsoft\Windows\CurrentVersion\Policies\System" -Name "ConsentPromptBehaviorAdmin"  -force:$true
+    <#  see
+        (https://learn.microsoft.com/en-us/windows/security/application-security/application-control/user-account-control/settings-and-configuration?tabs=intune)
+    #>
+
+    @(
+        "ConsentPromptBehaviorAdmin"  
+        "ConsentPromptBehaviorUser" 
+        "EnableInstallerDetection"
+        "EnableLUA"  
+        "EnableSecureUIAPaths"
+        "EnableUIADesktopToggle"
+        "EnableVirtualization"
+        "FilterAdministratorToken"
+        "PromptOnSecureDesktop"
+        "ValidateAdminCodeSignatures"
+    ) |% {
+        Remove-ItemProperty "registry::HKLM\SOFTWARE\Microsoft\Windows\CurrentVersion\Policies\System" -force:$true -Name $_
+    }
+
     Write-Host "User Account Control (UAC) has been enabled (or more accurately: reset to default)." -ForegroundColor Green    
 }
 # Set-Alias Enable-UserAccessControl Enable-UserAccountControl 
