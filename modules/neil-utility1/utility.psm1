@@ -5659,3 +5659,155 @@ function getParentInterfaces([System.Type]  $type){
 
     return $parentInterfaces
 }
+
+
+
+
+
+function Get-SelfElevatingScriptBlock {
+    <#
+    .DESCRIPTION
+    Generates and returns a modified version of $inputScriptBlock which will elevate itself.
+
+    #>
+    [OutputType([ScriptBlock])]
+    [CmdletBinding()]
+    param(
+        [String] $inputScriptBlock
+    )
+
+
+
+
+    $elevatingPreamble  =  {
+
+        # elevate thineself:
+
+        if (
+            (
+                [Security.Principal.WindowsPrincipal] [Security.Principal.WindowsIdentity]::GetCurrent()
+            ).IsInRole(
+                ([Security.Principal.WindowsBuiltInRole] "Administrator")
+            )
+        ) {
+            Write-Host "We are already elevated"
+        } else {  
+            Write-Host "We are not elevated.  Attempting to re-launch this script with an elevated token."
+            ## Write-Host "`$myinvocation.mycommand.definition: $($myinvocation.mycommand.definition)"
+            
+            if($false){
+                @{
+                    FilePath = [Diagnostics.Process]::GetCurrentProcess().Path
+                    Verb     = "RunAs"
+                    ArgumentList =  @(
+                        "-noexit"
+                        "-EncodedCommand"
+                        (Get-EncodedPowershellCommand $myinvocation.mycommand.definition)
+                    )
+                    Wait = $true
+                } |% {Start-Process @_}
+
+                # this will fail for long script blocks that exceed the allowed command line length.
+            }
+
+            if($false){
+                @{
+                    RunAsAdministrator = $True
+                    ScriptBlock        = [ScriptBlock]::Create($myinvocation.mycommand.definition)
+                    ComputerName       = "localhost"
+                } |% {Invoke-Command @_}
+
+                # it looks like -RunAsAdministrator is specific to containers --
+                # this is not the answer.
+            }
+
+            $pathOfTemporaryScriptFile = (join-path $env:temp "$(new-guid).ps1")
+
+            ## $myinvocation.mycommand.definition | Out-File -FilePath $pathOfTemporaryScriptFile -Encoding UTF8
+            <#  We are blindly assuming that $myInvocation.myCommand is a
+                scriptblock (i.e. has $_.CommandType -eq "Script") rather than a
+                script file (i.e. has $_.CommandType -eq "ExternalScript").
+
+                We ought to handle both cases.
+
+                One potential way to do this is to use
+                $myinvocation.mycommand.ScriptBlock rather than
+                $myinvocation.mycommand.Definition.
+
+                I think the "ScriptBlock" property  is a script block regardless
+                of whether $_.CommandType is "Script" or "ExternalScript".
+
+                It might be good to have some kind of guard against an infinite
+                loop, in case the start-process call, below, somehoe manages to
+                start the process without an eleveated token.
+            #>
+
+            $myinvocation.mycommand.ScriptBlock | Out-File -FilePath $pathOfTemporaryScriptFile -Encoding UTF8 | out-null
+
+            @{
+                FilePath = [Diagnostics.Process]::GetCurrentProcess().Path
+                Verb     = "RunAs"
+                ArgumentList =  @(
+                    ##"-noexit"
+                    "-ExecutionPolicy"; "Bypass"
+                    "-File"
+                    $pathOfTemporaryScriptFile 
+                )
+                Wait = $true
+            } |% {Start-Process @_}
+
+            write-host "finished attempt to run the script with an elevated token."
+
+            return
+        } 
+    }
+
+    $outputScriptBlock = [ScriptBlock]::Create((@(
+        $elevatingPreamble
+        $inputScriptBlock
+    ) -join "`n"))
+
+    return $outputScriptBlock
+
+}
+
+function Get-SelfElevatingOneLiner {
+    <#
+    .DESCRIPTION
+    Generates and returns a oneliner, suitable foir pasting into most
+    Windows shells, that will run the specified scriptblock with elevation.
+
+    #>
+    [OutputType([ScriptBlock])]
+    [CmdletBinding()]
+    param(
+        [String] $inputScriptBlock
+    )
+
+    $encodedCommand = &{
+        $inputScriptBlock |
+        % {Get-SelfElevatingScriptBlock $_} |
+        % {Compress-ScriptBlock $_} |
+        % {Get-EncodedPowershellCommand $_} |
+        write-output
+    }
+
+    <# `Compress-ScriptBlock` comes from the PSMinifier package:
+        ```
+        Install-PSResource -Repository  PSGallery -Name PSMinifier -Version 1.1.3
+        ```
+    
+    #>
+
+    $powershellExecutable = "pwsh"
+    <# We might be more intelligent about finding a maximally-likely-to-work
+    powershell executable name.  At the moment, I am simply hardcoding the
+    name, and we are blindly assuming that some reasonable version of
+    powershell will be invocable in the shell that the user pastes the
+    oneLiner into. #>
+
+    $oneLiner = "$($powershellExecutable) -EncodedCommand $($encodedCommand)"
+
+    return $oneLiner
+}
+
