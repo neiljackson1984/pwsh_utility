@@ -3785,7 +3785,8 @@ function getStronglyNamedPath {
     [string] $hash = (Get-FileHash -Algorithm "SHA256" -Path $path).Hash.Trim().ToLower()
 
     $delimeter = "--"
-    $desiredNamePattern = "(?-i)^.*$($delimeter)$($hash)(\.[^\.]*)?`$"
+    ##$desiredNamePattern = "(?-i)^.*$($delimeter)$($hash)(\.[^\.]*)?`$"
+    $desiredNamePattern = "(?-i)^(.*$($delimeter))?$($hash)(\.[^\.]*)?`$"
     $initialName = [System.IO.Path]::GetFileName($path)
 
     $naiveStrongName = (@(
@@ -5811,3 +5812,85 @@ function Get-SelfElevatingOneLiner {
     return $oneLiner
 }
 
+function Get-HostedOneLiner  {
+    <#
+        .DESCRIPTION
+        Generates and returns a oneliner, suitable foir pasting into most
+        Windows shells, that will run the specified scriptblock.
+
+        This publishes the script block as a file.   The returned one-liner
+        downloads and invokes the file.
+
+    #>
+    [OutputType([ScriptBlock])]
+    [CmdletBinding()]
+    param(
+        [String] $inputScriptBlock,
+
+        [Switch] $selfElevate = $false
+    )
+
+
+    $pathOfTemporaryFile  =  New-TemporaryFile
+    Set-Content -Path $pathOfTemporaryFile -Value $(
+        if($selfElevate){
+            Get-SelfElevatingScriptBlock $inputScriptBlock
+        } else {
+            $inputScriptBlock
+        }
+    )
+
+    $pathOfStrongNamedScriptFile = (join-path (new-temporarydirectory) "$(get-filehash -algorithm sha256 -path $pathOfTemporaryFile |% {$_.hash.ToLower()})" )
+    Copy-Item $pathOfTemporaryFile $pathOfStrongNamedScriptFile
+    $longUrlOfScriptFile = publishFile $pathOfStrongNamedScriptFile
+
+    Remove-Item $pathOfStrongNamedScriptFile
+    Remove-Item $pathOfTemporaryFile
+    ##$urlOfScriptFile = $longUrlOfScriptFile
+    
+    # see (https://app.bitly.com/settings/api)
+    #
+    # see (https://dev.bitly.com/api-reference/#createBitlink)
+    $bitlyApiToken = "dec7408cd56324304985f61b5899884086ef6feb"
+    $response = @{
+        Uri            = "https://api-ssl.bitly.com/v4/shorten"
+        Method         = "POST"
+        Authentication = "Bearer"
+        Token          = (ConvertTo-SecureString $bitlyApiToken -AsPlainText -Force  )
+        ContentType    = "application/json"
+        Body           = @{
+            long_url = $longUrlOfScriptFile
+        } | ConvertTo-Json -depth 50
+    } |% {Invoke-WebRequest @_}
+    $responseData = $response.Content | ConvertFrom-Json -depth 50 -ashashtable
+    $shortUrlOfScriptFile = $responseData.link
+
+    ## $urlOfScriptFile = $longUrlOfScriptFile
+    $urlOfScriptFile = $shortUrlOfScriptFile ?? $longUrlOfScriptFile
+
+
+
+    
+    ## $onelinerToDownloadAndInvokeTheScript = "powershell -c `"Set-ExecutionPolicy Bypass -Scope Process -Force;iex (Invoke-WebRequest '$($urlOfScriptFile)')`"" 
+    ## $onelinerToDownloadAndInvokeTheScript = "powershell -ExecutionPolicy Bypass -c `"Invoke-WebRequest '$($urlOfScriptFile)' | iex`"" 
+    ## $onelinerToDownloadAndInvokeTheScript = "powershell -ExecutionPolicy Bypass -c `" iex (Invoke-WebRequest '$($urlOfScriptFile)')`"" 
+    ## $onelinerToDownloadAndInvokeTheScript = "powershell -ExecutionPolicy Bypass -c `"iex (Invoke-WebRequest '$($urlOfScriptFile)')`"" 
+    ## $onelinerToDownloadAndInvokeTheScript = "powershell -ExecutionPolicy Bypass -c `"iwr '$($urlOfScriptFile)' | iex`""     
+    ## $onelinerToDownloadAndInvokeTheScript = "powershell -ex Bypass -c `"iwr '$($urlOfScriptFile)' | iex`"" 
+    ## $onelinerToDownloadAndInvokeTheScript = "powershell -ex $( [Microsoft.PowerShell.ExecutionPolicy]::Bypass ) -c `"iwr '$($urlOfScriptFile)' | iex`"" 
+    ## $onelinerToDownloadAndInvokeTheScript = "powershell -ex $( [long] [Microsoft.PowerShell.ExecutionPolicy]::Bypass ) -c `"iwr '$($urlOfScriptFile)' | iex`"" 
+    ## $onelinerToDownloadAndInvokeTheScript = "powershell -ex $( [long] [Microsoft.PowerShell.ExecutionPolicy]::Unrestricted ) -c `"iwr '$($urlOfScriptFile)' | iex`"" 
+
+    ##$quotedUrl = $(if($urlOfScriptFile.Contains('&') ){"'$($urlOfScriptFile)'"}else {"$($urlOfScriptFile)"})
+
+
+    ## $onelinerToDownloadAndInvokeTheScript = "powershell -ex $( [long] [Microsoft.PowerShell.ExecutionPolicy]::Unrestricted ) -c `"iex(iwr '$($urlOfScriptFile)')`"" 
+    $onelinerToDownloadAndInvokeTheScript = "powershell -ex $( [long] [Microsoft.PowerShell.ExecutionPolicy]::Unrestricted ) -en $(Get-EncodedPowershellCommand "iex(iwr '$($urlOfScriptFile)')")" 
+
+    ## $unencodedCommand = "Set-ExecutionPolicy $( [long] [Microsoft.PowerShell.ExecutionPolicy]::Unrestricted ) $( [long] [Microsoft.PowerShell.ExecutionPolicyScope]::Process ) -f;iex(iwr '$($urlOfScriptFile)')"
+    ## write-host "unencodedCommand:  $($unencodedCommand)"
+    ## $onelinerToDownloadAndInvokeTheScript = "powershell -en $(Get-EncodedPowershellCommand $unencodedCommand)" 
+
+    return $onelinerToDownloadAndInvokeTheScript 
+    
+}
