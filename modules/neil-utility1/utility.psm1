@@ -5891,7 +5891,15 @@ function Get-HostedOneLiner  {
 
     ## $onelinerToDownloadAndInvokeTheScript = "powershell -ex $( [long] [Microsoft.PowerShell.ExecutionPolicy]::Unrestricted ) -c `"iex(iwr '$($urlOfScriptFile)')`"" 
     ## $onelinerToDownloadAndInvokeTheScript = "powershell -ex $( [long] [Microsoft.PowerShell.ExecutionPolicy]::Unrestricted ) -en $(Get-EncodedPowershellCommand "iex(iwr '$($urlOfScriptFile)')")" 
-    $onelinerToDownloadAndInvokeTheScript = "powershell -ex $( [long] [Microsoft.PowerShell.ExecutionPolicy]::Bypass ) -en $(Get-EncodedPowershellCommand "iex(iwr '$($urlOfScriptFile)')")" 
+    $onelinerToDownloadAndInvokeTheScript = "powershell -ex $( [long] [Microsoft.PowerShell.ExecutionPolicy]::Bypass ) -en $(Get-EncodedPowershellCommand "iex(iwr -usebasic '$($urlOfScriptFile)')")" 
+    <#  The -UseBasicParsing switch is necessary in order to avoit the error "iwr
+        : The response content cannot be parsed because the Internet Explorer engine is
+        not available, or Internet Explorer's first-launch configuration is not
+        complete. Specify the UseBasicParsing parameter and try again. " 
+
+        This error tends to happen when running under Windows Powershell (a.k.a. the "Desktop edition" of powershell.)
+        
+    #>
 
     ## $unencodedCommand = "Set-ExecutionPolicy $( [long] [Microsoft.PowerShell.ExecutionPolicy]::Unrestricted ) $( [long] [Microsoft.PowerShell.ExecutionPolicyScope]::Process ) -f;iex(iwr '$($urlOfScriptFile)')"
     ## write-host "unencodedCommand:  $($unencodedCommand)"
