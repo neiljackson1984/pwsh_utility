@@ -3095,6 +3095,9 @@ function installGoodies(){
         # to do both "install" and "upgrade"; "upgrade" on its own will ensure
         # that we end up with the latest version installed regardless of the
         # initial condition.
+
+        [System.Environment]::SetEnvironmentVariable("POWERSHELL_TELEMETRY_OPTOUT","1","Machine")
+        
     }
 }
 
