@@ -5851,7 +5851,9 @@ function Get-HostedOneLiner  {
     # see (https://app.bitly.com/settings/api)
     #
     # see (https://dev.bitly.com/api-reference/#createBitlink)
-    $bitlyApiToken = "dec7408cd56324304985f61b5899884086ef6feb"
+    $bitwardenItemIdOfBitlyCredential  = "2d7a786d-7135-49f0-b504-aaaf002fa4df"
+    $bitlyApiToken = (getFieldMapFromBitwardenItem $bitwardenItemIdOfBitlyCredential)['api_token']
+    
     $response = @{
         Uri            = "https://api-ssl.bitly.com/v4/shorten"
         Method         = "POST"
@@ -5885,7 +5887,8 @@ function Get-HostedOneLiner  {
 
 
     ## $onelinerToDownloadAndInvokeTheScript = "powershell -ex $( [long] [Microsoft.PowerShell.ExecutionPolicy]::Unrestricted ) -c `"iex(iwr '$($urlOfScriptFile)')`"" 
-    $onelinerToDownloadAndInvokeTheScript = "powershell -ex $( [long] [Microsoft.PowerShell.ExecutionPolicy]::Unrestricted ) -en $(Get-EncodedPowershellCommand "iex(iwr '$($urlOfScriptFile)')")" 
+    ## $onelinerToDownloadAndInvokeTheScript = "powershell -ex $( [long] [Microsoft.PowerShell.ExecutionPolicy]::Unrestricted ) -en $(Get-EncodedPowershellCommand "iex(iwr '$($urlOfScriptFile)')")" 
+    $onelinerToDownloadAndInvokeTheScript = "powershell -ex $( [long] [Microsoft.PowerShell.ExecutionPolicy]::Bypass ) -en $(Get-EncodedPowershellCommand "iex(iwr '$($urlOfScriptFile)')")" 
 
     ## $unencodedCommand = "Set-ExecutionPolicy $( [long] [Microsoft.PowerShell.ExecutionPolicy]::Unrestricted ) $( [long] [Microsoft.PowerShell.ExecutionPolicyScope]::Process ) -f;iex(iwr '$($urlOfScriptFile)')"
     ## write-host "unencodedCommand:  $($unencodedCommand)"
@@ -5894,3 +5897,4 @@ function Get-HostedOneLiner  {
     return $onelinerToDownloadAndInvokeTheScript 
     
 }
+
