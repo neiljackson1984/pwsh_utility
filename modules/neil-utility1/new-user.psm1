@@ -379,6 +379,11 @@ function initializeUser {
                     "password, go to  $($companyParameters['passwordChangeUrl'])."
 
                     ""
+                } else {
+                    "To change your " +
+                    "password, log in to your computer, press  Ctrl-Alt-Delete, then click `"Change a password`"."
+
+                    ""
                 }
 
                 ##  "Use the above username and password to log into " +
