@@ -25,28 +25,30 @@ function Get-BitwardenItem {
     [HashTable] $bitwardenItem = ( bw --nointeraction --raw get item $bitwardenItemId  | ConvertFrom-Json -AsHashtable)
     #todo: error handling
 
-    ## 2023-05-15-1101: 
-    #  the type of $bitwardenItem (and the type of any nested objects) at this
-    #  point happens to be System.Management.Automation.OrderedHashtable.  If we
-    #  were to omit the "-AsHashTable" switch, above, the type of $bitwarenItem
-    #  (and the type of any nested objects) would be
-    #  System.Management.Automation.PSCustomObject.  These types behave very
-    #  similarly, but the hash table has the advantage that all of the original
-    #  json properties are represented as keys in the hash table, whereas with
-    #  the pscustomobject, I have the sense that there would be some property
-    #  names that could appear in the original json but would not be accessible
-    #  in the PScustomObject because they would be shadowed by PsCustomObject's
-    #  own properties.  In other words, with the hash table, uniquely, we can
-    #  always resort to square-bracket member access operator if we need to.
+    <#  # 2023-05-15-1101: 
+        The type of $bitwardenItem (and the type of any nested objects) at this
+        point happens to be System.Management.Automation.OrderedHashtable.  If
+        we were to omit the "-AsHashTable" switch, above, the type of
+        $bitwarenItem (and the type of any nested objects) would be
+        System.Management.Automation.PSCustomObject.  These types behave very
+        similarly, but the hash table has the advantage that all of the original
+        json properties are represented as keys in the hash table, whereas with
+        the pscustomobject, I have the sense that there would be some property
+        names that could appear in the original json but would not be accessible
+        in the PScustomObject because they would be shadowed by PsCustomObject's
+        own properties.  In other words, with the hash table, uniquely, we can
+        always resort to square-bracket member access operator if we need to. 
+    #>
 
 
-    #todo: a bit of a hack to work around the overhead in calling the bw
-    # executable might be to store a private cache of the vault here (or memoize
-    # one result at a time).  Not great for security or concurrency, but it
-    # might help bring the delay into a tolerable range.  Along the same lines,
-    # we might explore the "rbw" client, which is an unofficial bitwardin
-    # command-line client written in Rust that purports to be much faster than
-    # the official, node.js-based, bitwarden client.
+    <#  todo: a bit of a hack to work around the overhead in calling the bw
+        executable might be to store a private cache of the vault here (or
+        memoize one result at a time).  Not great for security or concurrency,
+        but it might help bring the delay into a tolerable range.  Along the
+        same lines, we might explore the "rbw" client, which is an unofficial
+        bitwardin command-line client written in Rust that purports to be much
+        faster than the official, node.js-based, bitwarden client. 
+    #>
     return $bitwardenItem
 }
 
@@ -69,11 +71,12 @@ function New-BitwardenItem {
     Param (
         [Parameter(HelpMessage=  "The name of the bitwarden item")]
         [String] $name = "THIS IS AN AUTOMATICALLY GENERATED NAME $(Get-Date -Format "yyyy-MM-dd_HH-mm-ss") c0f223d7178f4e4c85f7e1b902bc3739"
-        # evidently, the name field is not allowed to be an empty string the
-        # hardocded guid in the default name above, is to allow me to easily
-        # find (and delete) accidentally programmatically created bitwarden
-        # items, created by this function (and then, for whatever reason, never
-        # modified later to change the name)
+        <#  Evidently, the name field is not allowed to be an empty string the
+            hardocded guid in the default name above, is to allow me to easily
+            find (and delete) accidentally programmatically created bitwarden
+            items, created by this function (and then, for whatever reason, never
+            modified later to change the name) 
+        #>
     )
 
     [HashTable] $bitwardenItem = ( bw --nointeraction --raw get template item | ConvertFrom-Json -AsHashtable)

@@ -105,7 +105,7 @@ function initializeUser {
         $desiredEmailAddresses = @()
         $desiredEmailAddresses += "$primaryEmailAddress"
         if(! ($primaryEmailAddress -eq $defaultEmailAddress)){
-            #make sure that the $default email address, as a non-primary smtp address, exists in the ProxyAddresses array
+            # make sure that the $default email address, as a non-primary smtp address, exists in the ProxyAddresses array
             $desiredEmailAddresses += "$defaultEmailAddress"
         }
         foreach($desiredAdditionalEmailAddress in $userSpec['desiredAdditionalEmailAddresses']){
@@ -475,9 +475,6 @@ function initializeUser {
 
         } | % { sendMail @_ }
     }
-
-
-
 
 }
 
