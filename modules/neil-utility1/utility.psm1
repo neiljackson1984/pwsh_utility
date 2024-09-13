@@ -5912,3 +5912,77 @@ function Get-HostedOneLiner  {
     
 }
 
+
+
+
+function Get-RandomPrivateNetwork{
+    <#
+        .DESCRIPTION
+        Generates a random ULA or RFC1918 network (depending on whether you
+        specify -IPVersion 4 or -IPVersion 6)
+    #>
+    
+    [cmdletbinding()]
+    [OutputType([System.Net.IPNetwork])]
+    param(
+        [ValidateRange(0,128)]
+        [int] $PrefixLength,
+        
+        [ValidateSet(4,6)]
+        [int] $IPVersion = 6 
+
+        <#  this really ought to be an enum.  the logical choice would be
+            [System.Net.Sockets.AddressFamily], but, that enum uses the
+            names "InterNetwork" and "InterNetworkV6", respectively, for
+            ipv4 and ipv6.  I do not like those names.  Also, that enum has
+            a a whole bunch of other values, whereas I want something that
+            specifically relates to ipv4 and ipv6.
+        #>
+    )
+
+    function getMask([int] $prefixLength){
+        [byte[]] @(
+            0..15 |
+            % { 
+                $prefixLengthWithinThisByte  = [math]::max(0, [math]::min(8, $prefixLength - ($_ * 8) ))
+                
+                0xff -band (
+                    0xff -shl ( 8 - $prefixLengthWithinThisByte)
+                )
+            } 
+        )
+    }
+
+    $baseNetwork = switch($IPVersion){
+        4 {
+            # RFC1918's "24-bit block".
+            [System.Net.IPNetwork]::Parse("10.0.0.0/8")
+        }
+        6 {
+            # the well-known "ULA" prefix for site-local addresses that are locally assigned.
+            [System.Net.IPNetwork]::Parse("fd00::/8")
+        }
+    }
+        
+    
+    return [System.Net.IPNetwork]::new(
+            [System.Net.IPAddress]::new((
+            [byte[]] @( 
+                0..$(switch($IPVersion){4 {3}; 6 {15}}) |
+                % {
+                    (
+                        # zero the basePrefix bits and the upper bits:
+                        ([byte]  (get-random -Minimum 0 -Maximum 0xff)) -band 
+                        (-bnot  (getMask $baseNetwork.PrefixLength)[$_] ) -band
+                        ((getMask $PrefixLength)[$_]) 
+                    ) -bor (
+                        # add the base ula prefix
+                        $baseNetwork.BaseAddress.GetAddressBytes()[$_]
+                    )
+                }
+            )
+        )),
+        $PrefixLength
+    )
+}
+
