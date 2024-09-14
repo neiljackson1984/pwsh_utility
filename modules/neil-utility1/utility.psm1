@@ -3086,12 +3086,13 @@ function installGoodies(){
         @(
             "chocolatey"
             "7zip"
-            "pwsh"
             ## "winmerge"
             ## "spacesniffer"
             "notepadplusplus"
             "sysinternals"
             ## "hdtune"
+
+            "pwsh"
         ) | % {choco upgrade --acceptlicense --yes $_}
 
         # "upgrade" installs if it is not already installed, so we do not need
