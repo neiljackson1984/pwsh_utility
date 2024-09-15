@@ -3770,6 +3770,12 @@ function Start-ScriptingJournalTranscript {
         Path = $pathOfTranscriptFile
         IncludeInvocationHeader=$True
     } | % { Start-Transcript @_ }
+
+    $script:pathOfScriptingJournalTranscriptFile = $pathOfTranscriptFile
+}
+
+function Get-PathOfScriptingJournalTranscriptFile {
+    return $( $script:pathOfScriptingJournalTranscriptFile )
 }
 
 function getStronglyNamedPath {
