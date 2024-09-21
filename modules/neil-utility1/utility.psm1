@@ -1396,7 +1396,24 @@ function stringToSecureString {
 }
 
 Set-Alias sendMail Send-Mail
-function Send-Mail($emailAccount, $from, $to = @(), $cc = @(), $bcc = @(), $subject, $body){
+function Send-Mail{
+    [CmdletBinding()]
+    param(
+        [string] $emailAccount,
+        
+        [AllowEmptyString()]
+        [string] $from = $null,
+        
+        [string[]] $to = @(),
+        
+        [string[]] $cc = @(), 
+        
+        [string[]] $bcc = @(), 
+        
+        [string] $subject, 
+        
+        [string] $body
+    )
     # unlock the bitwarden vault:
     # unlockTheBitwardenVault
 
@@ -1479,6 +1496,7 @@ function Send-Mail($emailAccount, $from, $to = @(), $cc = @(), $bcc = @(), $subj
     
     if(-not $from){
         $from=$bitwardenItemContainingEmailCredentials.login.username
+        write-host "we have set the from address to '$($from)'"
     }
 
     $mailMessage = New-Object Net.Mail.MailMessage
@@ -1520,10 +1538,17 @@ function Send-TestMessage(){
                 Mandatory = $False
             )
         ]
+        [AllowEmptyString()]
         [String] 
-        $senderEmailAddress = "neil@autoscaninc.com"
+        $senderEmailAddress = $null
     )
     process {
+
+        if(-not $senderEmailAddress){
+            $senderEmailAddress = $emailAccount
+            write-host "senderEmailAddress: '$($senderEmailAddress)'"
+        }
+
         @{
             emailAccount = $emailAccount
             from         = $senderEmailAddress
@@ -4078,7 +4103,50 @@ function getCwcPwshWrappedCommand([string] $command){
     )
 }
 
+function Connect-ToScreenconnectByMeansOfBitwardenItem {
+    
+    Param(
+        [Parameter()]
+        [string] $bitwardenItemIdOfScreenconnectCredentials
+    )
+    
+    ## ensure connection to screenconnect:
 
+    <# Ideally, we ought to check not just whether an existing connection
+        exists, but also that the existing connection is the connection
+        specified by the bitwarden item.  As of 2024-09-19-1136, out of
+        laziness, we are not bothering to do this.
+    #>
+
+    ## if($null -eq $cwcModule){$cwcModule = $((Get-Command connect-cwc).Module)}
+    $cwcModule = $((Get-Command connect-cwc).Module)
+    write-host "cwcModule: $($cwcModule)"
+
+    $cwcServerConnection = $($cwcModule.Module.SessionState.PSVariable?.GetValue("CWCServerConnection"))
+    <#  I am not sure this is a reliable way to detect whether there is an
+        existing connection. 
+    #>
+    write-host "cwcServerConnection: $($cwcServerConnection)"
+
+
+    if($cwcServerConnection){
+        write-verbose "reusing apparent existing connection: $($cwcServerConnection)"
+    } else {
+        write-verbose "connecting fresh."
+        $bitwardenItem = Get-BitwardenItem -bitwardenItemId $bitwardenItemIdOfScreenconnectCredentials
+        @{
+            Server      = "$(([System.Uri] $bitwardenItem.login.uris[0].uri ).Host)"
+            Credentials = (
+                New-Object System.Management.Automation.PSCredential (
+                    $bitwardenItem.login.username, 
+                    (ConvertTo-SecureString $bitwardenItem.login.password -AsPlainText -Force)
+                )
+            )
+            # Force       = $True
+        } | % { Connect-CWC  @_ } | 
+        Write-Host
+    }
+}
 
 function runInCwcSession {
     [OutputType([string])]
@@ -4151,24 +4219,7 @@ function runInCwcSession {
     #>
 
 
-    ## ensure connection to screenconnect:
-    if((Get-Command connect-cwc).Module.SessionState.PSVariable.GetValue("CWCServerConnection") ){
-        write-verbose "reusing apparent existing connection"
-    } else {
-        write-verbose "connecting fresh."
-        $bitwardenItem = Get-BitwardenItem -bitwardenItemId $bitwardenItemIdOfScreenconnectCredentials
-        @{
-            Server      = "$(([System.Uri] $bitwardenItem.login.uris[0].uri ).Host)"
-            Credentials = (
-                New-Object System.Management.Automation.PSCredential (
-                    $bitwardenItem.login.username, 
-                    (ConvertTo-SecureString $bitwardenItem.login.password -AsPlainText -Force)
-                )
-            )
-            # Force       = $True
-        } | % { Connect-CWC  @_ } | 
-        Write-Host
-    }
+    Connect-ToScreenconnectByMeansOfBitwardenItem $bitwardenItemIdOfScreenconnectCredentials
 
     $screenconnectSearchString = "## NAME = '$($nameOfSession)'"
     ## retrieve the specified session
@@ -4239,6 +4290,75 @@ function runInCwcSession {
     ) | % { Invoke-CWCCommand @_ }
 }
 
+function Get-ComputerStatusFromScreenconnect {
+    <#
+        .SYNOPSIS
+        Lists computer names, along with associated user names, from
+        screenconnect. We retrieve various ideas about the username -- both from
+        Screenconnect's database and by attempting to run a command on the
+        computer in question.
+    #>
+    [CmdletBinding()]
+    param(
+        [string] $bitwardenItemIdOfScreenconnectCredentials,
+        [string] $nameOfScreenconnectGroup
+    )
+
+    Connect-ToScreenconnectByMeansOfBitwardenItem $bitwardenItemIdOfScreenconnectCredentials
+
+    # ensure we're connected to screenconnect:
+
+    foreach($cwcSession in @(Get-CWCSession -Type Access -Group $nameOfScreenconnectGroup)){
+        $guestIsConnected = [Boolean] $cwcSession.ActiveConnections
+        <# This simple test, where we simply look to see if any
+            "ActiveConnections" exist, does not distinguish between hosts
+            and guests.  Thus, we are, blindly, and generally incorrectly,
+            assuming that no hosts are connected to any session.  This is
+            not striuctly correct, but it serves our purpose, which is to
+            not waste time polling a machine that will not respond because
+            it is disconnected.
+        #>
+
+        [pscustomobject] @{
+            Name = $cwcSession.Name
+
+            guestIsConnected = $guestIsConnected
+
+            GuestLoggedOnUserName = $cwcSession.GuestLoggedOnUserName
+
+            LastLoggedOnUserName = $(
+                if($guestIsConnected){
+                    write-host "$($cwcSession.Name) is reachable.  Now looking up name of LastLoggedOnUser "
+                    @{
+                        GUID       = $cwcSession.SessionID
+                        Powershell = $True
+                        Command    = (
+                            @(
+                                @(
+                                   @(
+                                       "Get-LastLoggedOnUserSID"
+                                   )| % {(get-command $_).ScriptBlock.Ast}
+                                )
+                                {
+                                    New-Object System.Security.Principal.SecurityIdentifier (Get-LastLoggedOnUserSID) |
+                                    % {$_.Translate([System.Security.Principal.NTAccount])} |
+                                    % {$_.Value}
+                                }
+                            ) -join "`n"
+                        )
+                        Timeout = 25000
+                        NoWait  = $False
+                    } |% { Invoke-CWCCommand @_}
+                } else {
+                    write-host "$($cwcSession.Name) is unreachable via Screenconnect."
+                }
+            )
+        }
+
+    }
+}
+
+
 function Get-EncodedPowershellCommand {
     <#
         .SYNOPSIS
@@ -4286,7 +4406,7 @@ function publishFile {
 
         [parameter()]
         [string] $destination
-        # I don't know exactly what this will do yet
+        # overrides the default destination.  This is a relative path within the "Attachments" folder.
     )
     # $pathOfFile = "S:\Microsoft\Microsoft Office 2013\SW_DVD5_NTRL_Office_Professional_Plus_2013_W32_English_MSI_FPP_X18-65189.ISO"
     $strongFilename = (split-path -leaf (getStronglyNamedPath $pathOfFile))
@@ -4354,11 +4474,12 @@ function publishFile {
     $sizeThresholdForSinglePut = 20
     # the main point of this is to be able to handle zero-byte files, whcih the uploadsession technique can't handle.
     
+    $relativePathOfDestination = $(if($destination){$destination}else{$strongFilename})
 
     if($totalLength -lt $sizeThresholdForSinglePut){    
         $x = @{
             Method        = "PUT"
-            Uri           = "v1.0/drives/me/items/root:/Attachments/$($strongFilename):/content"
+            Uri           = "v1.0/drives/me/items/root:/Attachments/$($relativePathOfDestination):/content"
             InputFilePath = $pathOfFile
             ContentType   = 'multipart/form-data'
         } | % {Invoke-MgGraphRequest @_}
@@ -4378,7 +4499,7 @@ function publishFile {
         # see [https://learn.microsoft.com/en-us/graph/api/driveitem-createuploadsession?view=graph-rest-1.0#create-an-upload-session]
         $uploadSession = @{
             DriveId = "me"
-            DriveItemId = "root:/Attachments/$($strongFilename):"
+            DriveItemId = "root:/Attachments/$($relativePathOfDestination):"
         } | % {New-MgDriveItemUploadSession @_}
 
         ## $uploadSession.GetType()
@@ -4484,7 +4605,7 @@ function publishFile {
     ## CREATE the LINK:
     $z = @{
         Method = "POST"
-        Uri    = "v1.0/drives/me/items/root:/Attachments/$($strongFilename):/createLink"
+        Uri    = "v1.0/drives/me/items/root:/Attachments/$($relativePathOfDestination):/createLink"
         Body   = @{
             type="view"
             scope="anonymous"
@@ -4494,7 +4615,7 @@ function publishFile {
     $a.Query += "$($a.Query ? '&' : '')download=1"
 
     # The "x-name" query parameter is my own invention (and hopefully is ignored by sharepoint).  It is purely annotative, meant for the human that might read the url.
-    $a.Query += "$($a.Query ? '&' : '')x-name=$([System.Web.HttpUtility]::UrlPathEncode($strongFilename))"
+    $a.Query += "$($a.Query ? '&' : '')x-name=$([System.Web.HttpUtility]::UrlPathEncode((split-path -leaf $relativePathOfDestination)))"
 
     # perhaps see [https://learn.microsoft.com/en-us/microsoft-365/community/query-string-url-tricks-sharepoint-m365]
 
