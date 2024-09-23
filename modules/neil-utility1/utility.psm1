@@ -4120,13 +4120,13 @@ function Connect-ToScreenconnectByMeansOfBitwardenItem {
 
     ## if($null -eq $cwcModule){$cwcModule = $((Get-Command connect-cwc).Module)}
     $cwcModule = $((Get-Command connect-cwc).Module)
-    write-host "cwcModule: $($cwcModule)"
+    write-verbose "cwcModule: $($cwcModule)"
 
     $cwcServerConnection = $($cwcModule.Module.SessionState.PSVariable?.GetValue("CWCServerConnection"))
     <#  I am not sure this is a reliable way to detect whether there is an
         existing connection. 
     #>
-    write-host "cwcServerConnection: $($cwcServerConnection)"
+    write-verbose "cwcServerConnection: $($cwcServerConnection)"
 
 
     if($cwcServerConnection){
@@ -4353,6 +4353,38 @@ function Get-ComputerStatusFromScreenconnect {
                     write-host "$($cwcSession.Name) is unreachable via Screenconnect."
                 }
             )
+
+            RemoteDesktopReport = $(
+                if($guestIsConnected){
+                    write-host "$($cwcSession.Name) is reachable.  Now looking up remote desktop enablement status "
+                    @{
+                        GUID       = $cwcSession.SessionID
+                        Powershell = $True
+                        Command    = (
+                            @(
+                                @(
+
+                                )
+                                {
+                                    $env:computername
+                                    Get-NetFirewallRule -DisplayGroup "Remote Desktop" | 
+                                    select Name,Enabled  | 
+                                    ft -auto |
+                                    out-string
+
+                                    "fDenyTSConnections: $(Get-ItemPropertyValue -Path 'HKLM:\System\CurrentControlSet\Control\Terminal Server' -name "fDenyTSConnections")"
+                                }
+                            ) -join "`n"
+                        )
+                        Timeout = 25000
+                        NoWait  = $False
+                    } |% { Invoke-CWCCommand @_}
+                } else {
+                    write-host "$($cwcSession.Name) is unreachable via Screenconnect."
+                }
+            ) | out-string
+
+            
         }
 
     }
