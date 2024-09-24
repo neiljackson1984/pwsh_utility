@@ -4416,8 +4416,22 @@ function Get-LastLoggedOnUserSID {
     [CmdletBinding()]
     Param(
     )
-    (Get-Item -Path "registry::HKLM\Software\Microsoft\Windows\CurrentVersion\Authentication\LogonUI").GetValue("LastLoggedOnUserSID")
+
+    (Get-Item -Path "registry::HKLM\Software\Microsoft\Windows\CurrentVersion\Authentication\LogonUI"
+    ).GetValue("LastLoggedOnUserSID")
 }
+
+function Get-LastLoggedOnUserName {
+    [OutputType([string])]
+    [CmdletBinding()]
+    Param(
+    )
+    
+    New-Object System.Security.Principal.SecurityIdentifier (Get-LastLoggedOnUserSID) |
+    % {$_.Translate([System.Security.Principal.NTAccount])} |
+    % {$_.Value}
+}
+
 
 function publishFile {
     <#
