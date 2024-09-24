@@ -3727,6 +3727,64 @@ function Enable-UserAccountControl {
 # ${function:Enable-UserAccessControl} = ${function:Enable-UserAccountControl}
 ${function:Enable-UserAccessControl} = [Scriptblock]::Create(${function:Enable-UserAccountControl})
 
+function Show-UserAccountControl {
+    # report on uac-related registry values
+    
+    [CmdletBinding()]
+    param()
+    $key = Get-Item "registry::HKLM\SOFTWARE\Microsoft\Windows\CurrentVersion\Policies\System"
+    
+    @(
+        "ConsentPromptBehaviorAdmin"  
+        <# ConsentPromptBehaviorAdmin: 
+            * 0 = Elevate without prompting
+            * 1 = Prompt for credentials on the secure desktop
+            * 2 = Prompt for consent on the secure desktop
+            * 3 = Prompt for credentials
+            * 4 = Prompt for consent
+            * 5 = Prompt for consent for non-Windows binaries (default)
+
+            see (https://learn.microsoft.com/en-us/openspecs/windows_protocols/ms-gpsb/341747f5-6b5d-4d30-85fc-fa1cc04038d4)
+
+            from (https://www.tenforums.com/user-accounts-family-safety/178831-how-do-i-disable-administrator-notifications.html).
+
+            see (https://www.stigviewer.com/stig/windows_server_2008_r2_member_server/2015-06-16/finding/V-14235)
+
+        
+        #>
+
+        "ConsentPromptBehaviorUser" 
+        <#  ConsentPromptBehaviorUser: 
+            see (https://learn.microsoft.com/en-us/openspecs/windows_protocols/ms-gpsb/15f4f7b3-d966-4ff4-8393-cb22ea1c3a63)
+        #>
+
+
+        "EnableInstallerDetection"
+        "EnableLUA"  
+        
+        "EnableSecureUIAPaths"
+        <#  EnableSecureUIAPaths: 
+
+            * https://www.stigviewer.com/stig/windows_10/2019-01-04/finding/V-63827
+        #>
+
+        "EnableUIADesktopToggle"
+        "EnableVirtualization"
+        "FilterAdministratorToken"
+        "PromptOnSecureDesktop"
+        "ValidateAdminCodeSignatures"
+    ) |
+    sort |
+    %  {
+    [pscustomobject] @{
+            name  = $_
+            exists = ($_ -in $key.GetValueNames())
+            type  = $(if($_ -in $key.GetValueNames()){$key.GetValueKind($_)})
+            value = $(if($_ -in $key.GetValueNames()){$key.GetValue($_)})
+        }
+    } 
+    
+}
 
 function Get-NeilWindowsUpdateLog {
     <#
