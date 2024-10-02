@@ -2853,7 +2853,7 @@ function downloadFileAndReturnPath {
             }
         ) | 
         select -expand FullName |
-        ? { (Get-FileHash -Algorithm $hashAlgorithm -Path $_).Hash.ToLower() -eq $hash } |
+        ? { (Get-FileHash -Algorithm $hashAlgorithm -LiteralPath $_).Hash.ToLower() -eq $hash } |
         select -first 1
 
         if($finalPathOfDownloadedFile){
@@ -2881,6 +2881,9 @@ function downloadFileAndReturnPath {
                 ## "--verbose"
 
                 "--remote-header-name"
+
+                # fixes a pathological case where a url contains square brackets:
+                "--globoff"
 
                 # follow redirects:
                 "--location"
@@ -2982,13 +2985,15 @@ function downloadFileAndReturnPath {
             ?{$_} |
             select -first 1
         )
+        write-verbose "preferredFilename: $($preferredFilename)"
 
+        $hashOfDownloadedFile = Get-FileHash -Algorithm $hashAlgorithm -LiteralPath $initialPathOfDownloadedFile | select -expand Hash |% {$_.ToLower()}
+        <# using -LiteralPath  rather than -Path fixed a pathological case where the filename contained square brackets. #>
 
-        $hashOfDownloadedFile = Get-FileHash -Algorithm $hashAlgorithm -Path $initialPathOfDownloadedFile | select -expand Hash |% {$_.ToLower()}
         ## $finalPathOfDownloadedFile = (join-path (join-path $pathOfDownloadCacheFolder $hashOfDownloadedFile) (split-path -leaf $initialPathOfDownloadedFile) )
         $finalPathOfDownloadedFile = (join-path (join-path $pathOfDownloadCacheFolder $hashOfDownloadedFile) $preferredFileName )
-        New-Item -ItemType Directory -Force (split-path -parent $finalPathOfDownloadedFile) | out-null
-        Move-Item -force $initialPathOfDownloadedFile $finalPathOfDownloadedFile
+        New-Item -ItemType Directory -Force (split-path -literalpath $finalPathOfDownloadedFile) | out-null
+        Move-Item -force -LiteralPath $initialPathOfDownloadedFile -Destination $finalPathOfDownloadedFile
 
         if($hash -and (-not ($hashOfDownloadedFile -eq $hash))){
             Write-Host "The hash of the downloaded file ($finalPathOfDownloadedFile) ($hashOfDownloadedFile) does not match the specified hash ($hash)."
