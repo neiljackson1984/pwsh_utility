@@ -2531,7 +2531,11 @@ function connectToOffice365 {
 
             }  |% {Connect-IPPSSession @_}
             Write-Debug "Finished doing  'Connect-IPPSSession', with result: $($result)"
-
+            <# 2024-10-03-1502: After updating the ExchangeOnlineManagement
+                module from version 3.5.1  to version 3.6.0, Connect-IPPSSession no
+                longer seems to work here.  TODO: fix this.
+                
+            #>
 
             @{
                 Scope     = "Global"
