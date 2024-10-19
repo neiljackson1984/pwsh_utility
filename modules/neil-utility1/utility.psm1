@@ -1141,18 +1141,17 @@ function getRr {
             "-o"; "$($_.Key)=$($_.Value)"
         }
 
-        # these options prevent us from touching our
-        # main known_hosts file:
+        <#  these options prevent us from touching our main known_hosts file: #>
         "-o";"StrictHostKeyChecking=no"
         "-o";"UserKnownHostsFile=$($pathOfTemporaryKnownHostsFile)"
         "-o";"IdentityAgent=$($sshAgentEnvironment['SSH_AUTH_SOCK'])"
-        # I think it makes more sense to push the IdentityAgent option in to the
-        # list of ssh options here, rather than in getSshSession.  At the moment
-        # (2024-05-13-1144), we are also doing this in getSshSession, but I
-        # think I will remove that from getSshSession (and maybe will
-        # refactor/rethink/possibly-delete getSshSession altogether).  In the
-        # interim, it shouldn't hurt to have the same option  get passed twice
-        # to ssh (I hope).
+        <#  I think it makes more sense to push the IdentityAgent option in to
+            the list of ssh options here, rather than in getSshSession.  At the
+            moment (2024-05-13-1144), we are also doing this in getSshSession,
+            but I think I will remove that from getSshSession (and maybe will
+            refactor/rethink/possibly-delete getSshSession altogether).  In the
+            interim, it shouldn't hurt to have the same option  get passed twice
+            to ssh (I hope). #>
 
         getSshOptionArgumentsFromBitwardenItem -bitwardenItemId $bitwardenItem.id 
     )
@@ -1231,7 +1230,8 @@ function getRr {
 
     } else {
         $rr = { 
-            $input | runInSshSession -sshAgentEnvironment $sshAgentEnvironment -sshOptionArguments $sshOptionArguments @args 
+            $input | 
+            runInSshSession -sshAgentEnvironment $sshAgentEnvironment -sshOptionArguments $sshOptionArguments @args 
         }.GetNewClosure()
 
         ## & $rr 'echo $(date): hello from $(hostname) ' | write-host
@@ -1255,6 +1255,34 @@ function getRr {
 }
 
 
+function Get-LazilyConstructedFunction{
+    <#
+        .SYNOPSIS
+        given a script block that emits a function, we return a function
+        that will act like the function returned by the aforementioned
+        script block.  On the first call, our returned function will run the
+        script block to create the function, and store the result for use by
+        subsequent calls.
+    #>
+    [OutputType([ScriptBlock])]
+    [cmdletBinding()]
+    Param(
+        [ScriptBlock] $constructor
+    )
+
+    <#  not sure if it's useful to get a closure for the $constructor here.
+    maybe.   I am also not sure if our later calling of .GetNEwClosure()
+    does essentially the same thing. #>
+    ## $constructor = $constructor.GetNewClosure()
+
+    return {
+        if(-not $script:mainFunction){
+            write-host "initializing mainFunction"
+            $script:mainFunction = & $constructor
+        }
+        $input | & $script:mainFunction @args
+    }.GetNewClosure()
+}
 
 
 function putFieldMapToBitwardenItem {

@@ -153,8 +153,8 @@ function Get-AutocadComObject([string] $product){
         write-verbose "creating new acad."
         
         
-        taskkill /t /f /im acad.exe | out-null
-        taskkill /t /f /im accoreconsole.exe | out-null
+        taskkill /t /f /im acad.exe 2>$null | out-null
+        taskkill /t /f /im accoreconsole.exe 2>$null | out-null
         # accoreconsole.exe
 
         # set the LastLaunchedProduct registry value in order to force the
