@@ -537,23 +537,21 @@ function getDcSession {
             HelpMessage="Optionally, override the default Credential argument"            
         )]
         [System.Management.Automation.PSCredential] 
-        $Credential
-        ,
+        $Credential,
+
         [Parameter(
             Mandatory=$False,
             HelpMessage="Optionally, override the default SessionOption argument"            
         )]
         [Object] 
-        $SessionOption
-        ,
+        $SessionOption,
+
         [Parameter(
             Mandatory=$False,
             HelpMessage="Optionally, override the default Name argument"            
         )]
         [string] 
-        $Name
-        ,
-
+        $Name,
 
         [Parameter(
             ValueFromRemainingArguments = $True,
@@ -563,21 +561,26 @@ function getDcSession {
         [Object[]] 
         $remainingArguments = @()
 
-        # My idea with "remainingArguments" is not working as I had expected
-        # because Powershell does not treat the parameter names within a
-        # function invokation (i.e. strings starting with a dash) as strings but
-        # they are really high-level name tokens.  If you try to include
-        # "-blarg" in the argument list of a function call to a function that
-        # does not have an explicitly-decalred parameter named "blarg",
-        # powershell throws an error.
-        #
-        # the "remainingArguments" mechanism would work for positional parameters.
-        #
-        # 
+        <#  My idea with "remainingArguments" is not working as I had expected
+            because Powershell does not treat the parameter names within a
+            function invokation (i.e. strings starting with a dash) as strings
+            but they are really high-level name tokens.  If you try to include
+            "-blarg" in the argument list of a function call to a function that
+            does not have an explicitly-decalred parameter named "blarg",
+            powershell throws an error.
 
-        # see [https://stackoverflow.com/questions/27764394/get-valuefromremainingarguments-as-an-hashtable]
-        # see [https://stackoverflow.com/questions/27463602/nested-parameters-for-powershell-cmdlet]
-        # see [https://www.powershellgallery.com/packages/MSAL.PS/4.7.1.2/Content/Select-PsBoundParameters.ps1]
+            the "remainingArguments" mechanism would work for positional
+            parameters.
+
+
+
+            * see
+              [https://stackoverflow.com/questions/27764394/get-valuefromremainingarguments-as-an-hashtable]
+            * see
+              [https://stackoverflow.com/questions/27463602/nested-parameters-for-powershell-cmdlet]
+            * see
+              [https://www.powershellgallery.com/packages/MSAL.PS/4.7.1.2/Content/Select-PsBoundParameters.ps1] 
+        #>
     )
 
     $companyParameters = getFieldMapFromBitwardenItem $bitwardenItemIdOfCompanyParameters
@@ -897,11 +900,17 @@ function New-Invoker {
         [parameter()]
         [string] $ComputerName ,
         
-        # really this is expected to be an array in which each member is either
-        # a System.Management.Automation.PSVariable or a
-        # System.Management.Automation.FunctionInfo
+        <#  really this is expected to be an array in which each member is
+            either a System.Management.Automation.PSVariable or a
+            System.Management.Automation.FunctionInfo 
+        #>
         [parameter()]
-        [Object[]] $VariablesAndFunctionsToImport
+        [Object[]] $VariablesAndFunctionsToImport,
+
+        [parameter(Mandatory=$false)]
+        [ScriptBlock] $StartupScript =  {}
+
+
     )
 
     # $uniqueMagicStringForThisFunction = "517f7e13f0c84e1d96b729651fe06b48"
@@ -934,6 +943,7 @@ function New-Invoker {
             ####        )
             ####    )
             itemsToImport = $VariablesAndFunctionsToImport
+            startupScript = $StartupScript
         }
     )
     $initializer = {
@@ -974,6 +984,13 @@ function New-Invoker {
                 }
             }
         } | out-null
+
+        if([bool] ([string] $args[0].startupScript)){
+            write-host "running StartupScript"
+            invoke-expression $args[0].startupScript
+        }
+        Write-Host "initializer is finished"
+
 
     }
 
