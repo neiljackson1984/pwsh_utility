@@ -6251,3 +6251,13 @@ function Get-RandomPrivateNetwork{
     )
 }
 
+function Dismount-AllMountedIsoImages {
+    $mountedDiskImages = @(Get-Volume | % { Get-DiskImage -Volume $_ } )  
+    
+    $mountedDiskImages | 
+    ? {[System.Io.Path]::GetExtension($_.ImagePath).ToLower() -eq ".iso"} |
+    % { 
+        write-host "dismounting $($_)"
+        Dismount-DiskImage -InputObject $_
+    }
+}
