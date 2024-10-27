@@ -2243,7 +2243,7 @@ function setAzureAdDeviceOwner ( $nameOfDevice, $nameOfUser ){
 }
 
 
-function blipNetworkAdapter(){
+function blipNetworkAdapter {
     # blips any currently-enabled and connected network adapters
 
     foreach (
