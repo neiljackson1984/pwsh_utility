@@ -4523,6 +4523,35 @@ function Get-LastLoggedOnUserName {
     % {$_.Value}
 }
 
+function Get-LastLoggedOnUserVolatileEnvironment {
+    <#
+    .SYNOPSIS
+    returns a hashtable containing the "Volatile Environment" values of the last
+    logged on user.  This is useful for retrieving properties like AppData and
+    UserProfile
+    #>
+    
+    [OutputType([HashTable])]
+    [CmdletBinding()]
+    Param(
+    )
+
+    $registryKey = $(get-item (join-path (join-path "registry::HKEY_USERS" (Get-LastLoggedOnUserSID)) "Volatile Environment" ))
+    return $(
+        $registryKey.GetValueNames() |
+        % {
+            @{
+                $_ = $registryKey.GetValue(
+                    $_,
+                    $null,
+                    [Microsoft.Win32.RegistryValueOptions]::DoNotExpandEnvironmentNames
+                )
+            }
+        } |
+        merge-hashtables
+    )
+}
+
 
 function publishFile {
     <#
