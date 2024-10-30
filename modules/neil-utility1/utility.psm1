@@ -4527,8 +4527,8 @@ function Get-LastLoggedOnUserVolatileEnvironment {
     <#
     .SYNOPSIS
     returns a hashtable containing the "Volatile Environment" values of the last
-    logged on user.  This is useful for retrieving properties like AppData and
-    UserProfile
+    logged on user.  This is useful for retrieving the values of APPDATA,
+    LOCALAPPDATA, and USERPROFILE, for example.
     #>
     
     [OutputType([HashTable])]
