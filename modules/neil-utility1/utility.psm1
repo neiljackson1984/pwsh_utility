@@ -4525,10 +4525,14 @@ function Get-LastLoggedOnUserName {
 
 function Get-LastLoggedOnUserVolatileEnvironment {
     <#
-    .SYNOPSIS
-    returns a hashtable containing the "Volatile Environment" values of the last
-    logged on user.  This is useful for retrieving the values of APPDATA,
-    LOCALAPPDATA, and USERPROFILE, for example.
+        .SYNOPSIS
+        returns a hashtable containing the "Volatile Environment" values of the
+        last logged on user.  This is useful for retrieving the values of
+        APPDATA, LOCALAPPDATA, and USERPROFILE, for example.
+
+        I think that the "Volatile Environment" registry key that his function
+        relies on might only exist when there is an active Windows session --
+        this makes this function less useful than first anticipated.
     #>
     
     [OutputType([HashTable])]
