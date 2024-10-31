@@ -4410,73 +4410,91 @@ function Get-ComputerStatusFromScreenconnect {
             it is disconnected.
         #>
 
-        [pscustomobject] @{
-            Name = $cwcSession.Name
 
-            guestIsConnected = $guestIsConnected
 
-            GuestLoggedOnUserName = $cwcSession.GuestLoggedOnUserName
 
-            LastLoggedOnUserName = $(
-                if($guestIsConnected){
-                    write-host "$($cwcSession.Name) is reachable.  Now looking up name of LastLoggedOnUser "
-                    @{
-                        GUID       = $cwcSession.SessionID
-                        Powershell = $True
-                        Command    = (
-                            @(
-                                @(
-                                   @(
-                                       "Get-LastLoggedOnUserSID"
-                                   )| % {(get-command $_).ScriptBlock.Ast}
+        [pscustomobject] $(
+            @(
+                @{
+                    Name = $cwcSession.Name
+
+                    guestIsConnected = $guestIsConnected
+
+                    GuestLoggedOnUserName = $cwcSession.GuestLoggedOnUserName
+
+                    LastLoggedOnUserName = $(
+                        if($guestIsConnected){
+                            write-host "$($cwcSession.Name) is reachable.  Now looking up name of LastLoggedOnUser "
+                            @{
+                                GUID       = $cwcSession.SessionID
+                                Powershell = $True
+                                Command    = (
+                                    @(
+                                        @(
+                                        @(
+                                            "Get-LastLoggedOnUserSID"
+                                        )| % {(get-command $_).ScriptBlock.Ast}
+                                        )
+                                        {
+                                            New-Object System.Security.Principal.SecurityIdentifier (Get-LastLoggedOnUserSID) |
+                                            % {$_.Translate([System.Security.Principal.NTAccount])} |
+                                            % {$_.Value}
+                                        }
+                                    ) -join "`n"
                                 )
-                                {
-                                    New-Object System.Security.Principal.SecurityIdentifier (Get-LastLoggedOnUserSID) |
-                                    % {$_.Translate([System.Security.Principal.NTAccount])} |
-                                    % {$_.Value}
-                                }
-                            ) -join "`n"
-                        )
-                        Timeout = 25000
-                        NoWait  = $False
-                    } |% { Invoke-CWCCommand @_}
-                } else {
-                    write-host "$($cwcSession.Name) is unreachable via Screenconnect."
-                }
-            )
+                                Timeout = 25000
+                                NoWait  = $False
+                            } |% { Invoke-CWCCommand @_}
+                        } else {
+                            write-host "$($cwcSession.Name) is unreachable via Screenconnect."
+                        }
+                    )
 
-            RemoteDesktopReport = $(
-                if($guestIsConnected){
-                    write-host "$($cwcSession.Name) is reachable.  Now looking up remote desktop enablement status "
+                    GuestOperatingSystemName = $cwcSession.GuestOperatingSystemName
+                    GuestOperatingSystemVersion = $cwcSession.GuestOperatingSystemVersion
+
+                    cwcSession = $cwcSession
+                }
+
+                
+                if($false){
                     @{
-                        GUID       = $cwcSession.SessionID
-                        Powershell = $True
-                        Command    = (
-                            @(
-                                @(
+                    
+                        RemoteDesktopReport = $(
+                            if($guestIsConnected){
+                                write-host "$($cwcSession.Name) is reachable.  Now looking up remote desktop enablement status "
+                                @{
+                                    GUID       = $cwcSession.SessionID
+                                    Powershell = $True
+                                    Command    = (
+                                        @(
+                                            @(
 
-                                )
-                                {
-                                    $env:computername
-                                    Get-NetFirewallRule -DisplayGroup "Remote Desktop" | 
-                                    select Name,Enabled  | 
-                                    ft -auto |
-                                    out-string
+                                            )
+                                            {
+                                                $env:computername
+                                                Get-NetFirewallRule -DisplayGroup "Remote Desktop" | 
+                                                select Name,Enabled  | 
+                                                ft -auto |
+                                                out-string
 
-                                    "fDenyTSConnections: $(Get-ItemPropertyValue -Path 'HKLM:\System\CurrentControlSet\Control\Terminal Server' -name "fDenyTSConnections")"
-                                }
-                            ) -join "`n"
-                        )
-                        Timeout = 25000
-                        NoWait  = $False
-                    } |% { Invoke-CWCCommand @_}
-                } else {
-                    write-host "$($cwcSession.Name) is unreachable via Screenconnect."
+                                                "fDenyTSConnections: $(Get-ItemPropertyValue -Path 'HKLM:\System\CurrentControlSet\Control\Terminal Server' -name "fDenyTSConnections")"
+                                            }
+                                        ) -join "`n"
+                                    )
+                                    Timeout = 25000
+                                    NoWait  = $False
+                                } |% { Invoke-CWCCommand @_}
+                            } else {
+                                write-host "$($cwcSession.Name) is unreachable via Screenconnect."
+                            }
+                        ) | out-string
+
+                        
+                    }
                 }
-            ) | out-string
-
-            
-        }
+            ) | merge-hashtables
+        )
 
     }
 }
