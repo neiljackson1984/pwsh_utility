@@ -6319,12 +6319,19 @@ function Remove-OrphanedSids {
         to fix the error "Get-LocalGroupMember: Failed to 
         compare two elements in the array." thrown by Get-LocalGroupMember 
         when trying to list the members of the group. 
+
+        see (https://github.com/PowerShell/PowerShell/issues/2996) 
+
+        see (https://superuser.com/questions/1131901/get-localgroupmember-generates-error-for-administrators-group) 
+
+
     #>
-    "========================================"
+
+
     $env:computername
     foreach($nameOfLocalGroup in @("Administrators";"Users";"Remote Desktop Users")){
         $members = @(
-            ([ADSI]"WinNT://./$($nameOfLocalGroup)").psbase.Invoke('Members') |
+            ([System.DirectoryServices.DirectoryEntry] "WinNT://./$($nameOfLocalGroup)").psbase.Invoke('Members') |
             % { 
             $_.GetType().InvokeMember('AdsPath','GetProperty',$null,$($_),$null) 
             }
@@ -6336,11 +6343,7 @@ function Remove-OrphanedSids {
         {
             write-host "Considering member '$($member)' of local group '$($nameOfLocalGroup)'."
 
-            if ($member -like "$env:COMPUTERNAME/*" -or $member -like "AzureAd/*")
-            {
-                continue;
-            }
-            elseif ($member -match "^S-1\b") #checking for empty/orphaned SIDs only
+            if ($member -match "^S-1\b") #checking for empty/orphaned SIDs only
             {
                 write-host "Removing an orphaned-SID member '$($member)' from the local group '$($nameOfLocalGroup)'."
                 Remove-LocalGroupMember -group $nameOfLocalGroup -member $member
