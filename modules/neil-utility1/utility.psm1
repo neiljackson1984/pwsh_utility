@@ -6359,3 +6359,92 @@ function Import-VeeamExecutableAliases {
         Set-Alias -Scope Global -Name ([IO.Path]::GetFileNameWithoutExtension($_)) -Value $_
     }
 }
+
+function Set-ScreenSaveTimeOut {
+    <# 
+        .DESCRIPTION
+        Sets the preferred screenSaveTimeout, by default given as a TimeSpan
+        object, for the current user.  (A value of zero means "infinite
+        duration" )
+
+        I am slightly annoyed at the default conversion behavior of
+        System.TimeSpan, which is to convert a Long to a timeSpan having that
+        many ticks.  It would make eminently more sense for this to be seconds.
+
+        The optional -seconds parameter, here, is a workaround for the user that
+        wants to supply a count of seconds, but it is almost more confusing than
+        its worth to have the -seconds parameter, because the user will naively
+        assume that `Set-ScreenSaveTimeout 99` and `Set-ScreenSaveTimeout
+        -seconds 99` are equivalent, which they are not.
+    #>
+    
+    [OutputType([void])]
+    [CmdLetBinding(PositionalBinding=$false)]
+    param(
+        [Parameter(Position=0,  Mandatory=$true, parameterSetName="timeSpan_parameterSet")]
+        [TimeSpan] $timeSpan,
+
+        
+        [Parameter(Mandatory=$true, parameterSetName="seconds_parameterSet")]
+        [long] $seconds
+    )
+
+    $desiredScreenSaveTimeOut = $( 
+        if($null -ne $timeSpan){
+            $timeSpan
+        } else {
+            New-TimeSpan -Seconds $seconds 
+        }
+    )
+
+    ##write-host "timeSpan $( $null -eq $timeSpan ? "is null" : "is not null" )."
+    ##write-host "seconds $( $null -eq $timeSpan ? "is null" : "is not null" )."
+
+    $literalPath = "registry::HKEY_CURRENT_USER\Control Panel\Desktop"
+    $name = "ScreenSaveTimeOut"
+
+
+
+
+    $initialScreenSaveTimeOut = $(
+        try{
+            New-TimeSpan -Seconds $(
+                @{
+                    LiteralPath = $literalPath
+                    Name        = $name
+                } |%{Get-ItemPropertyValue @_}
+            )
+        } catch {
+            $null
+        }
+    )
+
+    
+    write-host "initialScreenSaveTimeOut.TotalSeconds: $($initialScreenSaveTimeOut.TotalSeconds)"
+    write-host "desiredScreenSaveTimeOut.TotalSeconds: $($desiredScreenSaveTimeOut.TotalSeconds)"
+
+    @{
+        LiteralPath = $literalPath
+        Name        = $name
+        Type        = "String"
+        Value       = "$([long] $desiredScreenSaveTimeOut.TotalSeconds)"
+    } |% {Set-ItemProperty @_ }
+    
+
+    
+
+    $finalScreenSaveTimeOut = $(
+        try{
+            New-TimeSpan -Seconds $(
+                @{
+                    LiteralPath = $literalPath
+                    Name        = $name
+                } |%{Get-ItemPropertyValue @_}
+            )
+        } catch {
+            $null
+        }
+    )
+
+    write-host "finalScreenSaveTimeOut.TotalSeconds: $($finalScreenSaveTimeOut.TotalSeconds)"
+}
