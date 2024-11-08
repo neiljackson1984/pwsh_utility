@@ -1077,6 +1077,9 @@ function New-ScreenconnectInvoker {
             [Parameter(Mandatory=$False)] 
             [int] $timeout,
 
+            [Parameter(Mandatory=$False)] 
+            [boolean] $pwsh,
+
             [Parameter(
                 Position=1,
                 Mandatory=$False

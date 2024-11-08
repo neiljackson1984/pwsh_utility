@@ -50,11 +50,14 @@ function Install-OpenVpnDependencies {
 
         Needs OpenVPN .
 
-        Needs OpenVPNClient (https://www.powershellgallery.com/packages/OpenVPNClient/0.0.8)
+        Needs OpenVPNClient
+        (https://www.powershellgallery.com/packages/OpenVPNClient/0.0.8)
 
         Install-PSResource OpenVPNClient
 
-        2024-08-08-1201: actually we are not using OpenVPNClient after all.
+        2024-08-08-1201: actually we are not using OpenVPNClient after all (but
+        we probably should, or should at least somehow take advantage of OpenVPN's
+        named-pipe-based IPC control mechanism.
 
     #>
     ## Install-PSResource -Name OpenVPNClient -Repository PSGallery 

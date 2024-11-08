@@ -6352,3 +6352,10 @@ function Remove-OrphanedSids {
     }
 }
 
+function Import-VeeamExecutableAliases {
+    gci -recurse -file (join-path $env:programfiles "Veeam") -filter "*.exe" | 
+    select -expand FullName |
+    % {
+        Set-Alias -Scope Global -Name ([IO.Path]::GetFileNameWithoutExtension($_)) -Value $_
+    }
+}
