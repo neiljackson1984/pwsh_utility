@@ -6376,6 +6376,16 @@ function Set-ScreenSaveTimeOut {
         its worth to have the -seconds parameter, because the user will naively
         assume that `Set-ScreenSaveTimeout 99` and `Set-ScreenSaveTimeout
         -seconds 99` are equivalent, which they are not.
+
+        TODO: ScreenSaveTimeOut, as it is saved in the registry is really a
+        nullable string (I have no idea why it's a string and not a DWORD).  It
+        is nullable in the sense that it is valid for the value to not exist (in
+        which case the system uses a default value defined elsewhere, I
+        presume.)  We ought to give the user some way of achieiving the "null"
+        state (i.e. the state where the ScreenSaveTimeout value does not exist).
+
+        We also probably ought to have a `Get-ScreenSaveTimeout` function, but
+        this is really becoming ridiculous.
     #>
     
     [OutputType([void])]
