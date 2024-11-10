@@ -26,7 +26,7 @@ function initializeUser {
     $displayName            = "$($userSpec['firstName']) $($userSpec['lastName'])"
     
     if ($companyParameters['emailDomainName'] -eq 'nakanoassociates.com'){
-        Write-Host "this is a Nakano job"
+        Write-Information "this is a Nakano job"
         
         $idOfBitwardenItemContainingSoftetherVpnServerCredentials='5d918212-baf7-44d7-bf18-acf701364944'
         $bitwardenItemContainingSoftetherVpnServerCredentials = Get-BitwardenItem $idOfBitwardenItemContainingSoftetherVpnServerCredentials
@@ -70,9 +70,9 @@ function initializeUser {
         $mgUser = (Get-MgUser -UserId  $userPrincipalName -ErrorAction SilentlyContinue)
         
         if( $mgUser ){
-            Write-Host "An MgUser having id '$userPrincipalName' already exists, so we will not create a new user." 
+            Write-Information "An MgUser having id '$userPrincipalName' already exists, so we will not create a new user." 
         } else {
-            Write-Host "No MgUser having id '$userPrincipalName' exists, so we will create one." 
+            Write-Information "No MgUser having id '$userPrincipalName' exists, so we will create one." 
             $s = @{
                 AccountEnabled    = $True
                 # DisplayName       = "to_be updated_later"
@@ -115,11 +115,11 @@ function initializeUser {
 
         $mailbox = Get-Mailbox $mgUser.Id -ErrorAction SilentlyContinue
         if (! $mailbox ){
-            Write-Host "The user $userPrincipalName does not appear to have a mailbox, so we will not attempt to adjust email addresses."
+            Write-Information "The user $userPrincipalName does not appear to have a mailbox, so we will not attempt to adjust email addresses."
         } else {
             
             
-            # Write-Host "initially, mailbox.EmailAddresses: ", $mailbox.EmailAddresses
+            # Write-Information "initially, mailbox.EmailAddresses: ", $mailbox.EmailAddresses
             
             # $emailAddressesToRemove = $mailbox.EmailAddresses | where-object {
             #     ($_ -match '(?-i)^SMTP:.+$') -and (-not ($_ -in $desiredEmailAddresses)) # it is an smtp address of some sort and it is not in the desiredEmailAddresses List
@@ -129,8 +129,8 @@ function initializeUser {
             # }
 
             # if( ([Boolean] $emailAddressesToRemove) -or ([Boolean] $emailAddressesToAdd) ){
-            #     Write-Host "emailAddressesToRemove ($($emailAddressesToRemove.Length)): ", $emailAddressesToRemove
-            #     Write-Host "emailAddressesToAdd ($($emailAddressesToAdd.Length)): ", $emailAddressesToAdd
+            #     Write-Information "emailAddressesToRemove ($($emailAddressesToRemove.Length)): ", $emailAddressesToRemove
+            #     Write-Information "emailAddressesToAdd ($($emailAddressesToAdd.Length)): ", $emailAddressesToAdd
                 
 
             #     $s = @{
@@ -140,9 +140,9 @@ function initializeUser {
             #         }; 
             #     }; $mailbox | Set-Mailbox @s ; 
             #     $mailbox =  Get-Mailbox $mgUser.Id
-            #     Write-Host "finally, mailbox.EmailAddresses: ", $mailbox.EmailAddresses
+            #     Write-Information "finally, mailbox.EmailAddresses: ", $mailbox.EmailAddresses
             # } else {
-            #     Write-Host "email addresses for $userPrincipalName are as desired, so we will not bother to add or remove any."
+            #     Write-Information "email addresses for $userPrincipalName are as desired, so we will not bother to add or remove any."
             # }
             
             @{
@@ -179,13 +179,13 @@ function initializeUser {
             $displayName            = $using:displayName              
 
 
-            Write-Host "$env:computername is working on $($userSpec['firstName'][0] + $userSpec['lastName'])"
+            Write-Information "$env:computername is working on $($userSpec['firstName'][0] + $userSpec['lastName'])"
             # assert $publicDomainName -eq (get-adforest).UPNSuffixes[0]
             $adUser = Get-ADUser $username
             if($adUser){
-                Write-Host "The adUser `"$($username)`" already exists, so we will not bother to create."
+                Write-Information "The adUser `"$($username)`" already exists, so we will not bother to create."
             } else {
-                Write-Host "creating adUser `"$($username)`"."
+                Write-Information "creating adUser `"$($username)`"."
                 
                 New-ADUser `
                     -ErrorAction SilentlyContinue `
@@ -255,8 +255,8 @@ function initializeUser {
             
             $desiredFinalProxyAddresses = $adUser.ProxyAddresses
             
-            Write-Host "initialProxyAddresses: ", $initialProxyAddresses
-            Write-Host "desiredFinalProxyAddresses: ", $desiredFinalProxyAddresses
+            Write-Information "initialProxyAddresses: ", $initialProxyAddresses
+            Write-Information "desiredFinalProxyAddresses: ", $desiredFinalProxyAddresses
             
             
             Set-ADUser -Instance $adUser 1> $null
@@ -276,7 +276,7 @@ function initializeUser {
 
             Import-Module ADSync
             Start-ADSyncSyncCycle  -PolicyType Delta  
-            Write-Host "adUser: $($adUser | Out-String)"
+            Write-Information "adUser: $($adUser | Out-String)"
 
             return $adUser
         }
@@ -290,17 +290,17 @@ function initializeUser {
             % {Invoke-Command @_} |
             Select-Object -Last 1
         )
-        Write-Host "adUser: $($adUser | Out-String)"
+        Write-Information "adUser: $($adUser | Out-String)"
 
         if(-not $adUser){
-            Write-Host "we have failed to retrieve the adUser, and so will return now."
+            Write-Information "we have failed to retrieve the adUser, and so will return now."
             return
         }
 
         $mgUser = Get-MgUser -UserId $adUser.UserPrincipalName -ErrorAction SilentlyContinue
 
         if (! $mgUser ){
-            Write-Host "No MgUser having id $($adUser.UserPrincipalName) exists.  Probably need to wait a few minutes for adsync to push changes to the cloud."
+            Write-Information "No MgUser having id $($adUser.UserPrincipalName) exists.  Probably need to wait a few minutes for adsync to push changes to the cloud."
         } else {
             # assign licenses:
             @{
@@ -599,10 +599,10 @@ function getDcSession {
 
     if (-not $DisableAutomaticVpnConnection){
         if($($companyParameters['vpn'])){
-            write-host "attempting to connect to vpn specified by '$($companyParameters['vpn'])'. "
+            Write-Information "attempting to connect to vpn specified by '$($companyParameters['vpn'])'. "
             Connect-OpenVpn -bitwardenItemId $($companyParameters['vpn'])
         } elseif ($companyParameters['nameOfSoftetherVpnConnectionNeededToTalkToDomainController']){
-            write-host "ensuring connection to vpn '$($companyParameters['nameOfSoftetherVpnConnectionNeededToTalkToDomainController'])'. "
+            Write-Information "ensuring connection to vpn '$($companyParameters['nameOfSoftetherVpnConnectionNeededToTalkToDomainController'])'. "
             Connect-SoftEtherVpn $companyParameters['nameOfSoftetherVpnConnectionNeededToTalkToDomainController'] | out-null
         } 
     }
@@ -667,12 +667,12 @@ function getDcSession {
 
     if($psSession) {
         Invoke-Command $psSession {  
-            write-host (
+            Write-Information (
                 @(
                     "hello from $($env:computername).  Running powershell $($psVersionTable.PSEdition) $($psVersionTable.PSVersion)."
                 ) -join "`n"
             )
-        } | write-host
+        } | Write-Information
     } 
 
     return $psSession
@@ -710,7 +710,7 @@ function getArgumentsForGetDcSessionForNonDomainSession  {
         ([System.Uri] @($bitwardenItem.login.uris)[0].uri).Host ??
         @($bitwardenItem.login.uris)[0].uri
     )
-    ## write-host "hostname: $hostname"
+    ## Write-Information "hostname: $hostname"
     @{
         bitwardenItemIdOfCompanyParameters = $bitwardenItemIdOfCompanyParameters
         ComputerName = $hostname
@@ -767,7 +767,7 @@ function New-Invoker {
     session might avoid the overhead of creating a new session on every call.
     However, eliminating the saved state of a re-used session could potentially
     improve predictability, stability, and security.  Our current strategy, of
-    silently (except for a few Write-Host messages) recreating the session if it
+    silently (except for a few Write-Information messages) recreating the session if it
     has become disconnected or ceased to exist, could confuse the user, who
     might be expecting the session state to be as he left it.  I can almost
     imagine having a Switch argument (to the function returned by New-Invoker)
@@ -870,8 +870,8 @@ function New-Invoker {
     respectively, by doing:
 
     ```
-        rss { Write-Host "hello from $($env:computername)" } 
-        rsd { Write-Host "hello from $($env:computername)" }
+        rss { Write-Information "hello from $($env:computername)" } 
+        rsd { Write-Information "hello from $($env:computername)" }
     ```
 
     .NOTES
@@ -950,9 +950,9 @@ function New-Invoker {
         #### $args[0].variablesToImport.GetEnumerator() |% { Set-Variable -Name $_.Name -Value $_.Value  }
         ## $args[0].variablesToImport.GetEnumerator() |% { Set-Item -Path "variable:$($_.Name)"  -Value $_.Value  }
         ## $args[0].functionsToImport.GetEnumerator() |% { Set-Item -Path "function:$($_.Name)"  -Value $_.Value  }
-        Write-Host "initializer is running"
+        Write-Information "initializer is running"
         foreach($item in $args[0].itemsToImport) { 
-            ## Write-Host "now processing $($item.PSPath )"
+            ## Write-Information "now processing $($item.PSPath )"
             
             # Set-Item -LiteralPath $item.PSPath  -Value $(switch($item.PSDrive){"Variable" {$item.Value}; "Function" {$item.ScriptBlock}}) 
 
@@ -969,7 +969,7 @@ function New-Invoker {
 
         New-Module -ArgumentList @(@{itemsToImport = $args[0].itemsToImport}) -ScriptBlock {
             foreach($item in $args[0].itemsToImport) { 
-                ## Write-Host "now processing $($item.PSPath )"
+                ## Write-Information "now processing $($item.PSPath )"
                 
                 # Set-Item -LiteralPath $item.PSPath  -Value $(switch($item.PSDrive){"Variable" {$item.Value}; "Function" {$item.ScriptBlock}}) 
     
@@ -986,10 +986,10 @@ function New-Invoker {
         } | out-null
 
         if([bool] ([string] $args[0].startupScript)){
-            write-host "running StartupScript"
+            Write-Information "running StartupScript"
             invoke-expression $args[0].startupScript
         }
-        Write-Host "initializer is finished"
+        Write-Information "initializer is finished"
 
 
     }
@@ -1021,10 +1021,10 @@ function New-Invoker {
             ($session.Availability -eq "Available")
         ){
             # do nothing, $session is already as desired
-            ## write-host "session is already as desired"
+            ## Write-Information "session is already as desired"
         } else {
             if($session){
-                write-host (-join @(
+                Write-Information (-join @(
                     "session exists, but is not both Open and Available "
                     "(State is $($session.State), Availability is $($session.Availability)), "
                     "so we will remove and recreate the session."
@@ -1032,7 +1032,7 @@ function New-Invoker {
                 Remove-PSSession -Session $session | out-null
                 ## TODO: attempt to reconnect before resorting to removal.
             } else {
-                write-host "session does not exist"
+                Write-Information "session does not exist"
             }
             $session = $(
                 Merge-Hashtables @( 
