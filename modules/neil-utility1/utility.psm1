@@ -5473,12 +5473,17 @@ Function Install-Winget {
 
         The below creation of a chocolatey shim is one way to make winget
         effectively available on the path.
+
+        We probably  ought to create the chocolatey shim when and only when we
+        are running in a version of windows that is too old to support app
+        execution aliases, but I do not at the moment (2024-11-08-1615) have a good
+        way to test for this condition
     #>
     
-
-
-    # add "winget" to the path:
-    if($true){
+    $doModifyPermissionsOfWingetFiles = $true
+    $doMakeChocolateyShimPointingToWinget = $true
+    
+    if($doModifyPermissionsOfWingetFiles){
         gi -force (join-path $env:ProgramFiles "WindowsApps/Microsoft.DesktopAppInstaller_*_x64__8wekyb3d8bbwe") | 
         ? {$_.PSIsContainer} |
         % {
@@ -5487,13 +5492,16 @@ Function Install-Winget {
         }
     }
 
-    gci -force -recurse (join-path $env:ProgramFiles "WindowsApps/Microsoft.DesktopAppInstaller_*_x64__8wekyb3d8bbwe") -filter "winget.exe" |
-    ? {-not $_.PSIsContainer} |
-    %{
-        & "${env:ChocolateyInstall}/tools/shimgen.exe" @(
-            "--path"; $_
-            "--output"; (join-path "${env:ChocolateyInstall}/bin" (split-path -leaf $_ ))
-        )
+    if($doMakeChocolateyShimPointingToWinget ){
+        # add "winget" to the path (effectively) by making a chocolatey shim:
+        gci -force -recurse (join-path $env:ProgramFiles "WindowsApps/Microsoft.DesktopAppInstaller_*_x64__8wekyb3d8bbwe") -filter "winget.exe" |
+        ? {-not $_.PSIsContainer} |
+        %{
+            & "${env:ChocolateyInstall}/tools/shimgen.exe" @(
+                "--path"; $_
+                "--output"; (join-path "${env:ChocolateyInstall}/bin" (split-path -leaf $_ ))
+            )
+        }
     }
 
 
@@ -5501,73 +5509,119 @@ Function Install-Winget {
 
     # see (https://www.reddit.com/r/PowerShell/comments/18lxtfo/run_winget_from_a_central_point_on_many_machines/)
     # see (https://github.com/microsoft/winget-cli/issues/1627)
-    pwsh  -c {Install-PSResource -Name "Microsoft.WinGet.Client" -AcceptLicense -TrustRepository  -Repository PSGallery  -Scope AllUsers}
+    
+    <# try to make the Install-PsResource command available in Windows Powershell (and also trying to install Microsoft.WinGet.Client): #>
+    powershell  -c {
+        Install-PackageProvider -Confirm:$false -Name NuGet -Force
 
-    ## &{# copied with slight adaptation from (https://learn.microsoft.com/en-us/windows/package-manager/winget/#install-winget-on-windows-sandbox): 
-    ##    $pathOfTemporaryDirectory = New-TemporaryDirectory
-    ##    @(
-    ##    
-    ##        @{
-    ##            uri      = "https://aka.ms/Microsoft.VCLibs.x64.14.00.Desktop.appx"
-    ##            filename = "Microsoft.VCLibs.x64.14.00.Desktop.appx"
-    ##        } 
-    ##        @{
-    ##            uri      = "https://github.com/microsoft/microsoft-ui-xaml/releases/download/v2.8.6/Microsoft.UI.Xaml.2.8.x64.appx"
-    ##            filename = "Microsoft.UI.Xaml.2.8.x64.appx"
-    ##        } 
-    ##        @{
-    ##            uri      = "https://aka.ms/getwinget"
-    ##            filename = "Microsoft.DesktopAppInstaller_8wekyb3d8bbwe.msixbundle"
-    ##        } 
-    ##    ) |
-    ##    %{
-    ##        Invoke-WebRequest -Uri $_.uri -OutFile (join-path $pathOfTemporaryDirectory $_.filename)
-    ##        powershell -c "Add-AppxPackage '$(join-path $pathOfTemporaryDirectory $_.filename)'"
-    ##    }
-    ## }
+        0..1 |%  {
+            foreach($acceptLicenseArg in @(
+                @{}
+                @{AcceptLicense=$True}
+            )){
+                foreach($scopeArg in @(
+                    ## @{} 
+                    @{Scope="AllUsers"}
+                )){
+                    foreach($nameArg in @(@{Name="PowerShellGet"}; @{Name="PSResourceGet"};  @{Name="Microsoft.WinGet.Client"})){
+                        Install-Module -AllowClobber:$true -Force:$true -confirm:$false @acceptLicenseArg @scopeArg @nameArg
+                    }
+                }
+            }
+        }
+    }
 
-    ##powershell -c {Add-AppxPackage -RegisterByFamilyName -MainPackage Microsoft.DesktopAppInstaller_8wekyb3d8bbwe}
-    
-    ##powershell -c {Add-AppxPackage -MainPackage Microsoft.DesktopAppInstaller_8wekyb3d8bbwe}
-    ##pwsh -c {Add-AppxPackage -MainPackage Microsoft.DesktopAppInstaller_8wekyb3d8bbwe}
-    
-    powershell  -c {Add-AppxPackage -RegisterByFamilyName -MainPackage Microsoft.DesktopAppInstaller_8wekyb3d8bbwe}
-    pwsh        -c {Add-AppxPackage -RegisterByFamilyName -MainPackage Microsoft.DesktopAppInstaller_8wekyb3d8bbwe}
-    powershell  -c {Add-AppxPackage -RegisterByFamilyName -MainPackage Microsoft.Winget.Source_8wekyb3d8bbwe}
-    pwsh        -c {Add-AppxPackage -RegisterByFamilyName -MainPackage Microsoft.Winget.Source_8wekyb3d8bbwe}
-    
-    $pathOfTemporaryDirectory = New-TemporaryDirectory
-    $pathOfSourceMsixFile = (join-path $pathOfTemporaryDirectory "source.msix")
+    @(
+        "powershell"
+        "pwsh"
+    ) |% {
+        & $_ -c  {
+            Install-PSResource -Name "Microsoft.WinGet.Client" -AcceptLicense -TrustRepository  -Repository PSGallery  -Scope AllUsers -Reinstall
+        }
+    }
+
+    if($false){# copied with slight adaptation from (https://learn.microsoft.com/en-us/windows/package-manager/winget/#install-winget-on-windows-sandbox): 
+        ## &{# copied with slight adaptation from (https://learn.microsoft.com/en-us/windows/package-manager/winget/#install-winget-on-windows-sandbox): 
+        ##    $pathOfTemporaryDirectory = New-TemporaryDirectory
+        ##    @(
+        ##    
+        ##        @{
+        ##            uri      = "https://aka.ms/Microsoft.VCLibs.x64.14.00.Desktop.appx"
+        ##            filename = "Microsoft.VCLibs.x64.14.00.Desktop.appx"
+        ##        } 
+        ##        @{
+        ##            uri      = "https://github.com/microsoft/microsoft-ui-xaml/releases/download/v2.8.6/Microsoft.UI.Xaml.2.8.x64.appx"
+        ##            filename = "Microsoft.UI.Xaml.2.8.x64.appx"
+        ##        } 
+        ##        @{
+        ##            uri      = "https://aka.ms/getwinget"
+        ##            filename = "Microsoft.DesktopAppInstaller_8wekyb3d8bbwe.msixbundle"
+        ##        } 
+        ##    ) |
+        ##    %{
+        ##        Invoke-WebRequest -Uri $_.uri -OutFile (join-path $pathOfTemporaryDirectory $_.filename)
+        ##        powershell -c "Add-AppxPackage '$(join-path $pathOfTemporaryDirectory $_.filename)'"
+        ##    }
+        ## }
+    }
+
+
+    $pathOfSourceMsixFile = (join-path (New-TemporaryDirectory) "source.msix")
     Invoke-WebRequest -Uri "https://cdn.winget.microsoft.com/cache/source.msix" -OutFile $pathOfSourceMsixFile
 
-    
 
-    powershell  -c "Add-AppxPackage '$($pathOfSourceMsixFile)'"
-    pwsh        -c "Add-AppxPackage '$($pathOfSourceMsixFile)'"
+    @(
+        "powershell"
+        "pwsh"
+    ) |% {
+        & $_ -c  (@(
+            "Add-AppxPackage -RegisterByFamilyName -MainPackage Microsoft.DesktopAppInstaller_8wekyb3d8bbwe"
+            "Add-AppxPackage -RegisterByFamilyName -MainPackage Microsoft.Winget.Source_8wekyb3d8bbwe"
+            "Add-AppxPackage '$($pathOfSourceMsixFile)'"
+        ) -join "`n" )
+    }
+
+
+
+
     # see (https://github.com/microsoft/winget-cli/issues/3303)
     # see (https://www.pc-tips.info/en/tips/windows-tips/failed-in-attempting-to-update-the-source-winget/)
 
-    pwsh  -c {Repair-WinGetPackageManager  -allusers -IncludePreRelease -Latest -Force}
-    pwsh  -c {Repair-WinGetPackageManager   -IncludePreRelease -Latest -Force}
-    pwsh  -c {Repair-WinGetPackageManager  -allusers }
-    pwsh  -c {Repair-WinGetPackageManager  }
+    @(
+        "powershell"
+        "pwsh"
+    ) |% {
+        & $_ -c  {
+
+
+            Repair-WinGetPackageManager  -allusers 
+            ##Repair-WinGetPackageManager  
+
+            Repair-WinGetPackageManager  -allusers -IncludePreRelease -Latest -Force
+            ##Repair-WinGetPackageManager   -IncludePreRelease -Latest -Force
+        }
+    }
+
 
     ##Install-PSResource -Name "Microsoft.WinGet.Client" -AcceptLicense -TrustRepository  -Repository PSGallery -Scope CurrentUser
+    .{# acknowledge the one-time acknowledgement
+        <#  the  piping of "y" into winget is a one-time acceptance of some kind
+            of agreement that winget forces you to acknowledge once before you can use
+            winget.  doing it here gets it out of the way. 
+        #>
 
-    # the  piping of "y" into winget is a one-time acceptance of some kind
-    # of agreement that winget forces you to acknowledge once before you can use
-    # winget.  doing it here gets it out of the way.
+        Get-Command -all -CommandType Application -name winget |
+        ? {$_} |
+        %{
+            & $_ source reset --force
+            & $_ list --accept-source-agreements | out-null
+            & $_ source reset --force
+            "y" | & $_ list  | out-null 
+            "y" | & $_ list --accept-source-agreements   | out-null 
+            "y" | & $_ search Microsoft.Office   | out-null 
+            "y" | & $_ search Microsoft.Office  --accept-source-agreements | out-null 
+        }
 
-    Get-Command -all -CommandType Application -name winget |
-    ? {$_} |
-    %{
-        & $_ source reset --force
-        & $_ list --accept-source-agreements | out-null
-        & $_ source reset --force
-        "y" | & $_ list  | out-null 
-        "y" | & $_ list --accept-source-agreements   | out-null 
-        "y" | & $_ search Microsoft.Office   | out-null 
-        "y" | & $_ search Microsoft.Office  --accept-source-agreements | out-null 
     }
 
     ## Get-WinGetSource |% {Reset-WinGetSource -Name $_.Name}
