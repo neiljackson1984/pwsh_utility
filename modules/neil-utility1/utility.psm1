@@ -5545,7 +5545,7 @@ Function Install-Winget {
     # see (https://www.reddit.com/r/PowerShell/comments/18lxtfo/run_winget_from_a_central_point_on_many_machines/)
     # see (https://github.com/microsoft/winget-cli/issues/1627)
     
-    <# try to make the Install-PsResource command available in Windows Powershell (and also trying to install Microsoft.WinGet.Client): #>
+    <# try to make the Install-PsResource command available in Windows Powershell: #>
     powershell  -c {
         Install-PackageProvider -Confirm:$false -Name NuGet -Force
 
@@ -5560,10 +5560,10 @@ Function Install-Winget {
                 )){
                     foreach($nameArg in @(
                         @{Name="PowerShellGet"}
-                        @{Name="PSResourceGet"}
-                        @{Name="Microsoft.WinGet.Client"}
+                        @{Name="Microsoft.PowerShell.PSResourceGet"}
+                        ## @{Name="Microsoft.WinGet.Client"}
                     )){
-                        Install-Module -AllowClobber:$true -Force:$true -confirm:$false @acceptLicenseArg @scopeArg @nameArg
+                        Install-Module -Repository PSGallery -AllowClobber:$true -Force:$true -confirm:$false @acceptLicenseArg @scopeArg @nameArg
                     }
                 }
             }
