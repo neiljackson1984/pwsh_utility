@@ -5456,33 +5456,81 @@ Function Install-Winget {
         }
     }
     
-    choco upgrade --yes --acceptlicense  --exact winget
-
-    <#  It seems that the only thing we need to do differently or special (I
-        think) when using Chocolatey to install winget on Windows server 2019
-        and Windows 10 compared with windows 11, is take pains to get the
-        winget.exe executable file on the path (it seems that App Execution
-        Aliases -- the normal mechanism for winget to get added to the path --
-        do not work in Windows 10 and Windows Server 2019.  Or, at any rate,
-        when we install the AppX Package named 'Microsoft.DesktopAppInstaller',
-        version '2024.227.1731.0', the App Execution Aliases (i.e. NTFS reparse
-        points in (join-path $env:localappdata "Microsoft/WindowsApps") seem to
-        get created on Windows 11, but not on Windows 10 or Windows server 2019
-        (probably because the process-starting api function in the Windows 10
-        kernel does not support the "app execution alias" ntfs reparse points. ) 
-
-        The below creation of a chocolatey shim is one way to make winget
-        effectively available on the path.
-
-        We probably  ought to create the chocolatey shim when and only when we
-        are running in a version of windows that is too old to support app
-        execution aliases, but I do not at the moment (2024-11-08-1615) have a good
-        way to test for this condition
-    #>
-    
     $doModifyPermissionsOfWingetFiles = $true
     $doMakeChocolateyShimPointingToWinget = $true
     
+
+    if($false){
+        choco upgrade --yes --acceptlicense  --exact winget
+
+        <#  It seems that the only thing we need to do differently or special (I
+            think) when using Chocolatey to install winget on Windows server 2019
+            and Windows 10 compared with windows 11, is take pains to get the
+            winget.exe executable file on the path (it seems that App Execution
+            Aliases -- the normal mechanism for winget to get added to the path --
+            do not work in Windows 10 and Windows Server 2019.  Or, at any rate,
+            when we install the AppX Package named 'Microsoft.DesktopAppInstaller',
+            version '2024.227.1731.0', the App Execution Aliases (i.e. NTFS reparse
+            points in (join-path $env:localappdata "Microsoft/WindowsApps") seem to
+            get created on Windows 11, but not on Windows 10 or Windows server 2019
+            (probably because the process-starting api function in the Windows 10
+            kernel does not support the "app execution alias" ntfs reparse points. ) 
+
+            The below creation of a chocolatey shim is one way to make winget
+            effectively available on the path.
+
+            We probably  ought to create the chocolatey shim when and only when we
+            are running in a version of windows that is too old to support app
+            execution aliases, but I do not at the moment (2024-11-08-1615) have a good
+            way to test for this condition
+        #>
+        
+
+    }
+
+
+    & {
+        $release = (Invoke-WebRequest -UseBasicParsing  "https://api.github.com/repos/microsoft/winget-cli/releases/latest").Content | ConvertFrom-Json
+    
+
+        $mainMsixAsset = $($release.assets | ? {$_.name -eq "Microsoft.DesktopAppInstaller_8wekyb3d8bbwe.msixbundle"}  | select -first 1)
+        $licenseAsset                       = $($release.assets | ? {$_.name -match "license" }  | select -first 1)
+        $dependenciesArchiveAsset           = $($release.assets | ? {$_.name -eq "DesktopAppInstaller_Dependencies.zip" }  | select -first 1)
+    
+        $pathOfTemporaryDirectory = (join-path $env:temp "$(new-guid)")
+    
+        $pathOfMainMsixFile                         = (join-path $pathOfTemporaryDirectory $mainMsixAsset.name)
+        $pathOfLicenseFile                          = (join-path $pathOfTemporaryDirectory $licenseAsset.name)
+        $pathOfDependenciesArchiveFile              = (join-path (join-path $env:temp "$(new-guid)") $dependenciesArchiveAsset.name)
+        $pathOfExpandedDependenciesArchiveDirectory = (join-path $pathOfTemporaryDirectory ([io.path]::GetFileNameWithoutExtension($dependenciesArchiveAsset.name)))
+    
+        New-Item -itemtype directory -force -path (split-path -parent $pathOfMainMsixFile) | out-null
+        New-Item -itemtype directory -force -path (split-path -parent $pathOfLicenseFile) | out-null
+        New-Item -itemtype directory -force -path (split-path -parent $pathOfDependenciesArchiveFile) | out-null
+        New-Item -itemtype directory -force -path $pathOfExpandedDependenciesArchiveDirectory | out-null
+    
+        Invoke-WebRequest -UseBasicParsing -Uri $mainMsixAsset.browser_download_url -OutFile $pathOfMainMsixFile
+        Invoke-WebRequest -UseBasicParsing -Uri $licenseAsset.browser_download_url -OutFile $pathOfLicenseFile
+        Invoke-WebRequest -UseBasicParsing -Uri $dependenciesArchiveAsset.browser_download_url -OutFile $pathOfDependenciesArchiveFile
+    
+        Expand-Archive -Path $pathOfDependenciesArchiveFile -DestinationPath $pathOfExpandedDependenciesArchiveDirectory 
+
+        @{
+            Online      = $true
+            LicensePath = $pathOfLicenseFile
+            PackagePath = $pathOfMainMsixFile
+            ##DependencyPackagePath = @(
+            ##    gci -file -recurse $pathOfExpandedDependenciesArchiveDirectory |
+            ##    ? {$_.Name -match "x64"} |
+            ##    select -expand FullName
+            ##)
+            DependencyPackagePath = @(
+               gci -file -recurse $pathOfExpandedDependenciesArchiveDirectory 
+            )
+        } |% {Add-AppxProvisionedPackage @_}
+    }
+
+
     if($doModifyPermissionsOfWingetFiles){
         gi -force (join-path $env:ProgramFiles "WindowsApps/Microsoft.DesktopAppInstaller_*_x64__8wekyb3d8bbwe") | 
         ? {$_.PSIsContainer} |
@@ -5491,19 +5539,6 @@ Function Install-Winget {
             ICACLS $_ /grant Administrators:F /T
         }
     }
-
-    if($doMakeChocolateyShimPointingToWinget ){
-        # add "winget" to the path (effectively) by making a chocolatey shim:
-        gci -force -recurse (join-path $env:ProgramFiles "WindowsApps/Microsoft.DesktopAppInstaller_*_x64__8wekyb3d8bbwe") -filter "winget.exe" |
-        ? {-not $_.PSIsContainer} |
-        %{
-            & "${env:ChocolateyInstall}/tools/shimgen.exe" @(
-                "--path"; $_
-                "--output"; (join-path "${env:ChocolateyInstall}/bin" (split-path -leaf $_ ))
-            )
-        }
-    }
-
 
 
 
@@ -5523,7 +5558,11 @@ Function Install-Winget {
                     ## @{} 
                     @{Scope="AllUsers"}
                 )){
-                    foreach($nameArg in @(@{Name="PowerShellGet"}; @{Name="PSResourceGet"};  @{Name="Microsoft.WinGet.Client"})){
+                    foreach($nameArg in @(
+                        @{Name="PowerShellGet"}
+                        @{Name="PSResourceGet"}
+                        @{Name="Microsoft.WinGet.Client"}
+                    )){
                         Install-Module -AllowClobber:$true -Force:$true -confirm:$false @acceptLicenseArg @scopeArg @nameArg
                     }
                 }
@@ -5531,12 +5570,28 @@ Function Install-Winget {
         }
     }
 
+    <# try to install Microsoft.WinGet.Client #>
     @(
         "powershell"
         "pwsh"
     ) |% {
         & $_ -c  {
-            Install-PSResource -Name "Microsoft.WinGet.Client" -AcceptLicense -TrustRepository  -Repository PSGallery  -Scope AllUsers -Reinstall
+
+            foreach($acceptLicenseArg in @(
+                @{}
+                @{AcceptLicense=$True}
+            )){
+                foreach($scopeArg in @(
+                    @{} 
+                    @{Scope="AllUsers"}
+                )){
+                    foreach($nameArg in @(
+                        @{Name="Microsoft.WinGet.Client"}
+                    )){
+                        Install-PSResource @nameArg @acceptLicenseArg -TrustRepository  -Repository PSGallery @scopeArg -Reinstall
+                    }
+                }
+            }
         }
     }
 
@@ -5567,7 +5622,7 @@ Function Install-Winget {
 
 
     $pathOfSourceMsixFile = (join-path (New-TemporaryDirectory) "source.msix")
-    Invoke-WebRequest -Uri "https://cdn.winget.microsoft.com/cache/source.msix" -OutFile $pathOfSourceMsixFile
+    Invoke-WebRequest -UseBasicParsing -Uri "https://cdn.winget.microsoft.com/cache/source.msix" -OutFile $pathOfSourceMsixFile
 
 
     @(
@@ -5597,12 +5652,25 @@ Function Install-Winget {
             Repair-WinGetPackageManager  -allusers 
             ##Repair-WinGetPackageManager  
 
-            Repair-WinGetPackageManager  -allusers -IncludePreRelease -Latest -Force
+            Repair-WinGetPackageManager  -allusers  -Latest -Force
             ##Repair-WinGetPackageManager   -IncludePreRelease -Latest -Force
+
+            Repair-WinGetPackageManager  -Latest -Force
+
         }
     }
 
-
+    if($doMakeChocolateyShimPointingToWinget ){
+        # add "winget" to the path (effectively) by making a chocolatey shim:
+        gci -force -recurse (join-path $env:ProgramFiles "WindowsApps/Microsoft.DesktopAppInstaller_*_x64__8wekyb3d8bbwe") -filter "winget.exe" |
+        ? {-not $_.PSIsContainer} |
+        %{
+            & "${env:ChocolateyInstall}/tools/shimgen.exe" @(
+                "--path"; $_
+                "--output"; (join-path "${env:ChocolateyInstall}/bin" (split-path -leaf $_ ))
+            )
+        }
+    }
     ##Install-PSResource -Name "Microsoft.WinGet.Client" -AcceptLicense -TrustRepository  -Repository PSGallery -Scope CurrentUser
     .{# acknowledge the one-time acknowledgement
         <#  the  piping of "y" into winget is a one-time acceptance of some kind
@@ -5625,6 +5693,7 @@ Function Install-Winget {
     }
 
     ## Get-WinGetSource |% {Reset-WinGetSource -Name $_.Name}
+    <# see  (https://github.com/PowerShell/PowerShell/issues/13138#issuecomment-1820195503) #>
 
 
 }
