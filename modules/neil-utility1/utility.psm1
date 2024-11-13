@@ -5451,17 +5451,20 @@ Function Install-Winget {
     if($env:ChocolateyInstall){
         $pathOfWingetShimFile = (join-path $env:ChocolateyInstall  "bin/winget.exe")
         if(Test-Path -LiteralPath $pathOfWingetShimFile -PathType leaf){
-            write-host "removing existing winget shim file at '$($pathOfWingetShimFile)'."
+            write-information "removing existing winget shim file at '$($pathOfWingetShimFile)'."
             remove-item -force (join-path $env:ChocolateyInstall  "bin/winget.exe")
         }
     }
     
-    $doModifyPermissionsOfWingetFiles = $true
+    $doModifyPermissionsOfWingetFiles     = $true
     $doMakeChocolateyShimPointingToWinget = $true
+    $doAddWingetDirectoryToSystemPath     = $false
     
 
     if($false){
-        choco upgrade --yes --acceptlicense  --exact winget
+
+        choco upgrade winget --yes --source chocolatey --no-progress
+
 
         <#  It seems that the only thing we need to do differently or special (I
             think) when using Chocolatey to install winget on Windows server 2019
@@ -5484,36 +5487,66 @@ Function Install-Winget {
             execution aliases, but I do not at the moment (2024-11-08-1615) have a good
             way to test for this condition
         #>
-        
-
     }
 
 
-    & {
+    <#  we install the vcredist-all choco package, in the hopes of fixing the
+        problem  of the missing visual c++ redistributable.  This is overkill
+        because winget relies  only  on visual c++ redistributable 2015  (as of
+        2024-11-12-1713), I think.
+    #>
+
+    <#  see (https://github.com/microsoft/winget-cli/issues/2748) This talks
+        about winget.exe returning exit code 0XC0000135 (which I think, based on
+        googling, is an exit code defined by .NET  (or maybe Windows) that means
+        that a dll could not be found)
+
+        It sounds like the fix, roughly, is to install the relevant version of
+        the Visual C++ runtime.  But its weird that winget runs correctly when
+        launched from  the app execution alias.  There must be something about
+        launching from the app execution alias that helps winget find the visual
+        c++ dll files.
+    #>
+
+    choco upgrade vcredist-all --yes --source chocolatey --no-progress
+
+    . {
         $release = (Invoke-WebRequest -UseBasicParsing  "https://api.github.com/repos/microsoft/winget-cli/releases/latest").Content | ConvertFrom-Json
     
 
-        $mainMsixAsset = $($release.assets | ? {$_.name -eq "Microsoft.DesktopAppInstaller_8wekyb3d8bbwe.msixbundle"}  | select -first 1)
-        $licenseAsset                       = $($release.assets | ? {$_.name -match "license" }  | select -first 1)
-        $dependenciesArchiveAsset           = $($release.assets | ? {$_.name -eq "DesktopAppInstaller_Dependencies.zip" }  | select -first 1)
+        $mainMsixAsset            = $($release.assets | ? {$_.name -eq "Microsoft.DesktopAppInstaller_8wekyb3d8bbwe.msixbundle"     }  | select -first 1)
+        $licenseAsset             = $($release.assets | ? {$_.name -match "license"                                                 }  | select -first 1)
+        $dependenciesArchiveAsset = $($release.assets | ? {$_.name -eq "DesktopAppInstaller_Dependencies.zip"                       }  | select -first 1)
+        $dependenciesJsonAsset    = $($release.assets | ? {$_.name -eq "DesktopAppInstaller_Dependencies.json"                      }  | select -first 1)
     
         $pathOfTemporaryDirectory = (join-path $env:temp "$(new-guid)")
     
         $pathOfMainMsixFile                         = (join-path $pathOfTemporaryDirectory $mainMsixAsset.name)
         $pathOfLicenseFile                          = (join-path $pathOfTemporaryDirectory $licenseAsset.name)
         $pathOfDependenciesArchiveFile              = (join-path (join-path $env:temp "$(new-guid)") $dependenciesArchiveAsset.name)
-        $pathOfExpandedDependenciesArchiveDirectory = (join-path $pathOfTemporaryDirectory ([io.path]::GetFileNameWithoutExtension($dependenciesArchiveAsset.name)))
+        $pathOfDependenciesJsonFile                 = (join-path (join-path $env:temp "$(new-guid)") $dependenciesJsonAsset.name)
     
+    
+
         New-Item -itemtype directory -force -path (split-path -parent $pathOfMainMsixFile) | out-null
+        Invoke-WebRequest -UseBasicParsing -Uri $mainMsixAsset.browser_download_url             -OutFile $pathOfMainMsixFile
+
         New-Item -itemtype directory -force -path (split-path -parent $pathOfLicenseFile) | out-null
+        Invoke-WebRequest -UseBasicParsing -Uri $licenseAsset.browser_download_url              -OutFile $pathOfLicenseFile
+
         New-Item -itemtype directory -force -path (split-path -parent $pathOfDependenciesArchiveFile) | out-null
-        New-Item -itemtype directory -force -path $pathOfExpandedDependenciesArchiveDirectory | out-null
-    
-        Invoke-WebRequest -UseBasicParsing -Uri $mainMsixAsset.browser_download_url -OutFile $pathOfMainMsixFile
-        Invoke-WebRequest -UseBasicParsing -Uri $licenseAsset.browser_download_url -OutFile $pathOfLicenseFile
-        Invoke-WebRequest -UseBasicParsing -Uri $dependenciesArchiveAsset.browser_download_url -OutFile $pathOfDependenciesArchiveFile
-    
+        Invoke-WebRequest -UseBasicParsing -Uri $dependenciesArchiveAsset.browser_download_url  -OutFile $pathOfDependenciesArchiveFile
+
+        New-Item -itemtype directory -force -path (split-path -parent $pathOfDependenciesJsonFile) | out-null
+        Invoke-WebRequest -UseBasicParsing -Uri $dependenciesJsonAsset.browser_download_url     -OutFile $pathOfDependenciesJsonFile
+
+        ## $dependencies = $(gc $pathOfDependenciesJsonFile | ConvertFrom-Json) 
+        
+        $pathOfExpandedDependenciesArchiveDirectory = (join-path $pathOfTemporaryDirectory ([io.path]::GetFileNameWithoutExtension($dependenciesArchiveAsset.name)))
         Expand-Archive -Path $pathOfDependenciesArchiveFile -DestinationPath $pathOfExpandedDependenciesArchiveDirectory 
+        $pathsOfDependencyFiles = @(
+            gci -file -recurse $pathOfExpandedDependenciesArchiveDirectory 
+        )
 
         @{
             Online      = $true
@@ -5524,19 +5557,40 @@ Function Install-Winget {
             ##    ? {$_.Name -match "x64"} |
             ##    select -expand FullName
             ##)
-            DependencyPackagePath = @(
-               gci -file -recurse $pathOfExpandedDependenciesArchiveDirectory 
-            )
-        } |% {Add-AppxProvisionedPackage @_}
+            DependencyPackagePath = $pathsOfDependencyFiles
+        } |% {Add-AppxProvisionedPackage @_} | out-null
+
+
+        if($false){ <# This is an attempt to make the visual c++  runtime accessible to the winget executable when not run from the app execution alias: #>
+            foreach($pathOfDependencyFile in $pathsOfDependencyFiles ){
+                write-information "attempting to do add-appxprovisionedpackage with packagePath '$($pathOfDependencyFile)'."
+                @{
+                    Online      = $true
+                    PackagePath = $pathOfDependencyFile
+                    SkipLicense = $True
+                } |% {Add-AppxProvisionedPackage @_} | out-null
+            }
+        }
+
+
     }
 
 
     if($doModifyPermissionsOfWingetFiles){
-        gi -force (join-path $env:ProgramFiles "WindowsApps/Microsoft.DesktopAppInstaller_*_x64__8wekyb3d8bbwe") | 
+        @(
+            gi -force (join-path $env:ProgramFiles "WindowsApps/Microsoft.DesktopAppInstaller_*_x64__8wekyb3d8bbwe")
+            gci -force (join-path $env:ProgramFiles "WindowsApps") -directory -filter "*vclibs*"
+
+        ) | 
         ? {$_.PSIsContainer} |
         % {
-            TAKEOWN /F $_ /R /A /D Y
-            ICACLS $_ /grant Administrators:F /T
+            write-information "taking ownership of '$($_)'"
+            TAKEOWN /F $_ /R /A /D Y | out-null
+            write-information ("exit code: 0X{0:X8} ({0:})" -f $LastExitCode)
+
+            write-information "granting administrators full control for '$($_)'"
+            ICACLS $_ /grant Administrators:F /T | out-null
+            write-information ("exit code: 0X{0:X8} ({0:})" -f $LastExitCode)
         }
     }
 
@@ -5546,8 +5600,10 @@ Function Install-Winget {
     # see (https://github.com/microsoft/winget-cli/issues/1627)
     
     <# try to make the Install-PsResource command available in Windows Powershell: #>
+    write-information "trying to make the Install-PsResource command available in Windows Powershell."
+
     powershell  -c {
-        Install-PackageProvider -Confirm:$false -Name NuGet -Force
+        Install-PackageProvider -Confirm:$false -Name NuGet -Force | out-null
 
         0..1 |%  {
             foreach($acceptLicenseArg in @(
@@ -5571,11 +5627,11 @@ Function Install-Winget {
     }
 
     <# try to install Microsoft.WinGet.Client #>
-    @(
-        "powershell"
-        "pwsh"
-    ) |% {
-        & $_ -c  {
+    write-information "trying to install the powershell module 'Microsoft.WinGet.Client'."
+    foreach($shell in "powershell", "pwsh"){
+        write-information "trying shell '$($shell)'."
+
+        & $shell -c  {
 
             foreach($acceptLicenseArg in @(
                 @{}
@@ -5593,9 +5649,13 @@ Function Install-Winget {
                 }
             }
         }
+        
     }
 
-    if($false){# copied with slight adaptation from (https://learn.microsoft.com/en-us/windows/package-manager/winget/#install-winget-on-windows-sandbox): 
+    if($false){
+        
+        <#  copied with slight adaptation from (https://learn.microsoft.com/en-us/windows/package-manager/winget/#install-winget-on-windows-sandbox):  #>
+
         ## &{# copied with slight adaptation from (https://learn.microsoft.com/en-us/windows/package-manager/winget/#install-winget-on-windows-sandbox): 
         ##    $pathOfTemporaryDirectory = New-TemporaryDirectory
         ##    @(
@@ -5620,20 +5680,21 @@ Function Install-Winget {
         ## }
     }
 
-
+    write-information "downloading the source.msix file."
     $pathOfSourceMsixFile = (join-path (New-TemporaryDirectory) "source.msix")
     Invoke-WebRequest -UseBasicParsing -Uri "https://cdn.winget.microsoft.com/cache/source.msix" -OutFile $pathOfSourceMsixFile
 
 
-    @(
-        "powershell"
-        "pwsh"
-    ) |% {
-        & $_ -c  (@(
+    write-information "doing Add-AppxPackage for '$($pathOfSourceMsixFile)' and '$($pathOfMainMsixFile)'."
+    foreach($shell in "powershell", "pwsh"){
+        write-information "trying shell '$($shell)'."
+
+        & $shell -c  (@(
             "Add-AppxPackage -RegisterByFamilyName -MainPackage Microsoft.DesktopAppInstaller_8wekyb3d8bbwe"
             "Add-AppxPackage -RegisterByFamilyName -MainPackage Microsoft.Winget.Source_8wekyb3d8bbwe"
             "Add-AppxPackage '$($pathOfSourceMsixFile)'"
-        ) -join "`n" )
+            "Add-AppxPackage '$($pathOfMainMsixFile)'"
+        ) -join "`n" )  
     }
 
 
@@ -5641,12 +5702,11 @@ Function Install-Winget {
 
     # see (https://github.com/microsoft/winget-cli/issues/3303)
     # see (https://www.pc-tips.info/en/tips/windows-tips/failed-in-attempting-to-update-the-source-winget/)
-
-    @(
-        "powershell"
-        "pwsh"
-    ) |% {
-        & $_ -c  {
+    write-information "doing Repair-WinGetPackageManager."
+    foreach($shell in "powershell", "pwsh"){
+        write-information "trying shell '$($shell)'."
+        
+        & $shell -c  {
 
 
             Repair-WinGetPackageManager  -allusers 
@@ -5660,7 +5720,11 @@ Function Install-Winget {
         }
     }
 
+    $pathOfwingetDirectory = $((gi (join-path $env:ProgramFiles "WindowsApps/Microsoft.DesktopAppInstaller_*_x64__8wekyb3d8bbwe") | sort Name | select -last 1))
+
     if($doMakeChocolateyShimPointingToWinget ){
+        write-information "making a chocolatey shim for winget.exe."
+
         # add "winget" to the path (effectively) by making a chocolatey shim:
         gci -force -recurse (join-path $env:ProgramFiles "WindowsApps/Microsoft.DesktopAppInstaller_*_x64__8wekyb3d8bbwe") -filter "winget.exe" |
         ? {-not $_.PSIsContainer} |
@@ -5671,12 +5735,21 @@ Function Install-Winget {
             )
         }
     }
+
+    if($doAddWingetDirectoryToSystemPath){
+        write-information "adding winget directory ('$($pathOfwingetDirectory)') to system path."
+
+        addEntryToSystemPathPersistently $pathOfwingetDirectory
+        Import-Module (join-path $env:ChocolateyInstall "helpers\chocolateyProfile.psm1"); refreshenv
+        
+    }
     ##Install-PSResource -Name "Microsoft.WinGet.Client" -AcceptLicense -TrustRepository  -Repository PSGallery -Scope CurrentUser
     .{# acknowledge the one-time acknowledgement
         <#  the  piping of "y" into winget is a one-time acceptance of some kind
             of agreement that winget forces you to acknowledge once before you can use
             winget.  doing it here gets it out of the way. 
         #>
+        write-information "acknowledging the one-time acknowledgements."
 
         Get-Command -all -CommandType Application -name winget |
         ? {$_} |
