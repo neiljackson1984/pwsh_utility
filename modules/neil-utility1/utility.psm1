@@ -5579,7 +5579,11 @@ Function Install-Winget {
     if($doModifyPermissionsOfWingetFiles){
         @(
             gi -force (join-path $env:ProgramFiles "WindowsApps/Microsoft.DesktopAppInstaller_*_x64__8wekyb3d8bbwe")
+
             gci -force (join-path $env:ProgramFiles "WindowsApps") -directory -filter "*vclibs*"
+            <#  2024-11-12-1741: it probably is not necessary to tweak the
+                permissions for the vclibs folders. 
+            #>
 
         ) | 
         ? {$_.PSIsContainer} |
