@@ -458,6 +458,18 @@ function initializeUser {
 
                 }
 
+                if ($userSpec.computers){
+
+                    ""
+
+                    -join @(
+                        "Your assigned $($companyParameters['companyName']) " 
+                        "computer is " 
+                        $userSpec.computers | select -first 1
+                        "."
+                    )
+                }
+
 
                 ""
                 ""
