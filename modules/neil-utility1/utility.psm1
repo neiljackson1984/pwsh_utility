@@ -6658,3 +6658,18 @@ function Set-ScreenSaveTimeOut {
 
     write-host "finalScreenSaveTimeOut.TotalSeconds: $($finalScreenSaveTimeOut.TotalSeconds)"
 }
+
+function neverSleep {
+    <# Set the computer never to sleep while running on AC power #>
+    write-information "setting the computer to never sleep while running on AC power"
+
+    $getState = {powercfg /query SCHEME_CURRENT SUB_SLEEP STANDBYIDLE | sls "Current AC Power Setting Index"}
+    $initialState = $(& $getState)
+    powercfg /change standby-timeout-ac 0
+    $finalState = $(& $getState)
+
+    write-information "initial state: $($initialState)"
+    write-information "final state: $($finalState)"
+
+    
+}
