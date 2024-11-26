@@ -4540,6 +4540,14 @@ function Get-LastLoggedOnUserName {
     % {$_.Translate([System.Security.Principal.NTAccount])} |
     % {$_.Value}
 }
+function Get-LastLoggedOnUserProfile {
+    [OutputType('Microsoft.Management.Infrastructure.CimInstance#root/cimv2/Win32_UserProfile')]
+    [CmdletBinding()]
+    Param(
+    )
+    ## return $(get-ciminstance win32_userprofile |? {$_.SID -eq (Get-LastLoggedOnUserSID)})
+    return $(get-ciminstance win32_userprofile -filter "SID='$(Get-LastLoggedOnUserSID)'")
+}
 
 function Get-LastLoggedOnUserVolatileEnvironment {
     <#
