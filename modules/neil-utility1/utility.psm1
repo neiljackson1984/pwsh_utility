@@ -3925,10 +3925,12 @@ function getStronglyNamedPath {
         [System.IO.Path]::GetExtension($initialName)
     ) -join "")
 
-    $strongName = (
-        ($initialName -match $desiredNamePattern) ?
-        $initialName :
-        $naiveStrongName
+    $strongName = $(
+        if($initialName -match $desiredNamePattern) {
+            $initialName
+        } else  {
+            $naiveStrongName
+        }
     )
 
     return (join-path (split-path -parent $path) $strongName)
