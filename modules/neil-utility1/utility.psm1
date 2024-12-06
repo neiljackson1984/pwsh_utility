@@ -6683,3 +6683,28 @@ function neverSleep {
 
     
 }
+
+function  Invoke-Periodically {
+
+    [CmdletBinding()]
+    param(
+        [ScriptBlock] $ScriptBlock,
+        [TimeSpan] $period=(New-TimeSpan -Seconds 60),
+        [Switch] $prependDate  = $False
+    )
+
+
+    .{
+        while($True){
+            $startTime = (Get-Date)
+            if($prependDate ){
+                Write-Output "$(Get-Date): $( & $ScriptBlock |? {$_} )"
+            } else {
+                & $ScriptBlock
+            }
+            $endTime = (Get-Date)
+            Start-Sleep -Seconds ([math]::max(0, ($period - ($endTime - $startTime) ).TotalSeconds)) | Out-Null
+        }
+    } |? {$_}
+
+}
