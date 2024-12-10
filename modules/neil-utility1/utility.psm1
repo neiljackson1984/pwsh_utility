@@ -6708,3 +6708,20 @@ function  Invoke-Periodically {
     } |? {$_}
 
 }
+
+
+function Show-Printers {
+    <#  
+        .DESCRIPTION
+        This will bring up the real list of Windows printers, with no combining of printers that have the same driver.
+        This list of printers is different than and more useful than the list that appears in the 'Devices and Printers' 
+        control panel.
+
+        See https://support.microsoft.com/en-us/kb/2015694 
+
+        See also http://www.eightforums.com/tutorials/13591-clsid-key-guid-shortcuts-list-windows-8-a.html 
+        
+    #>
+
+    start "shell:::{863aa9fd-42df-457b-8e4d-0de1b8015c60}"
+}
