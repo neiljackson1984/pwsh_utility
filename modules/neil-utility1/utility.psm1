@@ -6725,3 +6725,101 @@ function Show-Printers {
 
     start "shell:::{863aa9fd-42df-457b-8e4d-0de1b8015c60}"
 }
+
+Set-Alias Convert-EntraObjectIdToSid Convert-AzureAdObjectIdToSid 
+function Convert-AzureAdObjectIdToSid {
+    <#
+    .SYNOPSIS
+    Convert an Azure AD (a.k.a. Entra) Object ID to SID
+     
+    .DESCRIPTION
+    Converts an Azure AD Object ID to a SID.
+    Author: Oliver Kieselbach (oliverkieselbach.com)
+    The script is provided "AS IS" with no warranties.
+     
+    .PARAMETER ObjectID
+    The Object ID to convert
+
+
+    .EXAMPLE
+    
+    $objectId = "73d664e4-0886-4a73-b745-c694da45ddb4"
+    $sid = Convert-AzureAdObjectIdToSid -ObjectId $objectId
+    Write-Output $sid
+    
+    # Output:
+
+    # S-1-12-1-1943430372-1249052806-2496021943-3034400218
+
+
+    .NOTES
+    see (https://github.com/okieselbach/Intune/blob/master/Convert-AzureAdObjectIdToSid.ps1)
+
+    see (https://github.com/okieselbach/Intune/blob/e485876f69a30e9ecf30864f447f0506f00ce953/Convert-AzureAdObjectIdToSid.ps1)
+
+    This function probably ought to be refactored to work with the [System.Security.Principal.SecurityIdentifier] class.
+
+    #>
+    [OutputType([String])]
+    param([String] $ObjectId)
+
+    $bytes = [Guid]::Parse($ObjectId).ToByteArray()
+    $array = New-Object 'UInt32[]' 4
+
+    [Buffer]::BlockCopy($bytes, 0, $array, 0, 16)
+    $sid = "S-1-12-1-$array".Replace(' ', '-')
+
+    return $sid
+}
+
+Set-Alias Convert-EntraSidToObjectId Convert-AzureAdSidToObjectId
+Set-Alias Convert-SidToEntraObjectId Convert-AzureAdSidToObjectId
+function Convert-AzureAdSidToObjectId {
+    <#
+    .SYNOPSIS
+    Convert an Azure AD (a.k.a. Entra) SID to Object ID
+     
+    .DESCRIPTION
+    Converts an Azure AD SID to Object ID.
+    Author: Oliver Kieselbach (oliverkieselbach.com)
+    The script is provided "AS IS" with no warranties.
+     
+    .PARAMETER ObjectID
+    The SID to convert
+
+    .EXAMPLE
+        
+    $sid = "S-1-12-1-1943430372-1249052806-2496021943-3034400218"
+    $objectId = Convert-AzureAdSidToObjectId -Sid $sid
+    Write-Output $objectId
+    
+    # Output:
+    
+    # Guid
+    # ----
+    # 73d664e4-0886-4a73-b745-c694da45ddb4
+
+
+
+    .NOTES
+    see (https://github.com/okieselbach/Intune/blob/master/Convert-AzureAdSidToObjectId.ps1)
+
+    see (https://github.com/okieselbach/Intune/blob/e485876f69a30e9ecf30864f447f0506f00ce953/Convert-AzureAdSidToObjectId.ps1)
+
+    This function probably ought to be refactored to work with the [System.Security.Principal.SecurityIdentifier] class.
+
+
+    #>
+    [OutputType([Guid])]
+    param([String] $Sid)
+
+    $text = $sid.Replace('S-1-12-1-', '')
+    $array = [UInt32[]]$text.Split('-')
+
+    $bytes = New-Object 'Byte[]' 16
+    [Buffer]::BlockCopy($array, 0, $bytes, 0, 16)
+    [Guid]$guid = $bytes
+
+    return $guid
+}
+
