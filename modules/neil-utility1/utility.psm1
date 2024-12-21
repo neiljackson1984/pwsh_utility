@@ -2,9 +2,9 @@ function unlockTheBitwardenVault(){
     #temporary hack to speed things up:
     Write-Debug "blindly assuming that bitwarden vault is unlocked..."; return
     
-    Write-Host "Attempting to unlock the bitwarden vault..."
+    Write-Information "Attempting to unlock the bitwarden vault..."
     if ($(bw unlock --check)) {
-        Write-Host "The bitwarden vault is already unlocked."
+        Write-Information "The bitwarden vault is already unlocked."
     }
     else { 
         $env:BW_SESSION =  $(pwsh -Command "bw unlock --raw || bw login --raw") 
@@ -118,7 +118,7 @@ function New-BitwardenItem {
     unlockTheBitwardenVault
     $result = [System.Convert]::ToBase64String( ([system.Text.Encoding]::UTF8).GetBytes(($bitwardenItem | ConvertTo-Json -Depth 50)) )  | bw --nointeraction --raw create item 
     $newlyCreatedBitwardenItem = ( $result | ConvertFrom-Json -AsHashtable)
-    Write-Host "created new bitwarden item having id $($newlyCreatedBitwardenItem['id'])."
+    Write-Information "created new bitwarden item having id $($newlyCreatedBitwardenItem['id'])."
     return (Get-BitwardenItem -bitwardenItemId $newlyCreatedBitwardenItem['id'] )
 }
 
@@ -735,7 +735,7 @@ function initializeSshAgentFromBitwardenItemAndReturnSshAgentEnvironment {
             Set-Item "env:$($key)" -Value $initialValues[$key]
         }
     } | 
-    write-host
+    Write-Information
 
 
 
@@ -1277,7 +1277,7 @@ function Get-LazilyConstructedFunction{
 
     return {
         if(-not $script:mainFunction){
-            write-host "initializing mainFunction"
+            Write-Information "initializing mainFunction"
             $script:mainFunction = & $constructor
         }
         $input | & $script:mainFunction @args
@@ -1471,7 +1471,7 @@ function Send-Mail{
         return
     }
 
-    Write-host "using the email account defined in bitwarden item $($bitwardenItemContainingEmailCredentials.id)"
+    Write-Information "using the email account defined in bitwarden item $($bitwardenItemContainingEmailCredentials.id)"
     
     $username=$(
         @(
@@ -1524,7 +1524,7 @@ function Send-Mail{
     
     if(-not $from){
         $from=$bitwardenItemContainingEmailCredentials.login.username
-        write-host "we have set the from address to '$($from)'"
+        Write-Information "we have set the from address to '$($from)'"
     }
 
     $mailMessage = New-Object Net.Mail.MailMessage
@@ -1535,7 +1535,7 @@ function Send-Mail{
     $mailMessage.Subject = $subject
     $mailMessage.Body = $body
     $result = $SMTPClient.Send($mailMessage)
-    Write-Host "result of sending the message: $result"
+    Write-Information "result of sending the message: $result"
 
 }
 
@@ -1574,7 +1574,7 @@ function Send-TestMessage(){
 
         if(-not $senderEmailAddress){
             $senderEmailAddress = $emailAccount
-            write-host "senderEmailAddress: '$($senderEmailAddress)'"
+            Write-Information "senderEmailAddress: '$($senderEmailAddress)'"
         }
 
         @{
@@ -1615,7 +1615,7 @@ function getEnabledServicePlansAssignedToUser{
 
     $mgUser = get-mguser -UserId $userId 
     if (! $mgUser ){
-        Write-Host "No mgUser having id $userId exists."
+        Write-Information "No mgUser having id $userId exists."
         return
     } 
 
@@ -1664,7 +1664,7 @@ function setLicensesAssignedToMgUser{
 
     $mgUser = get-mguser -UserId $userId 
     if (! $mgUser ){
-        Write-Host "No mgUser having id $userId exists."
+        Write-Information "No mgUser having id $userId exists."
         return
     } 
 
@@ -1725,7 +1725,7 @@ function setLicensesAssignedToMgUser{
 
 
 
-    Write-Host (
+    Write-Information (
         @(
             "Initially, $($mgUser.UserPrincipalName) has the "
             
@@ -1738,7 +1738,7 @@ function setLicensesAssignedToMgUser{
         ) -join ""
     )
 
-    Write-Host (
+    Write-Information (
         @(
             "Initially, $($mgUser.UserPrincipalName) has the "
             
@@ -1764,27 +1764,27 @@ function setLicensesAssignedToMgUser{
 
 
 
-    Write-Host ("skuIdsToRemoveFromUser ($($skuIdsToRemoveFromUser.Count)): ", $skuIdsToRemoveFromUser)
-    Write-Host ("skuIdsToGiveToUser ($($skuIdsToGiveToUser.Count)):", $skuIdsToGiveToUser)
-    Write-Host ("idsOfServicePlansToGiveTheUser ($($idsOfServicePlansToGiveTheUser.Count)): ", $idsOfServicePlansToGiveTheUser)
-    Write-Host ("idsOfServicePlansToRemoveFromUser ($($idsOfServicePlansToRemoveFromUser.Count)):", $idsOfServicePlansToRemoveFromUser)
+    Write-Information ("skuIdsToRemoveFromUser ($($skuIdsToRemoveFromUser.Count)): ", $skuIdsToRemoveFromUser)
+    Write-Information ("skuIdsToGiveToUser ($($skuIdsToGiveToUser.Count)):", $skuIdsToGiveToUser)
+    Write-Information ("idsOfServicePlansToGiveTheUser ($($idsOfServicePlansToGiveTheUser.Count)): ", $idsOfServicePlansToGiveTheUser)
+    Write-Information ("idsOfServicePlansToRemoveFromUser ($($idsOfServicePlansToRemoveFromUser.Count)):", $idsOfServicePlansToRemoveFromUser)
     
 
 
     if($skuIdsToRemoveFromUser -or $skuIdsToGiveToUser -or $idsOfServicePlansToGiveTheUser -or $idsOfServicePlansToRemoveFromUser){
-        Write-Host "changing the user's license assignment to match the desired configuration"
+        Write-Information "changing the user's license assignment to match the desired configuration"
         
         # make sure that the user has a UsageLocationn defined
         $intialUsageLocation = (get-mguser -UserId $mgUser.Id -Property @("UsageLocation")).UsageLocation
         if($intialUsageLocation){
-            Write-Host (@(
+            Write-Information (@(
                 "$($mgUser.UserPrincipalName) already seems to have a UsageLocation "
                 "assigned (namely, `"$($intialUsageLocation)`"), so we will not "
                 "bother to set UsageLocation."
             ) -join "")
         } else {
             $newUsageLocation = (Get-MgOrganization).CountryLetterCode
-            Write-Host (@(
+            Write-Information (@(
                 "$($mgUser.UserPrincipalName) seems to have "
                 "no UsageLocation, so we will set UsageLocation "
                 "to `"$($newUsageLocation)`"."
@@ -1833,7 +1833,7 @@ function setLicensesAssignedToMgUser{
 
         $finalEnabledServicePlans = @( getEnabledServicePlansAssignedToUser $mgUser.Id )
 
-        Write-Host (
+        Write-Information (
             @(
                 "After making changes, $($mgUser.UserPrincipalName) has the "
                 
@@ -1846,7 +1846,7 @@ function setLicensesAssignedToMgUser{
             ) -join ""
         )
     
-        Write-Host (
+        Write-Information (
             @(
                 "After making changes, $($mgUser.UserPrincipalName) has the "
                 
@@ -1865,7 +1865,7 @@ function setLicensesAssignedToMgUser{
 
 
     } else {
-        Write-Host "no changes need to be made to the user's licenses."
+        Write-Information "no changes need to be made to the user's licenses."
     }
 
 }
@@ -1939,7 +1939,7 @@ function setSmtpAddressesOfMailbox
     {
         $candidateMailboxes = @(Get-Mailbox -Identity $mailboxId -ErrorAction SilentlyContinue)
         if($candidateMailboxes.Count -ne 1){
-            Write-Host (
+            Write-Information (
                 "we could not find a single mailbox having " +
                 "Identity `"$($mailboxId)`".  Therefore, " + 
                 "we will stop here."
@@ -1948,7 +1948,7 @@ function setSmtpAddressesOfMailbox
         } 
         $mailbox = $candidateMailboxes[0]
 
-        Write-Host "setting the email addresses for the mailbox $($mailbox.Identity)."
+        Write-Information "setting the email addresses for the mailbox $($mailbox.Identity)."
 
         # from the arguments, extract one $primarySmtpAddress
         # and an array of $secondarySmtpAddresses, not containing the $primarySmtpAddress .
@@ -1972,7 +1972,7 @@ function setSmtpAddressesOfMailbox
                 % {"smtp:$($_)"}
         )
 
-        Write-Host "initially, mailbox.EmailAddresses: ", $mailbox.EmailAddresses
+        Write-Information "initially, mailbox.EmailAddresses: ", $mailbox.EmailAddresses
         
         $emailAddressesToRemove = @($mailbox.EmailAddresses | where-object {
             ($_ -match '(?i)^SMTP:.+$') -and (-not ($_ -in $desiredEmailAddresses)) 
@@ -1984,8 +1984,8 @@ function setSmtpAddressesOfMailbox
         })
 
         if( ([Boolean] $emailAddressesToRemove) -or ([Boolean] $emailAddressesToAdd) ){
-            Write-Host "emailAddressesToRemove ($($emailAddressesToRemove.Count)): ", $emailAddressesToRemove
-            Write-Host "emailAddressesToAdd ($($emailAddressesToAdd.Count)): ", $emailAddressesToAdd
+            Write-Information "emailAddressesToRemove ($($emailAddressesToRemove.Count)): ", $emailAddressesToRemove
+            Write-Information "emailAddressesToAdd ($($emailAddressesToAdd.Count)): ", $emailAddressesToAdd
             $emailAddressesArg = (
                 $(
                     if($emailAddressesToRemove.Count -gt 0){
@@ -2003,7 +2003,7 @@ function setSmtpAddressesOfMailbox
                 )
             )
 
-            Write-Host "`$emailAddressesArg: $($emailAddressesArg | format-list | Out-String)"
+            Write-Information "`$emailAddressesArg: $($emailAddressesArg | format-list | Out-String)"
             
             # in the case where $emailAddressesToAdd is empty or
             # $emailAddressesToRemove is empty (or mayube they both have to be
@@ -2022,9 +2022,9 @@ function setSmtpAddressesOfMailbox
             } | % {Set-Mailbox @_} 
 
             $mailbox =  Get-Mailbox -Identity $mailbox.Guid
-            Write-Host "finally, mailbox.EmailAddresses: ", $mailbox.EmailAddresses
+            Write-Information "finally, mailbox.EmailAddresses: ", $mailbox.EmailAddresses
         } else {
-            Write-Host "email addresses for $($mailbox.Identity) are as desired, so we will not bother to add or remove any."
+            Write-Information "email addresses for $($mailbox.Identity) are as desired, so we will not bother to add or remove any."
         }  
     }
 }
@@ -2046,7 +2046,7 @@ function grantUserAccessToMailbox(
     $mgUserToBeGrantedAccess = Get-MgUser -UserId $idOfUserToBeGrantedAccess
     $mailbox = Get-Mailbox -ID $idOfMailbox
 
-    Write-Host "now giving the user $($mgUserToBeGrantedAccess.UserPrincipalName) full access to the mailbox $($mailbox.PrimarySmtpAddress)."
+    Write-Information "now giving the user $($mgUserToBeGrantedAccess.UserPrincipalName) full access to the mailbox $($mailbox.PrimarySmtpAddress)."
 
     Remove-MailboxPermission -Identity $mailbox.Id   -User    $mgUserToBeGrantedAccess.Id -AccessRights FullAccess -Confirm:$false -ErrorAction SilentlyContinue
     <#     we first remove any existing permission, as a way (apparently, this is the
@@ -2252,15 +2252,15 @@ function blipNetworkAdapter {
             Get-NetAdapter 
         )
     ){
-        Write-Host "now processing netadpater: $($netAdapter.Name)"
+        Write-Information "now processing netadpater: $($netAdapter.Name)"
 
         if ( ($netAdapter.AdminStatus -eq "Up") -and ($netAdapter.ifOperStatus -eq "Up") ){
-            Write-Host "netadapter $($netAdapter.Name) is enabled and connected, so we will poke at it."
+            Write-Information "netadapter $($netAdapter.Name) is enabled and connected, so we will poke at it."
 
             $netConnectionProfile = $null
             $netConnectionProfile = Get-NetConnectionProfile -InterfaceAlias $netAdapter.Name -ErrorAction SilentlyContinue
             if($netConnectionProfile ){
-                Write-Host( "netConnectionProfile: $($netConnectionProfile | Out-String )")
+                Write-Information( "netConnectionProfile: $($netConnectionProfile | Out-String )")
             }
 
             Disable-NetAdapter -Confirm:0 -InputObject $netAdapter 
@@ -2268,7 +2268,7 @@ function blipNetworkAdapter {
             Enable-NetAdapter -Confirm:0 -InputObject $netAdapter
 
         } else {
-            Write-Host "netadapter $($netAdapter.Name) is not both enabled and connected, so we will not touch it."
+            Write-Information "netadapter $($netAdapter.Name) is not both enabled and connected, so we will not touch it."
         }
 
 
@@ -2767,7 +2767,7 @@ function expandArchiveFile {
         
         # <file_names>...
         "*"
-    ) | write-host
+    ) | Write-Information
     return $pathOfDirectoryInWhichToExpand
 }
 
@@ -2873,7 +2873,7 @@ function downloadFileAndReturnPath {
     $finalPathOfDownloadedFile = $null
     $hashOfDownloadedFile = $null
     if($hash){  
-        Write-Host "checking for already-downloaded files having the specified hash ($hash)"
+        Write-Information "checking for already-downloaded files having the specified hash ($hash)"
         # attempt to find an already downloaded file having the specified hash      
         $finalPathOfDownloadedFile =  @(
             if(Test-Path -PathType Container -Path (join-path $pathOfDownloadCacheFolder $hash)){
@@ -2885,13 +2885,13 @@ function downloadFileAndReturnPath {
         select -first 1
 
         if($finalPathOfDownloadedFile){
-            Write-Host "found an already-downloaded file ($finalPathOfDownloadedFile) having the specified hash ($hash)."
+            Write-Information "found an already-downloaded file ($finalPathOfDownloadedFile) having the specified hash ($hash)."
             $hashOfDownloadedFile = $hash
             # this is a shortcut to avoid recomputing the hash, because, due to
             # the test above, we are already guaranteed that $hash is the hash
             # of the file whose path is $finalPathOfDownloadedFile
         } else {
-            Write-Host (-join @(
+            Write-Information (-join @(
                 "Found no already-downloaded files having the specified hash ($hash).  "
                 "Therefore we will have to download anew."
             ))
@@ -3024,7 +3024,7 @@ function downloadFileAndReturnPath {
         Move-Item -force -LiteralPath $initialPathOfDownloadedFile -Destination $finalPathOfDownloadedFile
 
         if($hash -and (-not ($hashOfDownloadedFile -eq $hash))){
-            Write-Host "The hash of the downloaded file ($finalPathOfDownloadedFile) ($hashOfDownloadedFile) does not match the specified hash ($hash)."
+            Write-Information "The hash of the downloaded file ($finalPathOfDownloadedFile) ($hashOfDownloadedFile) does not match the specified hash ($hash)."
         }
     }
 
@@ -3704,7 +3704,7 @@ function reportDrives(){
 
 function Disable-UserAccountControl {
     Set-ItemProperty "HKLM:\SOFTWARE\Microsoft\Windows\CurrentVersion\Policies\System" -Name "ConsentPromptBehaviorAdmin" -Value 0 -Type DWord
-    Write-Host "User Account Control (UAC) has been disabled." -ForegroundColor Green    
+    Write-Information "User Account Control (UAC) has been disabled." -ForegroundColor Green    
 }
 # Set-Alias Disable-UserAccessControl Disable-UserAccountControl
 # ${function:Disable-UserAccessControl} = ${function:Disable-UserAccountControl}
@@ -3754,7 +3754,7 @@ function Enable-UserAccountControl {
         Remove-ItemProperty "registry::HKLM\SOFTWARE\Microsoft\Windows\CurrentVersion\Policies\System" -force:$true -Name $_
     }
 
-    Write-Host "User Account Control (UAC) has been enabled (or more accurately: reset to default)." -ForegroundColor Green    
+    Write-Information "User Account Control (UAC) has been enabled (or more accurately: reset to default)." -ForegroundColor Green    
 }
 # Set-Alias Enable-UserAccessControl Enable-UserAccountControl 
 # ${function:Enable-UserAccessControl} = ${function:Enable-UserAccountControl}
@@ -4031,7 +4031,7 @@ function Disable-InternetExplorerESC {
     Set-ItemProperty -Path $AdminKey -Name "IsInstalled" -Value 0 -Force
     Set-ItemProperty -Path $UserKey -Name "IsInstalled" -Value 0 -Force
     Stop-Process -Name Explorer -Force
-    Write-Host "IE Enhanced Security Configuration (ESC) has been disabled." -ForegroundColor Green
+    Write-Information "IE Enhanced Security Configuration (ESC) has been disabled." -ForegroundColor Green
 }
 function Enable-InternetExplorerESC {
     $AdminKey = "HKLM:\SOFTWARE\Microsoft\Active Setup\Installed Components\{A509B1A7-37EF-4b3f-8CFC-4F3A74704073}"
@@ -4039,7 +4039,7 @@ function Enable-InternetExplorerESC {
     Set-ItemProperty -Path $AdminKey -Name "IsInstalled" -Value 1 -Force
     Set-ItemProperty -Path $UserKey -Name "IsInstalled" -Value 1 -Force
     Stop-Process -Name Explorer -Force
-    Write-Host "IE Enhanced Security Configuration (ESC) has been enabled." -ForegroundColor Green
+    Write-Information "IE Enhanced Security Configuration (ESC) has been enabled." -ForegroundColor Green
 }
 
 
@@ -4237,7 +4237,7 @@ function Connect-ToScreenconnectByMeansOfBitwardenItem {
             )
             # Force       = $True
         } | % { Connect-CWC  @_ } | 
-        Write-Host
+        Write-Information
     }
 }
 
@@ -4426,7 +4426,7 @@ function Get-ComputerStatusFromScreenconnect {
 
                     LastLoggedOnUserName = $(
                         if($guestIsConnected){
-                            write-host "$($cwcSession.Name) is reachable.  Now looking up name of LastLoggedOnUser "
+                            Write-Information "$($cwcSession.Name) is reachable.  Now looking up name of LastLoggedOnUser "
                             @{
                                 GUID       = $cwcSession.SessionID
                                 Powershell = $True
@@ -4448,7 +4448,7 @@ function Get-ComputerStatusFromScreenconnect {
                                 NoWait  = $False
                             } |% { Invoke-CWCCommand @_}
                         } else {
-                            write-host "$($cwcSession.Name) is unreachable via Screenconnect."
+                            Write-Information "$($cwcSession.Name) is unreachable via Screenconnect."
                         }
                     )
 
@@ -4464,7 +4464,7 @@ function Get-ComputerStatusFromScreenconnect {
                     
                         RemoteDesktopReport = $(
                             if($guestIsConnected){
-                                write-host "$($cwcSession.Name) is reachable.  Now looking up remote desktop enablement status "
+                                Write-Information "$($cwcSession.Name) is reachable.  Now looking up remote desktop enablement status "
                                 @{
                                     GUID       = $cwcSession.SessionID
                                     Powershell = $True
@@ -4488,7 +4488,7 @@ function Get-ComputerStatusFromScreenconnect {
                                     NoWait  = $False
                                 } |% { Invoke-CWCCommand @_}
                             } else {
-                                write-host "$($cwcSession.Name) is unreachable via Screenconnect."
+                                Write-Information "$($cwcSession.Name) is unreachable via Screenconnect."
                             }
                         ) | out-string
 
@@ -4773,7 +4773,7 @@ function publishFile {
         
             $countOfBytesUploaded += $chunk.Count
         
-            Write-Host (
+            Write-Information (
                 "$(get-date): uploaded {0:}/{1:} bytes ({2:f1} %)" -f @(
                     $countOfBytesUploaded
                     $totalLength
@@ -6080,7 +6080,7 @@ function Show-InVscode {
     begin {
         $pathOfTemporaryFile = join-path $env:temp "$(new-guid)/$( $desiredNameOfFile ? $desiredNameOfFile : (new-guid) )"
         New-Item -ItemType File -Path $pathOfTemporaryFile -Force | out-null
-        Write-Host "opening in vscode, then writing stdin into the file:  $($pathOfTemporaryFile)"
+        Write-Information "opening in vscode, then writing stdin into the file:  $($pathOfTemporaryFile)"
         Start-Process -NoNewWindow -FilePath code -ArgumentList @($pathOfTemporaryFile)
     }
 
@@ -6223,9 +6223,9 @@ function Get-SelfElevatingScriptBlock {
                 ([Security.Principal.WindowsBuiltInRole] "Administrator")
             )
         ) {
-            Write-Host "We are already elevated"
+            Write-Information "We are already elevated"
         } else {  
-            Write-Host "We are not elevated.  Attempting to re-launch this script with an elevated token."
+            Write-Information "We are not elevated.  Attempting to re-launch this script with an elevated token."
             ## Write-Host "`$myinvocation.mycommand.definition: $($myinvocation.mycommand.definition)"
             
             if($false){
@@ -6289,7 +6289,7 @@ function Get-SelfElevatingScriptBlock {
                 Wait = $true
             } |% {Start-Process @_}
 
-            write-host "finished attempt to run the script with an elevated token."
+            Write-Information "finished attempt to run the script with an elevated token."
 
             return
         } 
@@ -6518,7 +6518,7 @@ function Dismount-AllMountedIsoImages {
     $mountedDiskImages | 
     ? {[System.Io.Path]::GetExtension($_.ImagePath).ToLower() -eq ".iso"} |
     % { 
-        write-host "dismounting $($_)"
+        Write-Information "dismounting $($_)"
         Dismount-DiskImage -InputObject $_
     }
 }
@@ -6551,11 +6551,11 @@ function Remove-OrphanedSids {
 
         foreach ($member in $members)
         {
-            write-host "Considering member '$($member)' of local group '$($nameOfLocalGroup)'."
+            Write-Information "Considering member '$($member)' of local group '$($nameOfLocalGroup)'."
 
             if ($member -match "^S-1\b") #checking for empty/orphaned SIDs only
             {
-                write-host "Removing an orphaned-SID member '$($member)' from the local group '$($nameOfLocalGroup)'."
+                Write-Information "Removing an orphaned-SID member '$($member)' from the local group '$($nameOfLocalGroup)'."
                 Remove-LocalGroupMember -group $nameOfLocalGroup -member $member
             }
         }
@@ -6640,8 +6640,8 @@ function Set-ScreenSaveTimeOut {
     )
 
     
-    write-host "initialScreenSaveTimeOut.TotalSeconds: $($initialScreenSaveTimeOut.TotalSeconds)"
-    write-host "desiredScreenSaveTimeOut.TotalSeconds: $($desiredScreenSaveTimeOut.TotalSeconds)"
+    Write-Information "initialScreenSaveTimeOut.TotalSeconds: $($initialScreenSaveTimeOut.TotalSeconds)"
+    Write-Information "desiredScreenSaveTimeOut.TotalSeconds: $($desiredScreenSaveTimeOut.TotalSeconds)"
 
     @{
         LiteralPath = $literalPath
@@ -6666,7 +6666,7 @@ function Set-ScreenSaveTimeOut {
         }
     )
 
-    write-host "finalScreenSaveTimeOut.TotalSeconds: $($finalScreenSaveTimeOut.TotalSeconds)"
+    Write-Information "finalScreenSaveTimeOut.TotalSeconds: $($finalScreenSaveTimeOut.TotalSeconds)"
 }
 
 function neverSleep {
