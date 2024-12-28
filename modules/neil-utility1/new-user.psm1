@@ -882,58 +882,50 @@ function New-Invoker {
     facility similar to Screenconnect's.
 
     #>
-    
+    <# 2024-12-28-1515: We would like to phase out getDcSession and replace it with new-Invoker. #>
+
     [CmdletBinding()]
     [OutputType([ScriptBlock])]
     Param(
         [parameter(Mandatory=$false)]
-        [HashTable] 
-        $ArgumentsForGetDcSession,
+        [HashTable] $ArgumentsForGetDcSession,
 
         [parameter()]
-        [string] 
-        $bitwardenItemIdOfVpn,
+        [string] $bitwardenItemIdOfVpn,
 
         [parameter()]
-        [string] 
-        $ComputerName ,
+        [string] $ComputerName ,
         
         <#  really this is expected to be an array in which each member is
             either a System.Management.Automation.PSVariable or a
             System.Management.Automation.FunctionInfo 
         #>
         [parameter()]
-        [Object[]] 
-        $VariablesAndFunctionsToImport,
+        [Object[]] $VariablesAndFunctionsToImport,
 
         [parameter(Mandatory=$false)]
-        [ScriptBlock] 
-        $StartupScript =  {},
+        [ScriptBlock] $StartupScript =  {},
 
         [Parameter(Mandatory=$False)]
-        [String] 
-        $bitwardenItemIdOfCompanyParameters,
+        [String] $bitwardenItemIdOfCompanyParameters,
 
         [Parameter(
             Mandatory=$False,
             HelpMessage="Optionally, override the default ConfigurationName argument"            
         )]
-        [String] 
-        $ConfigurationName,
+        [String] $ConfigurationName,
 
         [Parameter(
             Mandatory=$False,
             HelpMessage="Optionally, override the default Credential argument"            
         )]
-        [System.Management.Automation.PSCredential] 
-        $Credential,
+        [System.Management.Automation.PSCredential] $Credential,
 
         [Parameter(
             Mandatory=$False,
             HelpMessage="Optionally, override the default SessionOption argument"            
         )]
-        [Object] 
-        $SessionOption
+        [Object] $SessionOption
     )
 
     # $uniqueMagicStringForThisFunction = "517f7e13f0c84e1d96b729651fe06b48"
@@ -1053,6 +1045,10 @@ function New-Invoker {
                         $argumentsForGetDcSession 
                         @{ ComputerName = $ComputerName }
                         @{ Name = $uniqueNameOfSession  }
+                        if($Credential){@{Credential = $Credential}}
+                        if($SessionOption){@{SessionOption = $SessionOption}}
+                        if($ConfigurationName){@{ConfigurationName = $ConfigurationName}}
+                        if($bitwardenItemIdOfCompanyParameters){@{bitwardenItemIdOfCompanyParameters = $bitwardenItemIdOfCompanyParameters}}
                     ) | % {getDCSession @_ }
                 } else {
 
@@ -1064,6 +1060,7 @@ function New-Invoker {
                     )
 
                     $argumentsForNewPsSession = @{}
+                    $argumentsForNewPsSession['Name'] = $uniqueNameOfSession
                     $argumentsForNewPsSession['ComputerName'] = $ComputerName
 
                     if($Credential){
@@ -1096,10 +1093,18 @@ function New-Invoker {
                     }
 
                     Set-Item WSMan:\localhost\Client\TrustedHosts -Force -Concatenate -Value $ComputerName | Out-Null
+                    
                     if($bitwardenItemIdOfVpn){
                         Write-Information "attempting to connect to vpn specified by '$($bitwardenItemIdOfVp)'. "
                         Connect-OpenVpn -bitwardenItemId $bitwardenItemIdOfVpn | out-null
+                    } elseif($($companyParameters['vpn'])){
+                        Write-Information "attempting to connect to vpn specified by '$($companyParameters['vpn'])'. "
+                        Connect-OpenVpn -bitwardenItemId $($companyParameters['vpn'])
+                    } elseif ($companyParameters['nameOfSoftetherVpnConnectionNeededToTalkToDomainController']){
+                        Write-Information "ensuring connection to vpn '$($companyParameters['nameOfSoftetherVpnConnectionNeededToTalkToDomainController'])'. "
+                        Connect-SoftEtherVpn $companyParameters['nameOfSoftetherVpnConnectionNeededToTalkToDomainController'] | out-null
                     } 
+                    
                     New-PSSession @argumentsForNewPsSession
                 }
             )
