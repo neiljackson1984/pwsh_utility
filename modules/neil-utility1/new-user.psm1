@@ -1095,7 +1095,7 @@ function New-Invoker {
                     Set-Item WSMan:\localhost\Client\TrustedHosts -Force -Concatenate -Value $ComputerName | Out-Null
                     
                     if($bitwardenItemIdOfVpn){
-                        Write-Information "attempting to connect to vpn specified by '$($bitwardenItemIdOfVp)'. "
+                        Write-Information "attempting to connect to vpn specified by '$($bitwardenItemIdOfVpn)'. "
                         Connect-OpenVpn -bitwardenItemId $bitwardenItemIdOfVpn | out-null
                     } elseif($($companyParameters['vpn'])){
                         Write-Information "attempting to connect to vpn specified by '$($companyParameters['vpn'])'. "
