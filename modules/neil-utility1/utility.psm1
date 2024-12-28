@@ -6952,3 +6952,38 @@ function Get-CredentialFromBitwardenItem {
     )
 
 }
+
+<# it is probably not ideal to import the DnsClient module here, but
+I am doing it in order to ensure that the [Microsoft.DnsClient.Commands.RecordType] enum is
+available for the following function. #>
+Import-Module DnsClient
+function Save-InHostsFile (){
+    <# 
+        .DESCRIPTION
+        looks up the specified A or AAAA record (possibly reached via
+        some chain of CNAME records) from the dns  (the first record)
+        and saves it in the hosts file.
+    #>
+    [cmdletBinding()]
+    param(
+        [string] $HostName,
+        ## [validateSet("A","AAAA")]
+        [Microsoft.DnsClient.Commands.RecordType] $RecordType = "A_AAAA"
+    )
+    
+
+    $ipAddress = $(
+        resolve-dnsname -dnsonly -Name $HostName -Type $RecordType  |
+        ? {$_.Type -eq $RecordType} |
+        select -expand IPAddress |
+        ? {$_} |
+        select -first 1
+    )
+
+    if(-not $ipAddress){
+        write-error "Could not resolve HostName '$($HostName)' to a valid $($RecordType) record."
+        return
+    }
+    Set-CHostsEntry -HostName $HostName -IPAddress $ipAddress
+
+}
