@@ -138,10 +138,12 @@ function Connect-OpenVpn {
         
             $contentOfAttachedFile 
 
-            "<auth-user-pass>"
-            $bitwardenItem.login.username
-            $bitwardenItem.login.password
-            "</auth-user-pass>"
+            if(($bitwardenItem.login.username) -and ($bitwardenItem.login.password)){
+                "<auth-user-pass>"
+                $bitwardenItem.login.username
+                $bitwardenItem.login.password
+                "</auth-user-pass>"
+            }
 
             ## "windows-driver wintun"
             ##"windows-driver ovpn-dco"
