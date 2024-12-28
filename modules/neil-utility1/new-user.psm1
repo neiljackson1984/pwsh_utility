@@ -646,13 +646,9 @@ function getDcSession {
             # Authentication='Digest';
             # UseSSL=$True;
 
-        } + $(
-            if($SessionOption){@{SessionOption=$SessionOption}}
-            else {@{}}
-        ) + $(
-            if($Name){@{Name=$Name}}
-            else {@{}}
-        )
+        } + 
+        $(if($SessionOption){@{SessionOption=$SessionOption}}else {@{}}) + 
+        $(if($Name){@{Name=$Name}}else {@{}})
     )
 
 
@@ -694,10 +690,10 @@ function getDcSession {
 function getArgumentsForGetDcSessionForNonDomainSession  {
     
     <#  This function is a bit of a hack.  What we really want is a robust way
-        to encode, in a bitwarden item (and ideally we wuld not be strictly
+        to encode, in a bitwarden item (and ideally we would not be strictly
         dependent on bitwarden but could work with any arbitrary secrets
         database) all the information (including secrets) necessary to establish
-        a a psremoting session.  At the moment, the mechanism that we have to do
+        a psremoting session.  At the moment, the mechanism that we have to do
         this is geared toward pulling a domain administrator credential from a
         "companyParameters" bitwarden item.  This function here exists to allow
         us to use local credentials instead.
@@ -716,26 +712,10 @@ function getArgumentsForGetDcSessionForNonDomainSession  {
         [parameter(mandatory=$false)][string] $ConfigurationName
     )
 
-    $bitwardenItem = Get-BitwardenItem $bitwardenItemIdOfWindowsCredentialsOnTargetComputer
-    $hostname = (
-        (getFieldMapFromBitwardenItem $bitwardenItem.id)['hostname'] ?? 
-        ([System.Uri] @($bitwardenItem.login.uris)[0].uri).Host ??
-        @($bitwardenItem.login.uris)[0].uri
-    )
-    ## Write-Information "hostname: $hostname"
     @{
         bitwardenItemIdOfCompanyParameters = $bitwardenItemIdOfCompanyParameters
-        ComputerName = $hostname
-        Credential = (
-            @{
-                TypeName = "System.Management.Automation.PSCredential"
-                ArgumentList = @(
-                    # "$($hostname)\$($bitwardenItem.login.username)"
-                    "$($bitwardenItem.login.username)"
-                    (ConvertTo-SecureString $bitwardenItem.login.password -AsPlainText -Force)  
-                )
-            } | % { New-Object @_ } 
-        )
+        ComputerName = Get-HostnameFromBitwardenItem $bitwardenItemIdOfWindowsCredentialsOnTargetComputer
+        Credential = Get-CredentialFromBitwardenItem $bitwardenItemIdOfWindowsCredentialsOnTargetComputer
     } + (
         $ConfigurationName ?
         @{ ConfigurationName = $ConfigurationName } :
@@ -906,33 +886,63 @@ function New-Invoker {
     [CmdletBinding()]
     [OutputType([ScriptBlock])]
     Param(
-        [parameter()]
-        [HashTable] $ArgumentsForGetDcSession ,
+        [parameter(Mandatory=$false)]
+        [HashTable] 
+        $ArgumentsForGetDcSession,
 
         [parameter()]
-        [string] $ComputerName ,
+        [string] 
+        $bitwardenItemIdOfVpn,
+
+        [parameter()]
+        [string] 
+        $ComputerName ,
         
         <#  really this is expected to be an array in which each member is
             either a System.Management.Automation.PSVariable or a
             System.Management.Automation.FunctionInfo 
         #>
         [parameter()]
-        [Object[]] $VariablesAndFunctionsToImport,
+        [Object[]] 
+        $VariablesAndFunctionsToImport,
 
         [parameter(Mandatory=$false)]
-        [ScriptBlock] $StartupScript =  {}
+        [ScriptBlock] 
+        $StartupScript =  {},
 
+        [Parameter(Mandatory=$False)]
+        [String] 
+        $bitwardenItemIdOfCompanyParameters,
 
+        [Parameter(
+            Mandatory=$False,
+            HelpMessage="Optionally, override the default ConfigurationName argument"            
+        )]
+        [String] 
+        $ConfigurationName,
+
+        [Parameter(
+            Mandatory=$False,
+            HelpMessage="Optionally, override the default Credential argument"            
+        )]
+        [System.Management.Automation.PSCredential] 
+        $Credential,
+
+        [Parameter(
+            Mandatory=$False,
+            HelpMessage="Optionally, override the default SessionOption argument"            
+        )]
+        [Object] 
+        $SessionOption
     )
 
     # $uniqueMagicStringForThisFunction = "517f7e13f0c84e1d96b729651fe06b48"
-
-    $uniqueMagicStringForThisFunction = "$(new-guid)"
     <#  we actually do not want to hardcode a magic string here.  Rather, we
         want each call to New-Invoker to return a function (really a closure)
         that contains a unique session name within it.  We also don't need to
         include the computer name in the unique session name.
     #>
+    $uniqueMagicStringForThisFunction = "$(new-guid)"
 
     $ComputerName = $(if($ComputerName){$ComputerName}else{$argumentsForGetDcSession['ComputerName']})
     if(-not $ComputerName){
@@ -958,7 +968,7 @@ function New-Invoker {
             startupScript = $StartupScript
         }
     )
-    $initializer = {
+    [ScriptBlock] $initializer = {
         #### $args[0].variablesToImport.GetEnumerator() |% { Set-Variable -Name $_.Name -Value $_.Value  }
         ## $args[0].variablesToImport.GetEnumerator() |% { Set-Item -Path "variable:$($_.Name)"  -Value $_.Value  }
         ## $args[0].functionsToImport.GetEnumerator() |% { Set-Item -Path "function:$($_.Name)"  -Value $_.Value  }
@@ -1006,8 +1016,6 @@ function New-Invoker {
 
     }
 
-
-
     return {
         [CmdletBinding()]
         Param(
@@ -1021,54 +1029,105 @@ function New-Invoker {
         $uniqueNameOfSession = "$($uniqueMagicStringForThisFunction)--$([Runspace]::DefaultRunspace.InstanceId)--$($ComputerName)"
         $session = $(Get-PSSession -Name $uniqueNameOfSession -ErrorAction SilentlyContinue)
         
-        ## get-member -inputobject (Get-Runspace | select -first 1 )
-        ## Get-Runspace | select -first 1 | select *
-        ## Get-Runspace | select InstanceId, Id, RunspaceIsRemote, RunspaceStateInfo, RunspaceAvailability, {$_.ConnectionInfo.ComputerName}| ft -auto
-        ## [Runspace]::DefaultRunspace | select -expand InstanceID
-        ## code  --goto (getcommandpath getdcsession)
 
-        if(
+        if(-not (
             $session -and
             ($session.State -eq  "Opened") -and 
             ($session.Availability -eq "Available")
-        ){
-            # do nothing, $session is already as desired
-            ## Write-Information "session is already as desired"
-        } else {
+        )) {
             if($session){
                 Write-Information (-join @(
                     "session exists, but is not both Open and Available "
                     "(State is $($session.State), Availability is $($session.Availability)), "
-                    "so we will remove and recreate the session."
+                    "so we will remove( and then re-create) the session."
                 ))
                 Remove-PSSession -Session $session | out-null
                 ## TODO: attempt to reconnect before resorting to removal.
             } else {
                 Write-Information "session does not exist"
             }
+
             $session = $(
-                Merge-Hashtables @( 
-                    $argumentsForGetDcSession 
-                    @{ ComputerName = $ComputerName }
-                    @{ Name = $uniqueNameOfSession  }
-                ) | % {getDCSession @_ }
+                if($argumentsForGetDcSession){
+                    Merge-Hashtables @( 
+                        $argumentsForGetDcSession 
+                        @{ ComputerName = $ComputerName }
+                        @{ Name = $uniqueNameOfSession  }
+                    ) | % {getDCSession @_ }
+                } else {
+
+
+                    $companyParameters = $(
+                        if($bitwardenItemIdOfCompanyParameters){
+                            getFieldMapFromBitwardenItem $bitwardenItemIdOfCompanyParameters
+                        }
+                    )
+
+                    $argumentsForNewPsSession = @{}
+                    $argumentsForNewPsSession['ComputerName'] = $ComputerName
+
+                    if($Credential){
+                        $argumentsForNewPsSession['Credential'] = $Credential
+                    } elseif ($companyParameters) {
+                        $bitwardenItemContainingActiveDirectoryCredentials = Get-BitwardenItem $companyParameters['idOfBitwardenItemContainingActiveDirectoryCredentials']
+
+                        $argumentsForNewPsSession['Credential'] = (
+                            [System.Management.Automation.PSCredential]::new(
+                                (
+                                    @(
+                                        $bitwardenItemContainingActiveDirectoryCredentials.fields | 
+                                            ? {$_.name -eq 'active_directory_domain_name'} | 
+                                            % {$_.value}
+                                    )[0] +
+                                    "\" + 
+                                    @($bitwardenItemContainingActiveDirectoryCredentials.login.username -split "@")[0]
+                                ),
+                                (ConvertTo-SecureString $bitwardenItemContainingActiveDirectoryCredentials.login.password -AsPlainText -Force)
+                            )
+                        )
+                    }
+
+                    if($ConfigurationName){
+                        $argumentsForNewPsSession['ConfigurationName'] = $ConfigurationName
+                    }
+
+                    if($SessionOption){
+                        $argumentsForNewPsSession['SessionOption'] = $SessionOption
+                    }
+
+                    Set-Item WSMan:\localhost\Client\TrustedHosts -Force -Concatenate -Value $ComputerName | Out-Null
+                    if($bitwardenItemIdOfVpn){
+                        Write-Information "attempting to connect to vpn specified by '$($bitwardenItemIdOfVp)'. "
+                        Connect-OpenVpn -bitwardenItemId $bitwardenItemIdOfVpn | out-null
+                    } 
+                    New-PSSession @argumentsForNewPsSession
+                }
             )
-            Connect-PSSession $session | out-null
-            if(
+            ## Connect-PSSession $session | out-null
+            icm -Session (Connect-PSSession $session) -ScriptBlock $initializer -ArgumentList $argumentListForInitializer
+            
+            
+            if(-not (
                 $session -and
                 ($session.State -eq  "Opened") -and 
                 ($session.Availability -eq "Available")
-            ){
-                icm -Session (Connect-PSSession $session) -ScriptBlock $initializer -ArgumentList $argumentListForInitializer
-            } else {
-                Write-Error "failed to obtain an open and available session"
-                $session = $null
+            )) {
+                if($session){
+                    Write-Error (-join @(
+                        "Even after attempting to create and open if needed, "
+                        "session is not both Open and Available "
+                        "(State is $($session.State), Availability is $($session.Availability))"
+                    ))
+                } else {
+                    Write-Error "even after attempting to create and open if needed, session still does not exist."
+                }
+                return 
             }
         }
 
-        if($session){
-            icm -Session $session -ScriptBlock $ScriptBlock -ArgumentList $ArgumentList
-        }
+
+        icm -Session $session -ScriptBlock $ScriptBlock -ArgumentList $ArgumentList
+
     }.GetNewClosure()
 }
 

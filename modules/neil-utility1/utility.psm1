@@ -4248,6 +4248,7 @@ function runInCwcSession {
         [Parameter()]
         [string] $bitwardenItemIdOfScreenconnectCredentials, 
 
+        [Alias("Group")]
         [Parameter(Mandatory=$False)] 
         [string] $nameOfGroup, 
 
@@ -6512,6 +6513,57 @@ function Get-RandomPrivateNetwork{
     )
 }
 
+function Get-SubnetMask{
+    
+    [cmdletbinding()]
+    [OutputType([System.Net.IPAddress])]
+    param(
+        [Parameter(Mandatory=$False,ParameterSetName='main')]
+        [ValidateRange(0,128)]
+        [int] $PrefixLength,
+        
+        [Parameter(Mandatory=$False,ParameterSetName='main')]
+        ##[ValidateSet(4,6)]
+        [int] $IPVersion = 6,
+
+        [Parameter(Mandatory=$False,ParameterSetName='IPNetwork')]
+        [System.Net.IPNetwork] $IPNetwork 
+    )
+
+    if(-not ($null  -eq $IPNetwork)){
+        $IPVersion = switch($IPNetwork.BaseAddress.AddressFamily){
+            ([System.Net.Sockets.AddressFamily]::InterNetwork) {4}
+            
+            ([System.Net.Sockets.AddressFamily]::InterNetworkV6) {6}
+        }
+
+        $PrefixLength = $IPNetwork.PrefixLength
+    }
+
+    function getMask([int] $prefixLength){
+        [byte[]] @(
+            0..15 |
+            % { 
+                $prefixLengthWithinThisByte  = [math]::max(0, [math]::min(8, $prefixLength - ($_ * 8) ))
+                
+                0xff -band (
+                    0xff -shl ( 8 - $prefixLengthWithinThisByte)
+                )
+            } 
+        )
+    }
+
+
+
+    [System.Net.IPAddress]::new((
+        [byte[]] @( 
+            0..$(switch($IPVersion){4 {3}; 6 {15}}) |
+            % {(getMask $PrefixLength)[$_]}
+        )
+    ))
+}
+
+
 function Dismount-AllMountedIsoImages {
     $mountedDiskImages = @(Get-Volume | % { Get-DiskImage -Volume $_ } )  
     
@@ -6823,3 +6875,80 @@ function Convert-AzureAdSidToObjectId {
     return $guid
 }
 
+function Get-HostnameFromBitwardenItem {
+    <#
+        .SYNOPSIS
+        Tries to extract the hostname from a bitwarden item
+    #>
+   
+    [OutputType([String])] 
+    
+    [CmdletBinding()]
+    Param (
+        [Parameter()]
+        [String] $bitwardenItemId
+    )
+
+    ## (
+    ##     (getFieldMapFromBitwardenItem $bitwardenItem.id)['hostname'] ?? 
+    ##     ([System.Uri] @($bitwardenItem.login.uris)[0].uri).Host ??
+    ##     @($bitwardenItem.login.uris)[0].uri
+    ## )
+
+    @(
+        (GetFieldMapFromBitwardenItem $bitwardenItemId).hostname 
+        
+        (Get-BitwardenItem $bitwardenItemId -erroraction silentlycontinue).login.uris |
+        %{$_.uri} |
+        % {
+            try{
+                ([UriBuilder] $_).Host
+            }catch{}
+        }
+    ) |? {$_} | select -first 1
+}
+
+function Get-CredentialFromBitwardenItem {
+    <#
+        .SYNOPSIS
+        creates, based on the information in the bitwarden item,
+        a System.Management.Automation.PSCredential object
+    #>
+
+    [OutputType([System.Management.Automation.PSCredential])] 
+
+    [CmdletBinding()]
+    Param (
+        [Parameter()]
+        [String] $bitwardenItemId
+    )
+
+    $bitwardenItem = Get-BitwardenItem $bitwardenItemId
+    ##$formattedUsername = "$(Get-HostnameFromBitwardenItem $bitwardenItemId)\$($bitwardenItem.login.username)"
+    $formattedUsername = $bitwardenItem.login.username
+
+    <#   We might consider adding a paramter to control the formatting of the
+        username to accomodate the several username formats that Windows
+        sometimes expects.
+
+        e.g. an NT2000 formatted username, with hostname prepended with back
+        slash separator.
+     #>
+
+
+    ## (
+    ##     @{
+    ##         TypeName = "System.Management.Automation.PSCredential"
+    ##         ArgumentList = @(
+    ##             $formattedUsername,
+    ##             (ConvertTo-SecureString $bitwardenItem.login.password -AsPlainText -Force)
+    ##         )
+    ##     } | % { New-Object @_ } 
+    ## )
+
+    [System.Management.Automation.PSCredential]::new(
+        $formattedUsername,
+        (ConvertTo-SecureString $bitwardenItem.login.password -AsPlainText -Force)  
+    )
+
+}
