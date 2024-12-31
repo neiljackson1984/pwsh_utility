@@ -1097,10 +1097,10 @@ function New-Invoker {
                     if($bitwardenItemIdOfVpn){
                         Write-Information "attempting to connect to vpn specified by '$($bitwardenItemIdOfVpn)'. "
                         Connect-OpenVpn -bitwardenItemId $bitwardenItemIdOfVpn | out-null
-                    } elseif($($companyParameters['vpn'])){
+                    } elseif($companyParameters -and $companyParameters['vpn']){
                         Write-Information "attempting to connect to vpn specified by '$($companyParameters['vpn'])'. "
                         Connect-OpenVpn -bitwardenItemId $($companyParameters['vpn'])
-                    } elseif ($companyParameters['nameOfSoftetherVpnConnectionNeededToTalkToDomainController']){
+                    } elseif ($companyParameters -and $companyParameters['nameOfSoftetherVpnConnectionNeededToTalkToDomainController']){
                         Write-Information "ensuring connection to vpn '$($companyParameters['nameOfSoftetherVpnConnectionNeededToTalkToDomainController'])'. "
                         Connect-SoftEtherVpn $companyParameters['nameOfSoftetherVpnConnectionNeededToTalkToDomainController'] | out-null
                     } 
