@@ -6987,3 +6987,17 @@ function Save-InHostsFile (){
     Set-CHostsEntry -HostName $HostName -IPAddress $ipAddress
 
 }
+
+function cslmgr {
+    <#
+    The slmgr.vbs script tends to produce popup gui boxes rather than text output to stdout.
+
+    This function is a wrapper around slmgr.exe that invokes it using cscript, so that it emits its output on stdout.
+
+    Use this function  in place  of slmgr.
+
+    #>
+    ## $input | cscript /NoLogo (get-command slmgr).Path @args
+    $input | cscript /NoLogo (get-command -CommandType Application -Name slmgr).Path @args
+
+}
