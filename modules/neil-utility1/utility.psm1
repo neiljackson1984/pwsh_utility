@@ -7001,3 +7001,20 @@ function cslmgr {
     $input | cscript /NoLogo (get-command -CommandType Application -Name slmgr).Path @args
 
 }
+
+function Get-ShortPath {
+    <#
+    .SYNOPSIS
+    attempts to convert the given path into  the equivalent "8.3" style path.
+    This is useful for working around problems related to long paths.
+    #>
+    [CmdletBinding()]
+    [OutputType([String])]
+    Param(
+        [string] $Path
+    )
+
+    return (
+        (New-Object -ComObject Scripting.FileSystemObject).GetFile($Path).ShortPath 
+    )
+}
