@@ -75,7 +75,9 @@ function Get-WebRequestSessionWithFirefoxCookies {
         # having to redownload the dependency upon every run.
         $globallyUniqueNameOfPackagesDirectory = "0d9099a3b7ac4035861dfa79b2c73022"
         $pathOfPackagesDirectory = (join-path (join-path $env:temp $globallyUniqueNameOfPackagesDirectory) "packages")
-        nuget install System.Data.SQLite -OutputDirectory $pathOfPackagesDirectory | write-host
+        ## nuget install System.Data.SQLite -OutputDirectory $pathOfPackagesDirectory | write-host
+        nuget install System.Data.SQLite -OutputDirectory $pathOfPackagesDirectory -Source "https://api.nuget.org/v3/index.json" | write-information
+
     }
         
     # Load the SQLite assembly
