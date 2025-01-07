@@ -3704,7 +3704,8 @@ function reportDrives(){
 
 function Disable-UserAccountControl {
     Set-ItemProperty "HKLM:\SOFTWARE\Microsoft\Windows\CurrentVersion\Policies\System" -Name "ConsentPromptBehaviorAdmin" -Value 0 -Type DWord
-    Write-Information "User Account Control (UAC) has been disabled." -ForegroundColor Green    
+    ## Write-Host "User Account Control (UAC) has been disabled." -ForegroundColor Green    
+    Write-Information "User Account Control (UAC) has been disabled."   
 }
 # Set-Alias Disable-UserAccessControl Disable-UserAccountControl
 # ${function:Disable-UserAccessControl} = ${function:Disable-UserAccountControl}
@@ -3754,7 +3755,8 @@ function Enable-UserAccountControl {
         Remove-ItemProperty "registry::HKLM\SOFTWARE\Microsoft\Windows\CurrentVersion\Policies\System" -force:$true -Name $_
     }
 
-    Write-Information "User Account Control (UAC) has been enabled (or more accurately: reset to default)." -ForegroundColor Green    
+    ## Write-Host "User Account Control (UAC) has been enabled (or more accurately: reset to default)." -ForegroundColor Green    
+    Write-Information "User Account Control (UAC) has been enabled (or more accurately: reset to default)."    
 }
 # Set-Alias Enable-UserAccessControl Enable-UserAccountControl 
 # ${function:Enable-UserAccessControl} = ${function:Enable-UserAccountControl}
@@ -4031,7 +4033,8 @@ function Disable-InternetExplorerESC {
     Set-ItemProperty -Path $AdminKey -Name "IsInstalled" -Value 0 -Force
     Set-ItemProperty -Path $UserKey -Name "IsInstalled" -Value 0 -Force
     Stop-Process -Name Explorer -Force
-    Write-Information "IE Enhanced Security Configuration (ESC) has been disabled." -ForegroundColor Green
+    ## Write-Host "IE Enhanced Security Configuration (ESC) has been disabled." -ForegroundColor Green
+    Write-Information "IE Enhanced Security Configuration (ESC) has been disabled."
 }
 function Enable-InternetExplorerESC {
     $AdminKey = "HKLM:\SOFTWARE\Microsoft\Active Setup\Installed Components\{A509B1A7-37EF-4b3f-8CFC-4F3A74704073}"
@@ -4039,7 +4042,8 @@ function Enable-InternetExplorerESC {
     Set-ItemProperty -Path $AdminKey -Name "IsInstalled" -Value 1 -Force
     Set-ItemProperty -Path $UserKey -Name "IsInstalled" -Value 1 -Force
     Stop-Process -Name Explorer -Force
-    Write-Information "IE Enhanced Security Configuration (ESC) has been enabled." -ForegroundColor Green
+    ## Write-Host "IE Enhanced Security Configuration (ESC) has been enabled." -ForegroundColor Green
+    Write-Information "IE Enhanced Security Configuration (ESC) has been enabled." 
 }
 
 
