@@ -26,6 +26,7 @@
         "sharepoint_public_transfer.psm1"
         "softethervpn.psm1"
         "openvpn.psm1"
+        "work_session.psm1"
     )
 
 
