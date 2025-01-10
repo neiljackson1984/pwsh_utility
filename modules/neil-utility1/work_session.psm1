@@ -15,13 +15,13 @@ Import-Module (join-path $psScriptRoot "connect_to_office_365.psm1")
 Import-Module (join-path $psScriptRoot "softethervpn.psm1")
 Import-Module (join-path $psScriptRoot "openvpn.psm1")
 
-class Host {
+class Computer {
     [string] $hostname
     [string] $handle
 
-    Host(){}
+    Computer(){}
 
-    Host([string] $hostname){$this.hostname  = $hostname}
+    Computer([string] $hostname){$this.hostname = $hostname}
 }
 
 function Initialize-RemoteSessions {
@@ -33,7 +33,7 @@ function Initialize-RemoteSessions {
     #>
     [cmdletbinding()]
     param(
-        [Host[]] $hosts = @(),
+        [Computer[]] $computers = @(),
         [string] $bitwardenItemIdOfWindowsCredentialOnTheHypervisor =  "",
         [string] $bitwardenItemIdOfCompanyParameters,
         [string[]] $namesOfVariablesToImport = @(),
@@ -42,6 +42,18 @@ function Initialize-RemoteSessions {
         [alias("bitwardenItemIdOfScreenconnectCredentials")]
         [string] $bitwardenItemIdOfScreenconnectCredential
     )
+
+    <# 2025-01-09-1014: old to new name convention
+    
+        ```
+        hostamesOfWorkstations                      --> ??
+        workstationScreenconnectInvokersByHostname  --> screenconnectInvokersByHostname
+        workstationInvokersByHostname               --> invokersByHostname
+
+        hostnamesOfWorkstationsToBeConfigured       --> hostnamesOfComputersToBeConfigured
+        (this is used externally)
+        ```
+    #>
 
     if($false){
         write-information "s2: $(${s2})"
@@ -77,9 +89,9 @@ function Initialize-RemoteSessions {
 
     $namesOfVariablesToImport = @( $namesOfVariablesToImport )
     $namesOfFunctionsToImport = @( $namesOfFunctionsToImport )
-    $hosts = [Host[]]  @($hosts)
+    $computers = [Computer[]]  @($computers)
 
-    $hosts = [Host[]]  @($hosts; @{hostname=$companyParameters.domainController; handle="dc"})
+    $computers = [Computer[]]  @($computers; @{hostname=$companyParameters.domainController; handle="dc"})
 
 
     $namesOfFunctionsToImport += @(
@@ -302,9 +314,9 @@ function Initialize-RemoteSessions {
 
 
 
-    $global:workstationInvokersByHostname = (
+    $global:invokersByHostname = (
         @(
-            foreach($hostname in @($hosts |% {$_.hostname}  | select -unique)){
+            foreach($hostname in @($computers |% {$_.hostname}  | select -unique)){
                 @{
                     $hostname = (
                         @(
@@ -326,13 +338,13 @@ function Initialize-RemoteSessions {
     
     $hostnameOfHypervisor = $(if($bitwardenItemIdOfWindowsCredentialOnTheHypervisor) {Get-HostnameFromBitwardenItem $bitwardenItemIdOfWindowsCredentialOnTheHypervisor})
     if($hostnameOfHypervisor ){
-        $hosts = [Host[]]  @($hosts; @{hostname=$hostnameOfHypervisor; handle="h"})
+        $computers = [Computer[]]  @($computers; @{hostname=$hostnameOfHypervisor; handle="h"})
     }
 
     
 
     if($hostnameOfHypervisor -and $bitwardenItemIdOfWindowsCredentialOnTheHypervisor){
-        $workstationInvokersByHostname[$hostnameOfHypervisor] =  $(
+        $global:invokersByHostname[$hostnameOfHypervisor] =  $(
             @(
                 $commonArgumentsForNewInvoker    
                 @{
@@ -348,9 +360,9 @@ function Initialize-RemoteSessions {
         )  
     }
 
-    $global:workstationScreenconnectInvokersByHostname = (
+    $global:screenconnectInvokersByHostname = (
         @(
-            foreach($hostname in @($hosts |% {$_.hostname}  | select -unique)){
+            foreach($hostname in @($computers |% {$_.hostname}  | select -unique)){
                 @{
                     $hostname = New-ScreenconnectInvoker (Merge-HashTables $cwcArgs @{nameOfSession  = @($hostname -split "\.")[0]})
                 }
@@ -358,11 +370,11 @@ function Initialize-RemoteSessions {
         ) | Merge-Hashtables
     )
 
-    foreach($_host in $hosts ){
-        if($_host.handle){
-            write-information "defining short-named functions (r$($_host.handle) and rs$($_host.handle)) for host handle '$($_host.handle)' and hostname '$($_host.hostname)'. "
-            Set-Item -LiteralPath "function:global:r$($_host.handle)" -Value $workstationInvokersByHostname[$_host.hostname]
-            Set-Item -LiteralPath "function:global:rs$($_host.handle)" -Value $workstationScreenconnectInvokersByHostname[$_host.hostname]
+    foreach($computer in $computers ){
+        if($computer.handle){
+            write-information "defining short-named functions (r$($computer.handle) and rs$($computer.handle)) for handle '$($computer.handle)' and hostname '$($computer.hostname)'. "
+            Set-Item -LiteralPath "function:global:r$($computer.handle)" -Value $global:invokersByHostname[$computer.hostname]
+            Set-Item -LiteralPath "function:global:rs$($computer.handle)" -Value $global:screenconnectInvokersByHostname[$computer.hostname]
         }
     }
 
