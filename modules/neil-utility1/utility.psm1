@@ -7024,6 +7024,7 @@ function Get-ShortPath {
     )
 }
 
+
 function Select-Single {
     <#
         .DESCRIPTION
@@ -7120,20 +7121,25 @@ function Select-Single {
             run to know how many input objects were piped in.
         #>
         foreach($item in $input){
-           if($countOfObjectsEncountered -gt 0 ){
-               ## write-error "more than one objects encountered.  We were expecting exactly one object."
-               ## return
-               <# see (https://dille.name/blog/2016/02/04/careful-when-using-return-in-advanced-powershell-functions/) #>
-        
-               throw "more than one objects encountered.  We were expecting exactly one object."
-           }
-           ##write-debug "encountered object $($countOfObjectsEncountered)"
-           $countOfObjectsEncountered  += 1
+            $countOfObjectsEncountered  += 1
+            ##if($countOfObjectsEncountered -eq 2){
+            if($countOfObjectsEncountered -gt 1 ){
+                ## write-error "more than one objects encountered.  We were expecting exactly one object."
+                ## return
+                <# see (https://dille.name/blog/2016/02/04/careful-when-using-return-in-advanced-powershell-functions/) #>
+            
+                throw "more than one objects encountered.  We were expecting exactly one object."
+                write-error "more than one objects encountered.  We were expecting exactly one object."
+                return
+            }
+            ##write-debug "encountered object $($countOfObjectsEncountered)"
+           
            ## $lastObjectEncountered = $InputObject
         }
     }
     end  {
         ##  write-debug "ending"
+        #### write-debug "countOfObjectsEncountered: $($countOfObjectsEncountered)"
         ##  write-debug "countOfProcessIterations: $($countOfProcessIterations)"
         ##  write-debug "myInvocation.PipelinePosition: $($myInvocation.PipelinePosition)"
         ##  write-debug "myInvocation.PipelineLength: $($myInvocation.PipelineLength)"
@@ -7147,10 +7153,33 @@ function Select-Single {
         ##  write-debug "_inputObject: $(out-string -inputobject $_inputObject)"
         if($countOfObjectsEncountered -eq 0 ){
             throw "zero objects encountered.  We were expecting exactly one object."
+            write-error "zero objects encountered.  We were expecting exactly one object."
+            return
         }
-        ## write-debug "about to return succesfully"
+        
+        
         ##  return $lastObjectEncountered
-        return $InputObject
+        <#  strangely, in some cases (apparently when the input is coming form a
+            function rather  than a literal value not quite  -- buyt something
+            like this)), the throw statements do not cause an immediate
+            termination of the whole function , whereas, when, for instnace, we
+            are piping an array into this function, the throw statements cause
+            an immediate termination of the whle function.  Thus, it is
+            sometimes possible, in cases where we have received multiople  piped
+            in objects, to  end up arriving at the current point in the
+            execution.  HEnce, the need to test whether
+            $countOfObjectsEncountered -eq 1.
+
+            that's also why, in the process block, I am iterating
+            countOfObjectsEncountered before the return/throw statement rather
+            than after it.
+        #>
+
+        if($countOfObjectsEncountered -eq 1){
+            #### write-debug "about to return succesfully"
+            return $InputObject
+        }
     }
 }
+
 
