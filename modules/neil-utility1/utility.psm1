@@ -7036,6 +7036,40 @@ function Select-Single {
         I am surprised that this functionality does not exist in some built-in
         standard powershell function already, and maybe it does, but I can't
         find it.
+
+        This function does not behave expectedly when you both pipe at least one
+        object into it and pass an explicit -InputObject parameter.  In that
+        case, we would like it to produce no output.  however, it instead emits
+        exactly one object, namely the object was passed in as the -InputObject
+        parameter.  In  this case, the body of the process block runs.  Rather,
+        the interpreter  tries to  run it once for each piped-in object, but
+        fails (that is, the process block run attempt fails, but not the whole
+        function) with an error, and we have no good way to know whether the
+        interpreter tried to run the process block.
+
+        We could  look at $myInvocation.ExpectingInput but that will be true
+        whenever there is an upstream part of the pipeline, even if that
+        upstream part  of the pipeline happens not to emit  any objects, and we
+        want this function to  emit exactly one object when it is given an
+        explicit -InputObject parameter and when it is receiving input from an
+        upstream pipeline that happens to emit zero objects.  In other words,
+        when this function is given an explicit -InputObject parameter, we
+        (Still) want to distinguish between being piped zero objects and being
+        piped more than nonzero objects, but powershell doesn'st seem to have
+        any straightforward way to so distinguish.
+
+        Also, trying to manipulate ErrorActionPreference is problematic because
+        the caller can override our internal manipulations it by passing the
+        -ErrorAction:Continue parameter.
+
+        Oh well, that's an edge case.
+
+        I think I would prefer to not  have any explicitly-declared parameter
+        with ValueFromPipelineInput=$True, but, when we are using
+        CmdletBinding(), we have to have one parameter with the
+        ValueFromPipeline=$true argument in order for the function  to take
+        pipeline input at all.  Maybe I could get away with having
+        CmdletBinding().
     #>
 
     [CmdletBinding()]
@@ -7045,29 +7079,78 @@ function Select-Single {
         [Object] $InputObject
     )
 
-    begin {[long] $countOfObjectsEncountered = 0}
-    process {
-        ## write-debug "process is running"
-        ## $_input = $input
-        ## $_inputObject = $InputObject
-        ## write-debug "_input type: $($_input.GetType().FullName)"
-        ## write-debug "_input.Count: $($_input.Count)"
-        ## write-debug "_input: $(out-string -inputobject $_input)"
-        ## write-debug "_inputObject type: $($_inputObject.GetType().FullName)"
-        ## write-debug "_inputObject: $(out-string -inputobject $_inputObject)"
-        
-        if($countOfObjectsEncountered -gt 0 ){
-            write-error "more than one objects encountered.  We were expecting exactly one object."
-            return
+    begin {
+        ##$ErrorActionPreference = 'Stop'
+        ## write-debug "beginning"
+        [long] $countOfObjectsEncountered = 0
+        ##[long] $countOfProcessIterations = 0
+        if($PSBoundParameters.ContainsKey('InputObject')){
+            ## write-debug "encountered object $($countOfObjectsEncountered)"
+            $countOfObjectsEncountered  += 1
+            ##$lastObjectEncountered = $InputObject
         }
-        $countOfObjectsEncountered += 1
+        
+    }
+    process {
+        ## write-debug "processing"
+        ##  $countOfProcessIterations += 1
+        ## write-debug "input type: $($input.GetType().FullName)"
 
-        $InputObject
+        ##$_input = $input
+        ##$_inputObject = $InputObject
+        ##write-debug "_input type: $($_input.GetType().FullName)"
+        ##write-debug "_input.Count: $($_input.Count)"
+        ##write-debug "_input: $(out-string -inputobject $_input)"
+        ##write-debug "_inputObject type: $($_inputObject.GetType().FullName)"
+        ##write-debug "_inputObject: $(out-string -inputobject $_inputObject)"
+        ## 
+        ## 
+        ## 
+        ## $_InputObject
+        ## ##$InputObject
+        ## ## $input
+
+        <# 
+           $input is always of type ArrayList 
+
+            when there is no input piped in, the process block runs once, with
+            $input.Count being zero.  
+
+            Therefore,we  can't just count the number of times the process block
+            run to know how many input objects were piped in.
+        #>
+        foreach($item in $input){
+           if($countOfObjectsEncountered -gt 0 ){
+               ## write-error "more than one objects encountered.  We were expecting exactly one object."
+               ## return
+               <# see (https://dille.name/blog/2016/02/04/careful-when-using-return-in-advanced-powershell-functions/) #>
+        
+               throw "more than one objects encountered.  We were expecting exactly one object."
+           }
+           ##write-debug "encountered object $($countOfObjectsEncountered)"
+           $countOfObjectsEncountered  += 1
+           ## $lastObjectEncountered = $InputObject
+        }
     }
     end  {
+        ##  write-debug "ending"
+        ##  write-debug "countOfProcessIterations: $($countOfProcessIterations)"
+        ##  write-debug "myInvocation.PipelinePosition: $($myInvocation.PipelinePosition)"
+        ##  write-debug "myInvocation.PipelineLength: $($myInvocation.PipelineLength)"
+        ##  write-debug "myInvocation.ExpectingInput: $($myInvocation.ExpectingInput)"
+        ##  $_input = $input
+        ##  $_inputObject = $InputObject
+        ##  write-debug "_input type: $($_input.GetType().FullName)"
+        ##  write-debug "_input.Count: $($_input.Count)"
+        ##  write-debug "_input: $(out-string -inputobject $_input)"
+        ##  write-debug "_inputObject type: $($_inputObject.GetType().FullName)"
+        ##  write-debug "_inputObject: $(out-string -inputobject $_inputObject)"
         if($countOfObjectsEncountered -eq 0 ){
-            write-error "zero  objects encountered.  We were expecting exactly one object."
-            return
+            throw "zero objects encountered.  We were expecting exactly one object."
         }
+        ## write-debug "about to return succesfully"
+        ##  return $lastObjectEncountered
+        return $InputObject
     }
 }
+
