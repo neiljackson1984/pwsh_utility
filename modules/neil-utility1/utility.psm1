@@ -7023,3 +7023,51 @@ function Get-ShortPath {
         (New-Object -ComObject Scripting.FileSystemObject).GetFile($Path).ShortPath 
     )
 }
+
+function Select-Single {
+    <#
+        .DESCRIPTION
+        Very similar to `select-object -index 0`, except we throw an error if
+        there is not exactly one element piped in.  Conceptually similar to
+        [System.Linq.Enumerable]::SelectSingle().
+
+        TODO: add parameter(s) to let us achieve SingleOrDefault() behavior.
+
+        I am surprised that this functionality does not exist in some built-in
+        standard powershell function already, and maybe it does, but I can't
+        find it.
+    #>
+
+    [CmdletBinding()]
+    [OutputType([Object])]
+    param(
+        [Parameter(ValueFromPipeline=$True)]
+        [Object] $InputObject
+    )
+
+    begin {[long] $countOfObjectsEncountered = 0}
+    process {
+        ## write-debug "process is running"
+        ## $_input = $input
+        ## $_inputObject = $InputObject
+        ## write-debug "_input type: $($_input.GetType().FullName)"
+        ## write-debug "_input.Count: $($_input.Count)"
+        ## write-debug "_input: $(out-string -inputobject $_input)"
+        ## write-debug "_inputObject type: $($_inputObject.GetType().FullName)"
+        ## write-debug "_inputObject: $(out-string -inputobject $_inputObject)"
+        
+        if($countOfObjectsEncountered -gt 0 ){
+            write-error "more than one objects encountered.  We were expecting exactly one object."
+            return
+        }
+        $countOfObjectsEncountered += 1
+
+        $InputObject
+    }
+    end  {
+        if($countOfObjectsEncountered -eq 0 ){
+            write-error "zero  objects encountered.  We were expecting exactly one object."
+            return
+        }
+    }
+}
