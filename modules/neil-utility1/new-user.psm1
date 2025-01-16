@@ -1160,7 +1160,11 @@ function New-ScreenconnectInvoker {
                 Position=1,
                 Mandatory=$False
             )] 
-            [string[]] $command
+            [string[]] $command,
+
+            [Parameter(Mandatory=$False)] 
+            [switch]$NoWait = $false
+
         )
         ## DynamicParam {}
         ## code --goto (getcommandPath runInCwcSession)

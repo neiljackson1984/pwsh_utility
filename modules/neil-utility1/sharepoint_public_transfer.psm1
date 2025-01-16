@@ -68,10 +68,10 @@ function uploadFileToSpecialPublicSharepointFolder{
     $curlExitCode = $lastExitCode
     # todo: deal with illegal filenames.
     Remove-Item $pathOfCookieJarFile | out-null
-    return $(
-        if($curlExitCode -eq 0){$destinationUrl}
-        else {$null}
-    )
+    if($curlExitCode -eq 0){return $destinationUrl}
+
+    write-warning "curlExitCode ($($curlExitCode)) was non-zero."
+    return $null
 }
 
 function downloadFileFromSpecialPublicSharepointFolder{

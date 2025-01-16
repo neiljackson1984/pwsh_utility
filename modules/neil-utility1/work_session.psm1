@@ -17,7 +17,7 @@ Import-Module (join-path $psScriptRoot "openvpn.psm1")
 
 class Computer {
     [string] $hostname
-    [string] $handle
+    [string[]] $handles
 
     Computer(){}
 
@@ -91,7 +91,7 @@ function Initialize-RemoteSessions {
     $namesOfFunctionsToImport = @( $namesOfFunctionsToImport )
     $computers = [Computer[]]  @($computers)
 
-    $computers = [Computer[]]  @($computers; @{hostname=$companyParameters.domainController; handle="dc"})
+    $computers = [Computer[]]  @($computers; @{hostname=$companyParameters.domainController; handles=@("dc")})
 
 
     $namesOfFunctionsToImport += @(
@@ -338,7 +338,7 @@ function Initialize-RemoteSessions {
     
     $hostnameOfHypervisor = $(if($bitwardenItemIdOfWindowsCredentialOnTheHypervisor) {Get-HostnameFromBitwardenItem $bitwardenItemIdOfWindowsCredentialOnTheHypervisor})
     if($hostnameOfHypervisor ){
-        $computers = [Computer[]]  @($computers; @{hostname=$hostnameOfHypervisor; handle="h"})
+        $computers = [Computer[]]  @($computers; @{hostname=$hostnameOfHypervisor; handles=@("h")})
     }
 
     
@@ -371,10 +371,16 @@ function Initialize-RemoteSessions {
     )
 
     foreach($computer in $computers ){
-        if($computer.handle){
-            write-information "defining short-named functions (r$($computer.handle) and rs$($computer.handle)) for handle '$($computer.handle)' and hostname '$($computer.hostname)'. "
-            Set-Item -LiteralPath "function:global:r$($computer.handle)" -Value $global:invokersByHostname[$computer.hostname]
-            Set-Item -LiteralPath "function:global:rs$($computer.handle)" -Value $global:screenconnectInvokersByHostname[$computer.hostname]
+        ## if($computer.handle){
+        ##     write-information "defining short-named functions (r$($computer.handle) and rs$($computer.handle)) for handle '$($computer.handle)' and hostname '$($computer.hostname)'. "
+        ##     Set-Item -LiteralPath "function:global:r$($computer.handle)" -Value $global:invokersByHostname[$computer.hostname]
+        ##     Set-Item -LiteralPath "function:global:rs$($computer.handle)" -Value $global:screenconnectInvokersByHostname[$computer.hostname]
+        ## }
+        
+        foreach($handle in $computer.handles){
+            write-information "defining short-named functions (r$($handle) and rs$($handle)) for handle '$($handle)' and hostname '$($computer.hostname)'. "
+            Set-Item -LiteralPath "function:global:r$($handle)" -Value $global:invokersByHostname[$computer.hostname]
+            Set-Item -LiteralPath "function:global:rs$($handle)" -Value $global:screenconnectInvokersByHostname[$computer.hostname]
         }
     }
 
