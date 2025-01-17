@@ -104,6 +104,7 @@ function Initialize-RemoteSessions {
         "downloadFileAndReturnPath"
         "downloadFileFromSpecialPublicSharepointFolder"
         "Enable-IPv6"
+        "Enable-RemoteDesktop"
         "Enable-UserAccountControl"
         "expandArchiveFile"
         "findFileInProgramFiles"
@@ -140,7 +141,7 @@ function Initialize-RemoteSessions {
 
    
         StartupScript = {
-
+            $InformationPreference='Continue'
             <#  see
                 (https://learn.microsoft.com/en-us/powershell/module/microsoft.powershell.core/about/about_windows_powershell_compatibility?view=powershell-7.4)
 
@@ -306,6 +307,8 @@ function Initialize-RemoteSessions {
         nameOfGroup                               = $nameOfScreenconnectGroup
         pwsh                                      = $False
         preambleCommand                           = @(
+            {$InformationPreference='Continue'}    
+
             $namesOfFunctionsToImport | 
             % {(get-command $_).ScriptBlock.Ast}
         )

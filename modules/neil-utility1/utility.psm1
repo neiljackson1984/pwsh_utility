@@ -7183,3 +7183,7 @@ function Select-Single {
 }
 
 
+function Enable-RemoteDesktop {
+    Set-ItemProperty -Path 'registry::HKLM\System\CurrentControlSet\Control\Terminal Server' -name "fDenyTSConnections" -value 0
+    Enable-NetFirewallRule -DisplayGroup "Remote Desktop"
+}

@@ -1176,3 +1176,83 @@ function New-ScreenconnectInvoker {
         Merge-Hashtables $argumentsForRunInCwcSession $PSBoundParameters |% {runInCwcSession @_}
     }.GetNewClosure()
 }
+
+
+function setComputerNameAndJoinDomain {
+    <#
+    .SYNOPSIS
+    We assume that the Screenconnect client is installed on the machine and
+    communicating correctly, and we assume that the machine has already been
+    added to the appropriate screenconnect group.
+    #>
+    [CmdletBinding()]
+    param(
+        [parameter(Mandatory=$true)]
+        $bitwardenItemIdOfActiveDirectoryCredential,
+
+        [parameter(Mandatory=$true)]
+        $cwcArgs,
+
+        [parameter(Mandatory=$true)]
+        [string] $initialNameOfWorkstation,
+
+        [parameter(Mandatory=$true)]
+        [string] $desiredHostnameOfWorkstation,
+
+        [parameter(Mandatory=$true)]
+        [string] $ouPath,
+
+        [parameter(Mandatory=$true)]
+        [string] $domainName
+    )
+    
+    # change name of the computer and join to the domain.
+    <# sending the password in plaintext like this is not great.  Please, at
+        least go delete the command from screenconnect command history to
+        attempt not to leave the plaintext password sitting in the log.
+    #>
+    $bitwardenItemContainingActiveDirectoryCredential = Get-BitwardenItem $bitwardenItemIdOfActiveDirectoryCredential
+    
+
+    write-information "now working on '$($initialNameOfWorkstation )'."
+    runInCwcSession @cwcArgs -nameOfSession $initialNameOfWorkstation -timeout (New-Timespan -Minutes 2).TotalMilliSeconds  (
+        @(
+            "`$desiredHostnameOfWorkstation='$desiredHostnameOfWorkstation'"
+            "`$username='$($bitwardenItemContainingActiveDirectoryCredential.login.username)'"
+            "`$password='$($bitwardenItemContainingActiveDirectoryCredential.login.password)'"
+            "`$ouPath='$($ouPath)'"
+            "`$domainName='$($domainName)'"
+            {
+                # this command ensures that the computer is not joined to azure active directory
+                dsregcmd /leave
+                $desiredUnqualifiedNameOfWorkstation = ($desiredHostnameOfWorkstation -split '\.')[0]
+
+                (
+                    @{
+                        Credential = New-Object System.Management.Automation.PSCredential @(
+                            $username
+                            (ConvertTo-SecureString $password -AsPlainText -Force)
+                        )
+                        Restart    = $True
+                        Force      = $True
+                        
+                        OUPath     = $ouPath
+                        DomainName = $domainName
+                    } + 
+                    $(
+                        if($desiredUnqualifiedNameOfWorkstation -eq $env:computername){
+                            @{}
+                        } else {
+                            @{NewName    = $desiredUnqualifiedNameOfWorkstation }
+                        }
+                    )
+                
+                )| % {Add-Computer @_}
+
+                ## restart-computer -force
+            }
+        ) -join "`n" 
+    )
+    # todo: avoid putting the active directory admin credentials in plain text
+}
+
