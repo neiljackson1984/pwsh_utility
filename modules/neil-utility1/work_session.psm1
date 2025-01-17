@@ -141,7 +141,7 @@ function Initialize-RemoteSessions {
 
    
         StartupScript = {
-            $InformationPreference='Continue'
+            ## $InformationPreference='Continue'
             <#  see
                 (https://learn.microsoft.com/en-us/powershell/module/microsoft.powershell.core/about/about_windows_powershell_compatibility?view=powershell-7.4)
 
