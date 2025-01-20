@@ -492,7 +492,8 @@ function getSshOptionArgumentsFromBitwardenItem {
         ## "-o"; "PubkeyAcceptedKeyTypes=+ssh-rsa,ssh-dss"
         <#  as of OpenSSH_9.9p1, OpenSSL 3.0.15 3 Sep 2024, which I noticed on
             2025-01-20, the ssh-dss  algorithm is no longer supported.
-            Therefore, I have removde these from the list.
+            Therefore, I have removde these from the list.  AS a result, I
+            suspect that ssh into ILO3 will no longer work.
         #>
         "-o"; "HostKeyAlgorithms=+ssh-rsa"
         "-o"; "PubkeyAcceptedKeyTypes=+ssh-rsa"
