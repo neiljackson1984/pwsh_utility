@@ -466,29 +466,49 @@ function getSshOptionArgumentsFromBitwardenItem {
     
         # "-o"; "PubkeyAcceptedKeyTypes=+ssh-rsa"
         # "-o"; "HostKeyAlgorithms=+ssh-rsa"
-        #temporary work-around for sophos router (I might need to replace my
-        # favorite keypair  with a new one that does not rely on the now-deprecated
-        # SHA-1 hash algorithm (although I am not entirely sure how the key pair
-        # depends on the hash algorithm) -- the source of the dependency might be
-        # the hash that is stored by the server in the authorized keys list.
-        # possibly, I merely need to recompute a different hash of my public key and
-        # store this different hash in the the server. see
-        # https://www.openssh.com/txt/release-8.2
+        <#  temporary work-around for sophos router (I might need to replace my
+            favorite keypair  with a new one that does not rely on the
+            now-deprecated SHA-1 hash algorithm (although I am not entirely sure
+            how the key pair depends on the hash algorithm) -- the source of the
+            dependency might be the hash that is stored by the server in the
+            authorized keys list. possibly, I merely need to recompute a
+            different hash of my public key and store this different hash in the
+            the server. 
+
+            see https://www.openssh.com/txt/release-8.2 
+
+        #>
     
-        # evidently, if we have multiple "-o HostKeyAlgorithms..." options, only the
-        # first one is attended to, even when we are using the "+" notation to say
-        # "add this item to the existing list". hence, I have combined the sophos
-        # router workaround (+ssh-rsa) and the ILO3 workaround (+ssh-dss) into one
-        # option argument for each property.  We ought to figure ought a way to
-        # encode these options for exceptional cases in bitwarden.
-        "-o"; "HostKeyAlgorithms=+ssh-rsa,ssh-dss"
-        "-o"; "PubkeyAcceptedKeyTypes=+ssh-rsa,ssh-dss"
+        <#  evidently, if we have multiple "-o HostKeyAlgorithms..." options,
+            only the first one is attended to, even when we are using the "+"
+            notation to say "add this item to the existing list". hence, I have
+            combined the sophos router workaround (+ssh-rsa) and the ILO3
+            workaround (+ssh-dss) into one option argument for each property.
+            We ought to figure ought a way to encode these options for
+            exceptional cases in bitwarden. 
+        #>
+        
+        ## "-o"; "HostKeyAlgorithms=+ssh-rsa,ssh-dss"
+        ## "-o"; "PubkeyAcceptedKeyTypes=+ssh-rsa,ssh-dss"
+        <#  as of OpenSSH_9.9p1, OpenSSL 3.0.15 3 Sep 2024, which I noticed on
+            2025-01-20, the ssh-dss  algorithm is no longer supported.
+            Therefore, I have removde these from the list.
+        #>
+        "-o"; "HostKeyAlgorithms=+ssh-rsa"
+        "-o"; "PubkeyAcceptedKeyTypes=+ssh-rsa"
+
+
         "-o"; "KexAlgorithms=+diffie-hellman-group1-sha1"
-        # this is a workaround for ssh'ing into an ILO3 controller on an HP Proliant
-        # Gen7 server. allowing this key exchange algorithm constitutes a reduction
-        # in security, and probably shouldn't be left here for all time.
-        # see [https://unix.stackexchange.com/questions/340844/how-to-enable-diffie-hellman-group1-sha1-key-exchange-on-debian-8-0]
-        # see [http://www.openssh.com/legacy.html]
+        <#  this is a workaround for ssh'ing into an ILO3 controller on an HP
+            Proliant Gen7 server. allowing this key exchange algorithm
+            constitutes a reduction in security, and probably shouldn't be left
+            here for all time.
+
+            see
+            [https://unix.stackexchange.com/questions/340844/how-to-enable-diffie-hellman-group1-sha1-key-exchange-on-debian-8-0]
+
+            see [http://www.openssh.com/legacy.html] 
+        #>
     
         "-o"; "ServerAliveInterval=5"
     
