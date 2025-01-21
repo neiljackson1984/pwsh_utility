@@ -1177,7 +1177,7 @@ function getRr {
         }
 
         <#  these options prevent us from touching our main known_hosts file: #>
-        "-o";"StrictHostKeyChecking=no"
+        ## "-o";"StrictHostKeyChecking=no"
         "-o";"UserKnownHostsFile=$($pathOfTemporaryKnownHostsFile)"
         "-o";"IdentityAgent=$($sshAgentEnvironment['SSH_AUTH_SOCK'])"
         <#  I think it makes more sense to push the IdentityAgent option in to
