@@ -1015,8 +1015,9 @@ function runInSshSession {
     }
 
     # process {}
-    # the mere presence of a process block, even an empty one,
-    # causes $input to be empty in the end block.
+    <#  the mere presence of a process block, even an empty one, causes $input
+        to be empty in the end block. 
+    #>
 
     end {
         # Write-Warning "reached end"
@@ -1042,76 +1043,89 @@ function runInSshSession {
 
         # $inputObjects | ssh @sshOptionArguments "" @argumentList
         if($inputObjects.Count -gt 0){
-            # $inputObjects | ssh @sshOptionArguments "" @argumentList
-            # ( ,[byte[]] ($inputObjects | % { [System.Text.Encoding]::UTF8.GetBytes($_) })   ) | ssh @sshOptionArguments "" @argumentList
-            ( ,[byte[]] ([System.Text.Encoding]::UTF8.GetBytes(($inputObjects -join "`n")))) | ssh "-o" "IdentityAgent=$($sshAgentEnvironment['SSH_AUTH_SOCK'])" @sshOptionArguments "" @argumentList
-            # it is a bit of a hack to be hardcoding our line ending conventions
-            # here, but for the application that I happen to be working on at
-            # the moment, I want unix-style line endings, and I don't care too
-            # much about a terminal newline (I would rather have no terminal
-            # newline sequence than a \r\n sequence, which is what I would get
-            # if I did not do the byte pipe workaround above.)
-            #
-            #
-            # Interactive commands are a bit wonky, I think.  At least, I think
-            # I have observed that powershell caches stderr and only prints it
-            # once rr has returned.  I think I ahve observed that powershell
-            # does not do this weird stderr caching behavior when there is no
-            # pipeline input to rr (i.e. when the below "else" clause obtains).
-            #
-            # the significant differnece between these two cases (this "if"
-            # block and the below "else" block), at least insofar as what would
-            # affect stream handling, is that in this "if" block, we pipe some
-            # input into ssh wheras in the below "else" block we do not pipe
-            # anything into ssh.  Therefore, perhaps it is the piping of input
-            # that is causing the stderr caching.  (and I suspect the stderr
-            # caching has more to do with powershell than ssh).
-            #
-            # I might be completely wrong about powershell having anything to do
-            # with the "stderr caching" behavior. I noticed the "stderr caching
-            # behavior" when attempting to run the Sophos interactive "cc"
-            # command via an ssh session to a Sophos UTM SG router.  The
-            # behavior could have been entirely the result of things happening
-            # in bash and ssh daemon within the sophos router.
-            #
-            # No, never mind, the stderr caching is a powershell thing (or maybe
-            # an ssh thing).  look at this:
-            #
-            # ```
-            # rr "bash -c 'echo 1 here is some stderr 1>&2; echo 2 and here is some stdout; echo 3 and here is some more stderr 1>&2; '"
-            # ```
-            ### 2 and here is some stdout
-            ### 1 here is some stderr
-            ### 3 and here is some more stderr
-            #
-            # The following might be relevant:
-            # [https://stackoverflow.com/questions/45316295/the-order-of-stdout-and-stderr-in-bash]
-            #
-            # the "stderr cahching" behaviour might have to do with bash (or
-            # perhaps the program running within bash) thinks it is connected to
-            # a terminal, and deciding to do line buffereing (iof connected to a
-            # terminal) or block buffering (if not connected to a terminal).
-            #
-            # the following might also be relevant: [https://www.gnu.org/software/bash/manual/bash.html#Interactive-Shells]
+            ## $inputObjects | ssh @sshOptionArguments "" @argumentList
+            ## ( ,[byte[]] ($inputObjects | % { [System.Text.Encoding]::UTF8.GetBytes($_) })   ) | ssh @sshOptionArguments "" @argumentList
+            
+            ( 
+                ,[byte[]] ([System.Text.Encoding]::UTF8.GetBytes(($inputObjects -join "`n")))
+            ) | 
+            ssh "-o" "IdentityAgent=$($sshAgentEnvironment['SSH_AUTH_SOCK'])" @sshOptionArguments "" @argumentList
+
+            <#  it is a bit of a hack to be hardcoding our line ending
+                conventions here, but for the application that I happen to be
+                working on at the moment, I want unix-style line endings, and I
+                don't care too much about a terminal newline (I would rather
+                have no terminal newline sequence than a \r\n sequence, which is
+                what I would get if I did not do the byte pipe workaround
+                above.)
+
+
+                Interactive commands are a bit wonky, I think.  At least, I
+                think I have observed that powershell caches stderr and only
+                prints it once rr has returned.  I think I ahve observed that
+                powershell does not do this weird stderr caching behavior when
+                there is no pipeline input to rr (i.e. when the below "else"
+                clause obtains).
+
+                the significant differnece between these two cases (this "if"
+                block and the below "else" block), at least insofar as what
+                would affect stream handling, is that in this "if" block, we
+                pipe some input into ssh wheras in the below "else" block we do
+                not pipe anything into ssh.  Therefore, perhaps it is the piping
+                of input that is causing the stderr caching.  (and I suspect the
+                stderr caching has more to do with powershell than ssh).
+
+                I might be completely wrong about powershell having anything to
+                do with the "stderr caching" behavior. I noticed the "stderr
+                caching behavior" when attempting to run the Sophos interactive
+                "cc" command via an ssh session to a Sophos UTM SG router.  The
+                behavior could have been entirely the result of things happening
+                in bash and ssh daemon within the sophos router.
+
+                No, never mind, the stderr caching is a powershell thing (or
+                maybe an ssh thing).  look at this:
+
+                ```
+                rr "bash -c 'echo 1 here is some stderr 1>&2; echo 2 and here is some stdout; echo 3 and here is some more stderr 1>&2; '"
+                ```
+                ## 2 and here is some stdout
+                ## 1 here is some stderr
+                ## 3 and here is some more stderr
+
+                The following might be relevant:
+                [https://stackoverflow.com/questions/45316295/the-order-of-stdout-and-stderr-in-bash]
+
+                the "stderr cahching" behaviour might have to do with bash (or
+                perhaps the program running within bash) thinks it is connected
+                to a terminal, and deciding to do line buffereing (iof connected
+                to a terminal) or block buffering (if not connected to a
+                terminal).
+
+                the following might also be relevant:
+                [https://www.gnu.org/software/bash/manual/bash.html#Interactive-Shells] 
+
+            #>
         } else {
             # write-host "no inputObjects given"
             ssh "-o" "IdentityAgent=$($sshAgentEnvironment['SSH_AUTH_SOCK'])" @sshOptionArguments "" @argumentList
-            # I was hoping that this would run in a way that is fully
-            # connected to the terminal, but it does not.
+            <#  I was hoping that this would run in a way that is fully
+                connected to the terminal, but it does not. 
+            #>
         }
-        # we are specifying the "destination" (i.e. host name and port number)
-        # by means of the sshOptionArguments rather than with the "destination"
-        # positional command line argument to ssh.  Nevertheless, ssh still
-        # expects to see some argument in the "destination" position on the
-        # command line.  If we just slap on $argumentList without having
-        # anything in the "destination" position, ssh will assume that the first
-        # word in $argumentList is the destination and will therefore not treat
-        # that word as the first word of the command that we want to run within
-        # the ssh session.  To deal with this requirement, we pass an empty
-        # string in the "destination" position.  (would it also work to pass any
-        # arbitrary word (perhaps ssh ignores the destination argument when a
-        # destination is speciifed in the option arguments.)?  What about a
-        # hyphen?)
+        <#  we are specifying the "destination" (i.e. host name and port number)
+            by means of the sshOptionArguments rather than with the "destination"
+            positional command line argument to ssh.  Nevertheless, ssh still
+            expects to see some argument in the "destination" position on the
+            command line.  If we just slap on $argumentList without having
+            anything in the "destination" position, ssh will assume that the first
+            word in $argumentList is the destination and will therefore not treat
+            that word as the first word of the command that we want to run within
+            the ssh session.  To deal with this requirement, we pass an empty
+            string in the "destination" position.  (would it also work to pass any
+            arbitrary word (perhaps ssh ignores the destination argument when a
+            destination is speciifed in the option arguments.)?  What about a
+            hyphen?) 
+        #>
 
 
     }
@@ -1172,7 +1186,12 @@ function getRr {
             but I think I will remove that from getSshSession (and maybe will
             refactor/rethink/possibly-delete getSshSession altogether).  In the
             interim, it shouldn't hurt to have the same option  get passed twice
-            to ssh (I hope). #>
+            to ssh (I hope). 
+
+            2025-01-20-1613: update upon re-reading the above comment: when I
+            wrote "getSshSession", above, I think I must have meant
+            "getSshOptionArgumentsFromBitwardenItem" .
+        #>
 
         getSshOptionArgumentsFromBitwardenItem -bitwardenItemId $bitwardenItem.id 
     )
