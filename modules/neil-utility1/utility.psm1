@@ -256,37 +256,40 @@ function getSshPrivateKeyFromBitwardenItem {
 
     # $sshPrivateKey = bw --raw get attachment id_rsa --itemid $bitwardenItemIdOfItemContainingTheKeyAsAnAttachedFile
 
-    # the above technique to get the $sshPrivateKey is problematic because of
-    # the powershell newline-handling problem.
-    #
-    # I am not sure how I ever used  getSshPrivateKeyFromBitwardenItem() and
-    # initializeSshAgentFromBitwardenItemAndReturnSshAgentEnvironment() without
-    # running into this newline problem before.  Was I perhaps using the
-    # built-in windows installation of OpenSSH and perhaps the built-in
-    # installation tolerates windows-style line endings?  That sounds familiar.
-    #
-    # see
-    # [https://stackoverflow.com/questions/59110563/different-behaviour-and-output-when-piping-in-cmd-and-powershell/59118502#59118502].
-    #
-    # the workaround is either to use the --ouput option to the bw command so
-    # that bw dumps the output to a file rather than stdout, and then read the
-    # file (which is not ideal becuase we would like to keep this sensitive
-    # plaintext off the disk) or to run the bw command with
-    # System.Diagnostics.Process, and capture stdout.
-    #
-    # CAUTION: In the case where the bw command is coming from the npm package
-    # @bitwarden/cli, bw might be a powershell script (bw.ps1) rather than a
-    # native executable, and, specifically, the powershell-script version of the
-    # bw command evidently subjects the output of the attachment getting command
-    # through powershell's chop-into-lines behavior, with the result that the
-    # stdout of the below $process might indeed contain windows-style newlines
-    # even if the file attached to the bitwarden item contained only linefeeds.
-    #
-    # This is arguable a failing of the @bitwarden/cli module.  An
-    # understandable failing, perhaps, but still.
-    #
-    # note: if we omit the --raw option, the bw command saves the attached file
-    # to the current working directory -- not what we want.
+    <#  the above technique to get the $sshPrivateKey is problematic because of
+        the powershell newline-handling problem.
+
+        I am not sure how I ever used  getSshPrivateKeyFromBitwardenItem() and
+        initializeSshAgentFromBitwardenItemAndReturnSshAgentEnvironment()
+        without running into this newline problem before.  Was I perhaps using
+        the built-in windows installation of OpenSSH and perhaps the built-in
+        installation tolerates windows-style line endings?  That sounds
+        familiar.
+
+        see
+        [https://stackoverflow.com/questions/59110563/different-behaviour-and-output-when-piping-in-cmd-and-powershell/59118502#59118502].
+
+        the workaround is either to use the --ouput option to the bw command so
+        that bw dumps the output to a file rather than stdout, and then read the
+        file (which is not ideal becuase we would like to keep this sensitive
+        plaintext off the disk) or to run the bw command with
+        System.Diagnostics.Process, and capture stdout.
+
+        CAUTION: In the case where the bw command is coming from the npm package
+        @bitwarden/cli, bw might be a powershell script (bw.ps1) rather than a
+        native executable, and, specifically, the powershell-script version of
+        the bw command evidently subjects the output of the attachment getting
+        command through powershell's chop-into-lines behavior, with the result
+        that the stdout of the below $process might indeed contain windows-style
+        newlines even if the file attached to the bitwarden item contained only
+        linefeeds.
+
+        This is arguable a failing of the @bitwarden/cli module.  An
+        understandable failing, perhaps, but still.
+
+        note: if we omit the --raw option, the bw command saves the attached
+        file to the current working directory -- not what we want. 
+    #>
 
     $namesOfFilesToRegardAsPrivateKeyFiles = @(
         "id_dsa"
@@ -619,29 +622,30 @@ function initializeSshAgentFromBitwardenItemAndReturnSshAgentEnvironment {
     $processStartInfo.RedirectStandardError = $True
     $process = [System.Diagnostics.Process]::Start($processStartInfo)
 
-    # this achieves the desired effect of having the ssh-agent process be a
-    # child process of the shell (so that the ssh-agent process dies with the
-    # shell).  Notice the -D option to ssh-agent, which tells ssh-agent to run
-    # in the foreground and not fork.  
+    <#  this achieves the desired effect of having the ssh-agent process be a
+        child process of the shell (so that the ssh-agent process dies with the
+        shell).  Notice the -D option to ssh-agent, which tells ssh-agent to run
+        in the foreground and not fork.  
 
-    # Curiously, when we run ssh-agent with the -D option, ssh-agent does not
-    # spit out the SSH_AGENT_PID value -- only the SSH_AUTH_SOCK value.
-    # ssh-agent does still emit "echo Agent pid 1476;" (for example), so the
-    # information about the pid is still extractable, but why wouldn't it just
-    # go ahead and emit the line to set the SSH_AGENT_PID environment variable?
-    # Admittedly, if we are launching ssh-agent in non-forking mode (by using
-    # the - -D option), we probably can figure out the pid of the ssh-agent
-    # process by means other than looking at the bash code that ssh-agent emits
-    # on stdout, but still, what could be the harm in ssh-agent emitting the
-    # "SSH_AGENT_PID=..." code?  There must be some intentional reason for this
-    # behavior.
-    #
-    # Is the SSH_AGENT_PID variable really needed in all cases?  Perhaps
-    # SSH_AUTH_SOCK is sufficient for the main funciton of ssh-agent and the
-    # realted tools (ssh-add, ssh, etc.).  Maybe the reason the
-    # "SSH_AGENT_PID=..." code is emitted at all by ssh-agent is to give us the
-    # pid of the agent so that we can kill the ssh-agent process when we want
-    # (much like I am wanting to have ssh-agent die with the shell).
+        Curiously, when we run ssh-agent with the -D option, ssh-agent does not
+        spit out the SSH_AGENT_PID value -- only the SSH_AUTH_SOCK value.
+        ssh-agent does still emit "echo Agent pid 1476;" (for example), so the
+        information about the pid is still extractable, but why wouldn't it just
+        go ahead and emit the line to set the SSH_AGENT_PID environment
+        variable? Admittedly, if we are launching ssh-agent in non-forking mode
+        (by using the - -D option), we probably can figure out the pid of the
+        ssh-agent process by means other than looking at the bash code that
+        ssh-agent emits on stdout, but still, what could be the harm in
+        ssh-agent emitting the "SSH_AGENT_PID=..." code?  There must be some
+        intentional reason for this behavior.
+
+        Is the SSH_AGENT_PID variable really needed in all cases?  Perhaps
+        SSH_AUTH_SOCK is sufficient for the main funciton of ssh-agent and the
+        realted tools (ssh-add, ssh, etc.).  Maybe the reason the
+        "SSH_AGENT_PID=..." code is emitted at all by ssh-agent is to give us
+        the pid of the agent so that we can kill the ssh-agent process when we
+        want (much like I am wanting to have ssh-agent die with the shell). 
+    #>
 
 
     $bashCode = "$($process.StandardOutput.ReadLine())$($process.StandardOutput.ReadLine())"
@@ -835,24 +839,25 @@ function runInSshSession {
         # [object]
         [string]
         $inputObject,
-        # in spirit, $inputObject should be a string, but, in order to allow a
-        # workaround to the powersehll behavior of always appending a newline
-        # (and a "\r\n" newline at that) to the end of the last string (or maybe
-        # every string) piped into a native program, we want to allow
-        # $inputObject to be a byte-like thing (because the workaround is to
-        # convert the string to an enmumerable of bytes, and then pipe each byte
-        # one at a time into the powershell pipeline.  setting the type here to
-        # object serves the purpose.
-        #
-        # perhaps we should force $inputObject to be a string after all and
-        # then do the conversion to an enumerable of bytes within this function.
-        #
-        # As of 2023-09-19, the latest non-beta release of powershell (version
-        # 7.3.6) does not support the byte piping behavior, but the preview
-        # version (version 7.4.0-preview.5) does support the byte piping
-        # behavior.  If the byte-piping behavior is supported, then we can have
-        # $iunputObject be of type string, which is what we want.
-        #
+        <#  in spirit, $inputObject should be a string, but, in order to allow a
+            workaround to the powersehll behavior of always appending a newline
+            (and a "\r\n" newline at that) to the end of the last string (or
+            maybe every string) piped into a native program, we want to allow
+            $inputObject to be a byte-like thing (because the workaround is to
+            convert the string to an enmumerable of bytes, and then pipe each
+            byte one at a time into the powershell pipeline.  setting the type
+            here to object serves the purpose.
+
+            perhaps we should force $inputObject to be a string after all and
+            then do the conversion to an enumerable of bytes within this
+            function.
+
+            As of 2023-09-19, the latest non-beta release of powershell (version
+            7.3.6) does not support the byte piping behavior, but the preview
+            version (version 7.4.0-preview.5) does support the byte piping
+            behavior.  If the byte-piping behavior is supported, then we can
+            have $iunputObject be of type string, which is what we want.
+        #>
 
                 
         [Parameter()]
@@ -871,14 +876,15 @@ function runInSshSession {
         [Parameter(
             ValueFromRemainingArguments=$True,
             Mandatory = $False #$True 
-            # it is valid, I think, to allow rr to be called without any
-            # "remaining arguments" -- this has the same effect as calling ssh
-            # without any "command" specified, so that we are dropped into an
-            # interactive shell.  
-            #
-            # I am not sure I like this behavior (it's potentially unexpected,
-            # and potentially hard to remember that it exists, and hard to
-            # recognize in code if you don't already know about it.)
+            <#  it is valid, I think, to allow rr to be called without any
+                "remaining arguments" -- this has the same effect as calling ssh
+                without any "command" specified, so that we are dropped into an
+                interactive shell.  
+
+                I am not sure I like this behavior (it's potentially unexpected,
+                and potentially hard to remember that it exists, and hard to
+                recognize in code if you don't already know about it.) 
+            #>
 
         )]
         [string[]] $argumentList
@@ -972,39 +978,39 @@ function runInSshSession {
         # # Write-Warning "within process: (@(`$input).Count: $(@($input).Count)"
 
         if( $PSBoundParameters.Keys -contains "inputObject"){
-            # strangely, when you invoke a function not in a pipeline (or at
-            # the beginning of a pipeline) and when you do not pass the
-            # -inputObject parameter, powershell still runs the process
-            # block.  This makes no sense to me, because in this case there
-            # is no input; the number of input objects is zero.  I expect
-            # powershell to run the process block exactly as many times as
-            # there are input objects.  If there are zero input objects, I
-            # explect powershell to run the process block zero times, but it
-            # actually runs the process block exactly one times.
+            <#  strangely, when you invoke a function not in a pipeline (or at
+                the beginning of a pipeline) and when you do not pass the
+                -inputObject parameter, powershell still runs the process block.
+                This makes no sense to me, because in this case there is no
+                input; the number of input objects is zero.  I expect powershell
+                to run the process block exactly as many times as there are
+                input objects.  If there are zero input objects, I explect
+                powershell to run the process block zero times, but it actually
+                runs the process block exactly one times.
 
-            # the only reliable and specific way I have found to detect when
-            # the process block is being run in this special case (where it
-            # really shouldn't run) is to see whether
-            # $PSBoundParameters.Keys contains "inputObject".
-            
-            # Within the process block, $PSBoundParameters.Keys contains
-            # "inputObject" when, and only when, the process block is
-            # running due to an explicit -inputObject parameter having been
-            # passed or the process block is running due to an object having
-            # been received on the pipeline. 
+                the only reliable and specific way I have found to detect when
+                the process block is being run in this special case (where it
+                really shouldn't run) is to see whether $PSBoundParameters.Keys
+                contains "inputObject".
 
-            # Looking at whether $inputObject is null as a way to detect
-            # when we are in the special "unexpected" case is no good in
-            # general because the user might want to actually pass $null as
-            # a pipeline object or as the value of the -inputObject
-            # parameter.  Also, in the case where I have declared the type
-            # of inputObject to be string (for instance), powershell will
-            # coerce $null to an empty string.  Well, I could look for empty
-            # strings, but the user might have wanted to pass an empty
-            # string as a first class input object and then we have the same
-            # problem.  checking for the presence of "inputObject" in
-            # $PSBoundParameters.Keys works regardless of whether the
-            # inputObject is null.
+                Within the process block, $PSBoundParameters.Keys contains
+                "inputObject" when, and only when, the process block is running
+                due to an explicit -inputObject parameter having been passed or
+                the process block is running due to an object having been
+                received on the pipeline. 
+
+                Looking at whether $inputObject is null as a way to detect when
+                we are in the special "unexpected" case is no good in general
+                because the user might want to actually pass $null as a pipeline
+                object or as the value of the -inputObject parameter.  Also, in
+                the case where I have declared the type of inputObject to be
+                string (for instance), powershell will coerce $null to an empty
+                string.  Well, I could look for empty strings, but the user
+                might have wanted to pass an empty string as a first class input
+                object and then we have the same problem.  checking for the
+                presence of "inputObject" in $PSBoundParameters.Keys works
+                regardless of whether the inputObject is null. 
+            #>
 
             $inputObjects += $inputObject
 
@@ -1020,6 +1026,8 @@ function runInSshSession {
     #>
 
     end {
+        
+
         # Write-Warning "reached end"
         # Write-Warning "within end: inputObjects.Count: $($inputObjects.Count)"
         # $input.Reset()
@@ -1040,96 +1048,310 @@ function runInSshSession {
         # Write-Warning "within end: (@(`$input).Count: $(@($input).Count)"
         # Write-Warning "within end: `$collectedInput.Count: $($collectedInput.Count)"
 
+        ## $dummyDestination = ""
+        $dummyDestination = "dummyHostname"
+        $sshArguments =  @(
+            "-o"; "IdentityAgent=$($sshAgentEnvironment['SSH_AUTH_SOCK'])" 
+            ## "-o"; "StdinNull=yes"
+            $sshOptionArguments 
+            $dummyDestination 
+            $argumentList
+        )
 
-        # $inputObjects | ssh @sshOptionArguments "" @argumentList
-        if($inputObjects.Count -gt 0){
-            ## $inputObjects | ssh @sshOptionArguments "" @argumentList
-            ## ( ,[byte[]] ($inputObjects | % { [System.Text.Encoding]::UTF8.GetBytes($_) })   ) | ssh @sshOptionArguments "" @argumentList
-            
-            ( 
-                ,[byte[]] ([System.Text.Encoding]::UTF8.GetBytes(($inputObjects -join "`n")))
-            ) | 
-            ssh "-o" "IdentityAgent=$($sshAgentEnvironment['SSH_AUTH_SOCK'])" @sshOptionArguments "" @argumentList
-
-            <#  it is a bit of a hack to be hardcoding our line ending
-                conventions here, but for the application that I happen to be
-                working on at the moment, I want unix-style line endings, and I
-                don't care too much about a terminal newline (I would rather
-                have no terminal newline sequence than a \r\n sequence, which is
-                what I would get if I did not do the byte pipe workaround
-                above.)
-
-
-                Interactive commands are a bit wonky, I think.  At least, I
-                think I have observed that powershell caches stderr and only
-                prints it once rr has returned.  I think I ahve observed that
-                powershell does not do this weird stderr caching behavior when
-                there is no pipeline input to rr (i.e. when the below "else"
-                clause obtains).
-
-                the significant differnece between these two cases (this "if"
-                block and the below "else" block), at least insofar as what
-                would affect stream handling, is that in this "if" block, we
-                pipe some input into ssh wheras in the below "else" block we do
-                not pipe anything into ssh.  Therefore, perhaps it is the piping
-                of input that is causing the stderr caching.  (and I suspect the
-                stderr caching has more to do with powershell than ssh).
-
-                I might be completely wrong about powershell having anything to
-                do with the "stderr caching" behavior. I noticed the "stderr
-                caching behavior" when attempting to run the Sophos interactive
-                "cc" command via an ssh session to a Sophos UTM SG router.  The
-                behavior could have been entirely the result of things happening
-                in bash and ssh daemon within the sophos router.
-
-                No, never mind, the stderr caching is a powershell thing (or
-                maybe an ssh thing).  look at this:
-
-                ```
-                rr "bash -c 'echo 1 here is some stderr 1>&2; echo 2 and here is some stdout; echo 3 and here is some more stderr 1>&2; '"
-                ```
-                ## 2 and here is some stdout
-                ## 1 here is some stderr
-                ## 3 and here is some more stderr
-
-                The following might be relevant:
-                [https://stackoverflow.com/questions/45316295/the-order-of-stdout-and-stderr-in-bash]
-
-                the "stderr cahching" behaviour might have to do with bash (or
-                perhaps the program running within bash) thinks it is connected
-                to a terminal, and deciding to do line buffereing (iof connected
-                to a terminal) or block buffering (if not connected to a
-                terminal).
-
-                the following might also be relevant:
-                [https://www.gnu.org/software/bash/manual/bash.html#Interactive-Shells] 
-
-            #>
-        } else {
-            # write-host "no inputObjects given"
-            ssh "-o" "IdentityAgent=$($sshAgentEnvironment['SSH_AUTH_SOCK'])" @sshOptionArguments "" @argumentList
-            <#  I was hoping that this would run in a way that is fully
-                connected to the terminal, but it does not. 
-            #>
-        }
+                
         <#  we are specifying the "destination" (i.e. host name and port number)
-            by means of the sshOptionArguments rather than with the "destination"
-            positional command line argument to ssh.  Nevertheless, ssh still
-            expects to see some argument in the "destination" position on the
-            command line.  If we just slap on $argumentList without having
-            anything in the "destination" position, ssh will assume that the first
-            word in $argumentList is the destination and will therefore not treat
-            that word as the first word of the command that we want to run within
-            the ssh session.  To deal with this requirement, we pass an empty
-            string in the "destination" position.  (would it also work to pass any
-            arbitrary word (perhaps ssh ignores the destination argument when a
-            destination is speciifed in the option arguments.)?  What about a
-            hyphen?) 
+            by means of the sshOptionArguments rather than with the
+            "destination" positional command line argument to ssh. Nevertheless,
+            ssh still expects to see some argument in the "destination" position
+            on the command line.  If we just slap on $argumentList without
+            having anything in the "destination" position, ssh will assume that
+            the first word in $argumentList is the destination and will
+            therefore not treat that word as the first word of the command that
+            we want to run within the ssh session.  To deal with this
+            requirement, we pass an empty string in the "destination" position.
+            (would it also work to pass any arbitrary word (perhaps ssh ignores
+            the destination argument when a destination is speciifed in the
+            option arguments.)?  What about a hyphen?) 
+
+            2025-01-21-1811: we are now passing the string "dummyHostname"  in
+            order to  be better tolerate various quoting or escape conventions,
+            which might convert our empty string of a hostname into an omitted
+            item from the listof arguments rather than a present (but empty)
+            string.
         #>
 
+        if($false){
+            # $inputObjects | ssh @sshOptionArguments "" @argumentList
+            if($inputObjects.Count -gt 0){
+                ## $inputObjects | ssh @sshOptionArguments "" @argumentList
+                ## ( ,[byte[]] ($inputObjects | % { [System.Text.Encoding]::UTF8.GetBytes($_) })   ) | ssh @sshOptionArguments "" @argumentList
+                
+                ( 
+                    ,[byte[]] ([System.Text.Encoding]::UTF8.GetBytes(($inputObjects -join "`n")))
+                ) | 
+                ssh $sshArguments
 
+                <#  it is a bit of a hack to be hardcoding our line ending
+                    conventions here, but for the application that I happen to be
+                    working on at the moment, I want unix-style line endings, and I
+                    don't care too much about a terminal newline (I would rather
+                    have no terminal newline sequence than a \r\n sequence, which is
+                    what I would get if I did not do the byte pipe workaround
+                    above.)
+
+
+                    Interactive commands are a bit wonky, I think.  At least, I
+                    think I have observed that powershell caches stderr and only
+                    prints it once rr has returned.  I think I ahve observed that
+                    powershell does not do this weird stderr caching behavior when
+                    there is no pipeline input to rr (i.e. when the below "else"
+                    clause obtains).
+
+                    the significant differnece between these two cases (this "if"
+                    block and the below "else" block), at least insofar as what
+                    would affect stream handling, is that in this "if" block, we
+                    pipe some input into ssh wheras in the below "else" block we do
+                    not pipe anything into ssh.  Therefore, perhaps it is the piping
+                    of input that is causing the stderr caching.  (and I suspect the
+                    stderr caching has more to do with powershell than ssh).
+
+                    I might be completely wrong about powershell having anything to
+                    do with the "stderr caching" behavior. I noticed the "stderr
+                    caching behavior" when attempting to run the Sophos interactive
+                    "cc" command via an ssh session to a Sophos UTM SG router.  The
+                    behavior could have been entirely the result of things happening
+                    in bash and ssh daemon within the sophos router.
+
+                    No, never mind, the stderr caching is a powershell thing (or
+                    maybe an ssh thing).  look at this:
+
+                    ```
+                    rr "bash -c 'echo 1 here is some stderr 1>&2; echo 2 and here is some stdout; echo 3 and here is some more stderr 1>&2; '"
+                    ```
+                    ## 2 and here is some stdout
+                    ## 1 here is some stderr
+                    ## 3 and here is some more stderr
+
+                    The following might be relevant:
+                    [https://stackoverflow.com/questions/45316295/the-order-of-stdout-and-stderr-in-bash]
+
+                    the "stderr cahching" behaviour might have to do with bash (or
+                    perhaps the program running within bash) thinks it is connected
+                    to a terminal, and deciding to do line buffereing (iof connected
+                    to a terminal) or block buffering (if not connected to a
+                    terminal).
+
+                    the following might also be relevant:
+                    [https://www.gnu.org/software/bash/manual/bash.html#Interactive-Shells] 
+
+                #>
+            } else {
+                # write-host "no inputObjects given"
+                ssh $sshArguments
+                <#  I was hoping that this would run in a way that is fully
+                    connected to the terminal, but it does not. 
+                #>
+            }
+        }
+
+        <# 2025-01-21-1827: With the latest version of openssh (OpenSSH_9.9p1,
+            OpenSSL 3.0.15 3 Sep 2024), I have noticed that, when I pipe the
+            output of ssh (or, equivalently (i think), pipe the output of
+            runInSshSession) to anything other than Out-Default (or similarly
+            attempt to capture the output of the command in a variable), an
+            apparent race condition kicks in, where (it seems) ssh waits for
+            powershell to read its stderr before dying or emitting more stuff on
+            stdout, and powershell waits for ssh to emit more stuff on stdout or
+            die.  
+
+            Curiously, wrapping the invocation in "bash -c" doesn't help.
+
+            I suspect that the essential problem is the "deadlock" condition due
+            to synchronous io operations, as  described at
+            (https://learn.microsoft.com/en-us/dotnet/api/system.diagnostics.process.standarderror?view=net-9.0#remarks).
+
+            Specifically, quoting from that document:
+
+            """
+            A deadlock condition results if the parent process calls
+            p.StandardOutput.ReadToEnd followed by p.StandardError.ReadToEnd and
+            the child process writes enough text to fill its error stream. The
+            parent process would wait indefinitely for the child process to
+            close its StandardOutput stream. The child process would wait
+            indefinitely for the parent to read from the full StandardError
+            stream.
+            """
+
+            The problem is possibly exacerbated by some idiosyncratic behvaior
+            by ssh; I don't remember encountering this  problem on the older
+            version of ssh that I have been running until now (and I cannot
+            remember exactly what version of ssh that was -- it was some version
+            earlier than OpenSSH 9.7, I think.).
+
+            To work around this problem, we are now invoking ssh by means of
+            System.Diagnostics.Process.
+
+            This should produce the correct, desired, behavior in cases where we
+            are capturing the output of  runInSshSession (by piping it to
+            another command, for example).  However, it will prevent the
+            occasionally-desirable behavior, which we had before this fix, that
+            we could run runInSshSession with $argumentList being empty, and not
+            attempting to capture the output, and running in an interactive
+            powershell session, and we would then be dropped into an interactive
+            remote shell session (just like calling ssh without specifying a
+            remote command).
+
+            To recover this lost functionality,  I should probably try to detect
+            when we are running interactively (i.e. when our output is not being
+            captured), which should be detectable, in some cases by looking  at
+            $PSCmdlet.MyInvocation.PipelinePosition and
+            $PSCmdlet.MyInvocation.PipelineLength , and then in that case not
+            use the work-around (when our output is not being captured, the
+            deadlock condition does not occur, even when we don't use the
+            workaround).  I am reluctant to attempt this because I don't have a
+            good sense of a generally correct way to detect when we are running
+            interactively.
+
+            This whole business of interactive consoles is always a major
+            headache.
+
+            I think I basaically blame powershell for not doing something
+            approximating asynchronously reading stderr and  stdout when
+            capturing the output.  For most executables, Powershell's laziness
+            is probably tolerable, but something finicky about ssh (which may
+            also perhaps deserve a bit of blame) exposes the underlying
+            deficiency in powershell's stream-reading behavior when capturing
+            stdout.
+
+            Perhaps there is some kind of shim program (possiblyt a built-in
+            powershell command ?) which could run ssh and buffer/read stdout and
+            stderr correctly so as to prevent the deadlock.
+
+            see (https://www.google.com/search?q=powershell+does+not+read+stderr+of+a+command+whose+output+is+being+captured)
+
+            see (https://stackoverflow.com/questions/8184827/powershell-capture-the-output-from-external-process-that-writes-to-stderr-in-a)
+        #>
+
+        $startInfo  = [System.Diagnostics.ProcessStartInfo] @{
+            FileName = "ssh"    
+            RedirectStandardOutput = $True
+            ##RedirectStandardInput = $(if($inputObjects.Count -gt 0){$True}else{$False})
+            RedirectStandardInput = $True
+            RedirectStandardError = $True
+        }
+        $sshArguments |% {$startInfo.ArgumentList.Add($_)}
+
+        $process = [System.Diagnostics.Process]  @{
+            StartInfo = $startInfo
+        }
+        $process.Start()| out-null
+
+        write-debug "process.CommandLine: $($process.CommandLine)"
+
+        ## if($inputObjects.Count -gt 0){
+        ##     $standardInputWritingTask = $process.StandardInput.WriteAsync(($inputObjects -join "`n"))
+        ##     ##$standardInputFlushingTask = $standardInputWritingTask.ContinueWith($process.StandardInput.Flush)
+        ##     $standardInputFlushingTask = $standardInputWritingTask.ContinueWith(  ([System.Action[System.Threading.Tasks.Task]] { $process.StandardInput.Flush()} ))
+        ## }  else {
+        ##     $process.standardInput.Close()
+        ## }
+
+        $standardInputWritingTask = (
+            $process.StandardInput.
+            WriteAsync(($inputObjects -join "`n")).ContinueWith(  ([System.Action[System.Threading.Tasks.Task]] { $process.StandardInput.Flush()} ))
+            <# I  have a sense that I should somehow be using the asynchronous  flush  function here, if the fluish function is needed at  all. #>
+            ## ContinueWith(  ([System.Action[System.Threading.Tasks.Task]] { $process.StandardInput.Close()} ))
+            ##  ContinueWith(  ([System.Action[System.Threading.Tasks.Task]] { $process.StandardInput.Flush()} )).
+            ## ContinueWith(  ([System.Action[System.Threading.Tasks.Task]] { $process.StandardInput.Close()} ))
+        )
+
+
+        $standardErrorLineReadingTask = $process.StandardError.ReadLineAsync()
+        $standardOutputLineReadingTask = $process.StandardOutput.ReadLineAsync()
+        $weHaveReachedTheEndOfStandardOutput = $False
+        $weHaveReachedTheEndOfStandardError = $False
+        $weHaveFinishedWritingToStandardInput = $False
+
+
+        do{
+            
+            
+            [System.Threading.Tasks.Task]::WaitAny(@(
+                if(-not $weHaveReachedTheEndOfStandardError ){$standardErrorLineReadingTask}
+                if(-not $weHaveReachedTheEndOfStandardOutput ){$standardOutputLineReadingTask}
+                if(-not $weHaveFinishedWritingToStandardInput ){$standardInputWritingTask}
+            ))  |  out-null
+            
+            if(-not $weHaveReachedTheEndOfStandardError ){
+                if($standardErrorLineReadingTask.IsCompleted){
+                    $standardErrorLine = $standardErrorLineReadingTask.Result
+                    if($null -eq $standardErrorLine ){
+                        write-debug  "encountered a null standardErrorLine"
+                        $weHaveReachedTheEndOfStandardError = $True
+                    } else  {
+                        write-debug "capturing a standardErrorLine: '$($standardErrorLine)'"
+                        <# should we strip the newline sequence from the end of the
+                        line?  No, the ReadLine(or ReadLineAsync()) function does  this
+                        already. #>
+                        write-error -ErrorId NativeCommandError -Message $standardErrorLine
+                        ##write-error -Message $standardErrorLine
+                        $standardErrorLineReadingTask = $process.StandardError.ReadLineAsync()
+                    } 
+                    ##$standardErrorLineReadingTask = $process.StandardError.ReadLineAsync()
+                    write-debug  "process.StandardError.EndOfStream:$($process.StandardError.EndOfStream)"
+                }
+            }
+
+            if(-not $weHaveReachedTheEndOfStandardOutput ){
+                if($standardOutputLineReadingTask.IsCompleted){
+                    $standardOutputLine = $standardOutputLineReadingTask.Result
+                    if($null -eq $standardOutputLine ){
+                        write-debug  "encountered a null standardOutputLine"
+                        $weHaveReachedTheEndOfStandardOutput = $True
+                    } else {
+                        write-debug "capturing a standardOutputLine: '$($standardOutputLine)'"
+                        <# should we strip the newline sequence from the end of the
+                        line?  No, the ReadLine(or ReadLineAsync()) function does  this
+                        already. #>
+                        write-output $standardOutputLine
+                        $standardOutputLineReadingTask = $process.StandardOutput.ReadLineAsync()
+                    }
+                    ##$standardOutputLineReadingTask = $process.StandardOutput.ReadLineAsync()
+                    ## $endOfOutput = $($process.StandardOutput.EndOfStream)
+                    ## if(-not $endOfOutput){
+                    ##     write-debug  "not at end"
+                    ## }
+                    write-debug  "process.StandardOutput.EndOfStream:$($process.StandardOutput.EndOfStream)"
+
+                    ##write-debug  "process.StandardOutput.EndOfStream: $(&{try{$errorActionPreference  = 'Stop'; $process.StandardOutput.EndOfStream}catch{$_}})"
+                }
+            }
+
+            if(-not $weHaveFinishedWritingToStandardInput ){
+                if($standardInputWritingTask.IsCompleted){
+                    $weHaveFinishedWritingToStandardInput  = $True
+                    write-debug  "weHaveFinishedWritingToStandardInput: $($weHaveFinishedWritingToStandardInput)"
+                    $process.StandardInput.Close()
+                }
+            }
+
+        } until (
+            ## $standardOutputLineReadingTask.IsCompleted -and
+            ## $standardErrorLineReadingTask.IsCompleted -and
+            ## $process.StandardError.EndOfStream -and 
+            ## $process.StandardOutput.EndOfStream -and 
+
+            $weHaveReachedTheEndOfStandardOutput -and
+            $weHaveReachedTheEndOfStandardError -and
+            $weHaveFinishedWritingToStandardInput
+        )
+        write-debug "reached end of reading and writing loop"
+        ##  write-debug  "process.StandardOutput.EndOfStream: $(&{try{$errorActionPreference  = 'Stop'; $process.StandardOutput.EndOfStream}catch{$_}})"
+
+        <# I am sure I have grossly mis-used the asynchronous constructs.  This
+        needs to be cleaned up  massivley, but I think it is at least correct
+        and functional.#>
     }
-
 }
 
 function getRr {
@@ -3537,31 +3759,33 @@ function runWithPerpetuallyOpenStandardInput(){
     while( $True ){
         # Write-Output "$($process.HasExited)    $($standardOutputLineReadingTask.IsCompleted)    $($standardErrorLineReadingTask.IsCompleted)"
         
-        # wait a beat to allow the pending lineReadingTasks to complete if they
-        # want to. This is a bit of a hack to work around (my lack of knowledge
-        # and) the fact that the line reading tasks can remain uncompoleted
-        # indefinitely after the task exits. Ideally, I would like to have line
-        # reading tasks that completed unsucessfully when the task had ended and
-        # there were no more bytes to read.  Maybe the ReadLineAsync() function
-        # relies on a newline character to finish each line, and so remains
-        # waiting unless and until that final newline comes, even if the
-        # underlying stream is closed.  Not sure.  this is all a hack.  Perhaps
-        # some of the other reading functions, other than ReadLine, would have
-        # the desired behavior, or perhaps my confusion is related to the
-        # behavior of asynchronous tasks in .NET.
-        #
-        # I notice that the class System.Diagnostics.Process has methods named
-        # BeginErrorReadLine, BeginOutputReadLine, CancelErrorRead,
-        # CancelOutputRead -- maybe these could be helpful here.
-        #
-        # Also a method named WaitForInputIdle.  Maybemy problems have been
-        # solved before.
-        #
-        #
+        <#  wait a beat to allow the pending lineReadingTasks to complete if
+            they want to. This is a bit of a hack to work around (my lack of
+            knowledge and) the fact that the line reading tasks can remain
+            uncompoleted indefinitely after the task exits. Ideally, I would
+            like to have line reading tasks that completed unsucessfully when
+            the task had ended and there were no more bytes to read.  Maybe the
+            ReadLineAsync() function relies on a newline character to finish
+            each line, and so remains waiting unless and until that final
+            newline comes, even if the underlying stream is closed.  Not sure.
+            this is all a hack.  Perhaps some of the other reading functions,
+            other than ReadLine, would have the desired behavior, or perhaps my
+            confusion is related to the behavior of asynchronous tasks in .NET.
 
-        # TODO: We are currently potentially missing final output emitted by the
-        # executable perimortem.  Also, waiting for a whole line is not quite
-        # right.  BAsically, the buffering strategy needs to be rethought.
+            I notice that the class System.Diagnostics.Process has methods named
+            BeginErrorReadLine, BeginOutputReadLine, CancelErrorRead,
+            CancelOutputRead -- maybe these could be helpful here.
+
+            Also a method named WaitForInputIdle.  Maybemy problems have been
+            solved before.
+
+
+
+            TODO: We are currently potentially missing final output emitted by
+            the executable perimortem.  Also, waiting for a whole line is not
+            quite right.  BAsically, the buffering strategy needs to be
+            rethought. 
+        #>
 
         if( $process.HasExited ) { Start-Sleep 1 }
         
