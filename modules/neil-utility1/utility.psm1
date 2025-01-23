@@ -3380,56 +3380,52 @@ function installGoodies_deprecated([System.Management.Automation.Runspaces.PSSes
 
 function installGoodies(){
     <#
-    .SYNOPSIS
-    To run this in a remote session $s, do 
-    invoke-command $s -ScriptBlock ${function:installGoodies} 
-    or
-    invoke-command $s { invoke-expressions ${using:function:installGoodies} } 
+        .SYNOPSIS
+        ensures that chocolatey and other goodies are isntalled:
 
-    # see [https://stackoverflow.com/questions/14441800/how-to-import-custom-powershell-module-into-the-remote-session]
-    # see [https://mkellerman.github.io/Import_custom_functions_into_your_backgroundjob/]
-    # see [https://stackoverflow.com/questions/30304366/powershell-passing-function-to-remote-command]
-    # see [https://stackoverflow.com/questions/2830827/powershell-remoting-using-imported-module-cmdlets-in-a-remote-pssession]
-    # see [https://serverfault.com/questions/454636/how-can-i-use-shared-functions-in-a-remote-powershell-session]
+        To run this in a remote session $s, do 
+        invoke-command $s -ScriptBlock ${function:installGoodies} 
+        or
+        invoke-command $s { invoke-expressions ${using:function:installGoodies} } 
+
+        * see (https://stackoverflow.com/questions/14441800/how-to-import-custom-powershell-module-into-the-remote-session)
+        * see (https://mkellerman.github.io/Import_custom_functions_into_your_backgroundjob/)
+        * see (https://stackoverflow.com/questions/30304366/powershell-passing-function-to-remote-command)
+        * see (https://stackoverflow.com/questions/2830827/powershell-remoting-using-imported-module-cmdlets-in-a-remote-pssession)
+        * see (https://serverfault.com/questions/454636/how-can-i-use-shared-functions-in-a-remote-powershell-session)
     #>
+    [CmdletBinding()]
+    param()
+    
+    write-information "$($PSCmdlet.MyInvocation.MyCommand.Name) $(get-date -format o): Now attempting to install (or upgrade) chocolatey itself."
+    Set-ExecutionPolicy Bypass -Scope Process -Force  
+    [System.Net.ServicePointManager]::SecurityProtocol = [System.Net.ServicePointManager]::SecurityProtocol -bor 3072 
+    Invoke-Expression ((New-Object System.Net.WebClient).DownloadString('https://community.chocolatey.org/install.ps1'))  
 
-    & { #ensure that chocolatey is installed, and install other goodies
-        
-        #!ps
-        #timeout=1800000
-        #maxlength=9000000
+    foreach($package in @(
+        "chocolatey"
+        "7zip"
+        ## "winmerge"
+        ## "spacesniffer"
+        "notepadplusplus"
+        "sysinternals"
+        ## "hdtune"
 
-        write-information "Now attempting to install (or upgrade) chocolatey itself."
-        Set-ExecutionPolicy Bypass -Scope Process -Force  
-        [System.Net.ServicePointManager]::SecurityProtocol = [System.Net.ServicePointManager]::SecurityProtocol -bor 3072 
-        Invoke-Expression ((New-Object System.Net.WebClient).DownloadString('https://community.chocolatey.org/install.ps1'))  
-        
-        foreach($package in @(
-            "chocolatey"
-            "7zip"
-            ## "winmerge"
-            ## "spacesniffer"
-            "notepadplusplus"
-            "sysinternals"
-            ## "hdtune"
+        "pwsh"
+    )){
+        ## write-information "$($MyInvocation.MyCommand.Name) $(get-date -format o): Now attempting to install (or upgrade) the chocolatey package '$($package)'."
+        write-information "$($PSCmdlet.MyInvocation.MyCommand.Name) $(get-date -format o): Now attempting to install (or upgrade) the chocolatey package '$($package)'."
+        choco upgrade $package --source 'https://chocolatey.org/api/v2/' --yes 
+    }
+    
 
-            "pwsh"
-        )){
-            write-information "$($MyInvocation.MyCommand.Name) $(get-date -format o): Now attempting to install (or upgrade) the chocolatey package '$($package)'."
-            choco upgrade $package --source 'https://chocolatey.org/api/v2/' --yes 
-            
-        }
-
-
-    <#  "upgrade" installs if it is not already installed, so we do not need to
+    <#  "choco upgrade" installs if it is not already installed, so we do not need to
         do both "install" and "upgrade"; "upgrade" on its own will ensure that
         we end up with the latest version installed regardless of the initial
         condition. 
     #>
 
-        [System.Environment]::SetEnvironmentVariable("POWERSHELL_TELEMETRY_OPTOUT","1","Machine")
-        
-    }
+    [System.Environment]::SetEnvironmentVariable("POWERSHELL_TELEMETRY_OPTOUT","1","Machine")
 }
 
 
