@@ -196,16 +196,16 @@ function Initialize-RemoteSessions {
                 
                 try{
                     foreach($spec in @(
-                            @{nameOfModule = "DnsServer"                    ; weWantToLoadTheModuleByMeansOfWincompat = $False  }
-                            @{nameOfModule = "hyper-v"                      ; weWantToLoadTheModuleByMeansOfWincompat = $False  }
-                            @{nameOfModule = "smbshare"                     ; weWantToLoadTheModuleByMeansOfWincompat = $False  }
-                            @{nameOfModule = "DhcpServer"                   ; weWantToLoadTheModuleByMeansOfWincompat = $False  }
-                            @{nameOfModule = "ServerManager"                ; weWantToLoadTheModuleByMeansOfWincompat = $False  }
-                            @{nameOfModule = "ADCSAdministration"           ; weWantToLoadTheModuleByMeansOfWincompat = $False  }
-                            @{nameOfModule = "StorageMigrationService"      ; weWantToLoadTheModuleByMeansOfWincompat = $False  }
                             @{nameOfModule = "ActiveDirectory"              ; weWantToLoadTheModuleByMeansOfWincompat = $False  }
-
+                            @{nameOfModule = "ADCSAdministration"           ; weWantToLoadTheModuleByMeansOfWincompat = $False  }
                             @{nameOfModule = "AppX"                         ; weWantToLoadTheModuleByMeansOfWincompat = $False <# $True  #>  }
+                            @{nameOfModule = "DhcpServer"                   ; weWantToLoadTheModuleByMeansOfWincompat = $False  }
+                            @{nameOfModule = "DnsServer"                    ; weWantToLoadTheModuleByMeansOfWincompat = $False  }
+                            @{nameOfModule = "GroupPolicy"                  ; weWantToLoadTheModuleByMeansOfWincompat = $False  }
+                            @{nameOfModule = "hyper-v"                      ; weWantToLoadTheModuleByMeansOfWincompat = $False  }
+                            @{nameOfModule = "ServerManager"                ; weWantToLoadTheModuleByMeansOfWincompat = $False  }
+                            @{nameOfModule = "smbshare"                     ; weWantToLoadTheModuleByMeansOfWincompat = $False  }
+                            @{nameOfModule = "StorageMigrationService"      ; weWantToLoadTheModuleByMeansOfWincompat = $False  }
                             <#  see
                                 (https://github.com/PowerShell/PowerShell/issues/13138#issuecomment-1820195503).
                             #>

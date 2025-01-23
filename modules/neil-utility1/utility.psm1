@@ -3399,11 +3399,12 @@ function installGoodies(){
         #timeout=1800000
         #maxlength=9000000
 
+        write-information "Now attempting to install (or upgrade) chocolatey itself."
         Set-ExecutionPolicy Bypass -Scope Process -Force  
         [System.Net.ServicePointManager]::SecurityProtocol = [System.Net.ServicePointManager]::SecurityProtocol -bor 3072 
         Invoke-Expression ((New-Object System.Net.WebClient).DownloadString('https://community.chocolatey.org/install.ps1'))  
         
-        @(
+        foreach($package in @(
             "chocolatey"
             "7zip"
             ## "winmerge"
@@ -3413,12 +3414,18 @@ function installGoodies(){
             ## "hdtune"
 
             "pwsh"
-        ) | % {choco upgrade --acceptlicense --yes $_}
+        )){
+            write-information "$($MyInvocation.MyCommand.Name) $(get-date -format o): Now attempting to install (or upgrade) the chocolatey package '$($package)'."
+            choco upgrade $package --source 'https://chocolatey.org/api/v2/' --yes 
+            
+        }
 
-        # "upgrade" installs if it is not already installed, so we do not need
-        # to do both "install" and "upgrade"; "upgrade" on its own will ensure
-        # that we end up with the latest version installed regardless of the
-        # initial condition.
+
+    <#  "upgrade" installs if it is not already installed, so we do not need to
+        do both "install" and "upgrade"; "upgrade" on its own will ensure that
+        we end up with the latest version installed regardless of the initial
+        condition. 
+    #>
 
         [System.Environment]::SetEnvironmentVariable("POWERSHELL_TELEMETRY_OPTOUT","1","Machine")
         
