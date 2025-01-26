@@ -136,6 +136,7 @@ function Initialize-RemoteSessions {
         "uploadFileToSpecialPublicSharepointFolder"
     )
 
+    $namesOfFunctionsToImport  = @($namesOfFunctionsToImport | select -unique)
     $commonArgumentsForNewInvoker = @{
         VariablesAndFunctionsToImport = @(
             Get-Item -Path @(
