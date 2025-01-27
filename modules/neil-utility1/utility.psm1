@@ -2008,8 +2008,7 @@ function setLicensesAssignedToMgUser{
 
             @( 
                 $initialEnabledServicePlans | 
-                select -expand ServicePlanName |
-                out-string -stream
+                select -expand ServicePlanName 
             ) -Join ", "
             
         ) -join ""
@@ -2027,10 +2026,10 @@ function setLicensesAssignedToMgUser{
 
 
 
-    Write-Information ("skuIdsToRemoveFromUser ($($skuIdsToRemoveFromUser.Count)): ", $skuIdsToRemoveFromUser)
-    Write-Information ("skuIdsToGiveToUser ($($skuIdsToGiveToUser.Count)):", $skuIdsToGiveToUser)
-    Write-Information ("idsOfServicePlansToGiveTheUser ($($idsOfServicePlansToGiveTheUser.Count)): ", $idsOfServicePlansToGiveTheUser)
-    Write-Information ("idsOfServicePlansToRemoveFromUser ($($idsOfServicePlansToRemoveFromUser.Count)):", $idsOfServicePlansToRemoveFromUser)
+    Write-Information (-join @("skuIdsToRemoveFromUser ($($skuIdsToRemoveFromUser.Count)): "; $skuIdsToRemoveFromUser))
+    Write-Information (-join @("skuIdsToGiveToUser ($($skuIdsToGiveToUser.Count)):"; $skuIdsToGiveToUser))
+    Write-Information (-join @("idsOfServicePlansToGiveTheUser ($($idsOfServicePlansToGiveTheUser.Count)): "; $idsOfServicePlansToGiveTheUser))
+    Write-Information (-join @("idsOfServicePlansToRemoveFromUser ($($idsOfServicePlansToRemoveFromUser.Count)):"; $idsOfServicePlansToRemoveFromUser))
     
 
 
@@ -2117,8 +2116,7 @@ function setLicensesAssignedToMgUser{
     
                 @( 
                     $finalEnabledServicePlans | 
-                    select -expand ServicePlanName |
-                    out-string -stream
+                    select -expand ServicePlanName 
                 ) -Join ", "
                 
             ) -join ""
