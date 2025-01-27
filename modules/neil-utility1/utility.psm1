@@ -2008,7 +2008,8 @@ function setLicensesAssignedToMgUser{
 
             @( 
                 $initialEnabledServicePlans | 
-                select -expand ServicePlanName
+                select -expand ServicePlanName |
+                out-string -stream
             ) -Join ", "
             
         ) -join ""
@@ -2116,7 +2117,8 @@ function setLicensesAssignedToMgUser{
     
                 @( 
                     $finalEnabledServicePlans | 
-                    select -expand ServicePlanName
+                    select -expand ServicePlanName |
+                    out-string -stream
                 ) -Join ", "
                 
             ) -join ""
@@ -7453,4 +7455,72 @@ function Select-Single {
 function Enable-RemoteDesktop {
     Set-ItemProperty -Path 'registry::HKLM\System\CurrentControlSet\Control\Terminal Server' -name "fDenyTSConnections" -value 0
     Enable-NetFirewallRule -DisplayGroup "Remote Desktop"
+}
+
+function Show-MicrosoftGraphLicenseReport {
+    [CmdletBinding()]
+    param(
+        [switch] $reportOnComponents
+    )
+    
+    ## connectToOffice365 -bitwardenItemIdOfTheConfiguration $companyParameters['idOfBitwardenItemContainingMicrosoftGraphManagementConfiguration']
+
+
+    $mgSubscribedSkus = @((Get-MgSubscribedSKU -Property * ))
+
+
+
+    $data = @(
+        Get-MgUser  |
+        ? {(Get-MgUser -UserId $_.Id -Property "AssignedLicenses").AssignedLicenses} | 
+        select-object @(
+            "UserPrincipalName"
+            "DisplayName"
+            @{
+                name="skuPartNumbers"
+                expression = {
+                    @(
+                        foreach($assignedLicense in (Get-MgUser -UserId $_.Id -Property "AssignedLicenses").AssignedLicenses){
+                            # @(Get-MgSubscribedSku | ? {$_.SkuId -eq $assignedLicense.SkuId})[0].SkuPartNumber
+                            skuIdToSkuPartNumber $assignedLicense.SkuId
+                        }
+                    ) | Sort
+                }
+            }
+            if($reportOnComponents){
+                @{
+                    name="servicePlans"
+                    expression = {
+                    @(
+                            @(
+                                
+                                foreach($assignedPlan in (Get-MgUser -UserId $_.Id -Property "AssignedPlans").AssignedPlans){
+                                    @(
+                                        # $assignedPlan.Service
+                                        "$($assignedPlan.Service) ($($assignedPlan.servicePlanId)): $($assignedPlan.CapabilityStatus)"
+
+                                        <#  see
+                                            [https://learn.microsoft.com/en-us/entra/identity/users/licensing-service-plan-reference]
+                                            for a list of servicePlan guids.  
+                                        #>
+                                        
+                                        # $mgSubscribedSkus.ServicePlans | 
+                                        #     ? { $_.ServicePlanId -eq $assignedPlan.ServicePlanId } |
+                                        #     % { $_.ServicePlanName } |
+                                        #     Select-Object -First 1
+                                    )
+                                } 
+                            ) | Select -Unique | Sort 
+                        ) -join "`n"
+                    }
+                }
+            }
+        ) 
+    )
+
+
+    $data | format-table -autosize:$True -Wrap:$True
+
+    Get-MgSubscribedSKU | select SkuPartNumber, {$_.PrepaidUnits.Enabled}, ConsumedUnits | ft -auto
+
 }
