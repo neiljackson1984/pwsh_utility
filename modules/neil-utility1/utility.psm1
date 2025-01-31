@@ -7522,3 +7522,102 @@ function Show-MicrosoftGraphLicenseReport {
     Get-MgSubscribedSKU | select SkuPartNumber, {$_.PrepaidUnits.Enabled}, ConsumedUnits | ft -auto
 
 }
+
+function Get-CurriedSoftetherVpncmdFunction {
+    <#
+        .SYNOPSIS
+        Given a bitawrden item id of a bitwarden item containing the credential
+        for (and address of) a softethervpn server, we return a function that is
+        a curried form of Softether's vpncmd utility, curried to bake in several
+        command-line arguments that vpncmd expects, namely the server address,
+        "/SERVER", and "/PASSWORD:...", and accepting its own parameters AdminHub
+        and Command, which it passes through to vpncmd in the appropriate way.
+
+        #TODO: suppress the "banner" that vpncmd emits before the real output.
+    #>
+
+    [OutputType([ScriptBlock])]
+    [CmdletBinding()]
+    param(
+        [parameter(Mandatory=$True)]
+        [string] $bitwardenItemIdOfSoftetherServerCredential
+    )
+
+    
+    $bitwardenItemContainingSoftetherVpnServerCredentials = Get-BitwardenItem $bitwardenItemIdOfSoftetherServerCredential
+    $vpnServerAddress = $(
+        @(
+            ($bitwardenItemContainingSoftetherVpnServerCredentials.login.uris[0].uri -split ":")[0]
+            ":"
+            ( $bitwardenItemContainingSoftetherVpnServerCredentials.login.uris[0].uri -split ":")[1]
+        ) -join ""
+    )
+    $vpnServerPassword = $($bitwardenItemContainingSoftetherVpnServerCredentials.login.password)
+
+
+    return  {
+        <#
+            .SYNOPSIS
+            This is a  curried form of vpncmd, with the address, "/SERVER",
+            "/PASSWORD:...", and "/CMD" arguments baked in.
+
+            Supports passing an optional AdminHub parameter
+        #>
+
+        [CmdletBinding(PositionalBinding=$False)]
+        param(
+            ##[parameter(Mandatory=$False)]
+            [string] $AdminHub,
+
+            [parameter(ValueFromRemainingArguments=$True,Mandatory=$True)]
+            [string[]] $Command
+            ## [string] $command
+        )
+        ## write-information "command: '$command'"
+        ## write-information "command.Count: $($command.Count)"
+
+        <# piping an empty array into vpncmd prevents vpncmd from going into
+        interactive mode. #>
+        @() | vpncmd @(
+            $vpnServerAddress
+            "/SERVER" 
+            "/PASSWORD:$($vpnServerPassword)"
+            if($AdminHub){"/ADMINHUB:$($AdminHub)"}
+            ## if($commandWords){"/CMD:"; $commandWords}
+            ##  "/CMD"; $command
+            ## "/CMD:$($command)"
+            "/CMD"; $Command
+        ) 
+
+    }.GetNewClosure()
+    
+
+}
+
+
+function Find-Intersect {
+    <#
+        finds all files among those specified by $Path that contain all of the
+        specified regex patterns.  
+
+        There is probably some more canonical way to do this with standard
+        functions, but  if there is, it always escapes me.  Hence, the need for
+        this function.
+    #>
+    
+    [CmdletBinding()]
+    param(
+        [string[]] $Patterns,
+        [string[]] $Path
+    )
+    $candidateFiles = @(gi -Path $Path)
+
+    foreach($pattern in $patterns){
+        $candidateFiles = @(
+            Select-String -LiteralPath $candidateFiles  -pattern $pattern  -List:$true  | 
+            select -expand Path |
+            select -unique
+        )
+    }
+    gi -LiteralPath $candidateFiles | select -expand FullName | select  -unique | sort
+}

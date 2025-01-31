@@ -26,6 +26,16 @@ class Computer {
 
 function Initialize-RemoteSessions {
     <# 
+        $computers and $mainComputers will be merged together to construct
+        $invokersByHostname and $screenconnectInvokersByHostname.
+
+        The rmain and rsmain functions will be defined for mainComputers. These
+        are the computers that we are actively configuring, whereas the non-main
+        computers are sessions we might need for reference or central control.
+
+    #>
+    
+    <# 
         It might be better to create and return a dynamically-created module
         containing the newly-created objects (which the caller can import at his
         discretion) rather than defining the newly created objects in the global
@@ -34,6 +44,7 @@ function Initialize-RemoteSessions {
     [cmdletbinding()]
     param(
         [Computer[]] $computers = @(),
+        [Computer[]] $mainComputers = @(),
         [string] $bitwardenItemIdOfWindowsCredentialOnTheHypervisor =  "",
         [string] $bitwardenItemIdOfCompanyParameters,
         [string[]] $namesOfVariablesToImport = @(),
@@ -50,7 +61,7 @@ function Initialize-RemoteSessions {
         workstationScreenconnectInvokersByHostname  --> screenconnectInvokersByHostname
         workstationInvokersByHostname               --> invokersByHostname
 
-        hostnamesOfWorkstationsToBeConfigured       --> hostnamesOfComputersToBeConfigured
+        hostnamesOfWorkstationsToBeConfigured       --> hostnamesOfComputersToBeConfigured 
         (this is used externally)
         ```
     #>
@@ -90,8 +101,13 @@ function Initialize-RemoteSessions {
     $namesOfVariablesToImport = @( $namesOfVariablesToImport )
     $namesOfFunctionsToImport = @( $namesOfFunctionsToImport )
     $computers = [Computer[]]  @($computers)
+    $mainComputers = [Computer[]]  @($mainComputers)
 
-    $computers = [Computer[]]  @($computers; @{hostname=$companyParameters.domainController; handles=@("dc")})
+    $computers = [Computer[]]  @(
+        $computers
+        $mainComputers
+        @{hostname=$companyParameters.domainController; handles=@("dc")}
+    )
 
 
     $namesOfFunctionsToImport += @(
@@ -114,6 +130,7 @@ function Initialize-RemoteSessions {
         "Get-LastLoggedOnUserProfile"
         "Get-LastLoggedOnUserSID"
         "Get-NeilWindowsUpdateLog"
+        "Get-ShortPath"
         "getCwcPwshWrappedCommand"
         "getInstalledAppsFromRegistry"
         "getPathOfPossiblyNestedFileMatchingPattern"
@@ -392,6 +409,64 @@ function Initialize-RemoteSessions {
             Set-Item -LiteralPath "function:global:rs$($handle)" -Value $global:screenconnectInvokersByHostname[$computer.hostname]
         }
     }
+
+    
+    $function:global:rmain = {
+
+        <# hack: I copied and pasted the parameter block from ($invokersByHostname.Values | select -first  1)  
+
+            #TODO: do this kind of currying automatically.
+        #>
+        [CmdletBinding()]
+        Param(
+            [parameter()]
+            [ScriptBlock] $ScriptBlock,
+
+            [parameter()]
+            [Object[]] $ArgumentList
+        )
+
+        foreach($hostname in @($mainComputers |% {$_.hostname}  | select -unique)) {
+            write-information "$(get-date): now working on $($hostname)"
+            & $invokersByHostname[$hostname] @PSBoundParameters
+        }
+    }.GetNewClosure()
+
+    $function:global:rsmain = {
+        <# hack: I copied and pasted the parameter block from ($screenconnectInvokersByHostname.Values | select -first  1)  
+
+            #TODO: do this kind of currying automatically.
+        #>
+
+        [CmdletBinding(PositionalBinding=$False)]
+        Param(
+            [Parameter(Mandatory=$False)]
+            [int] $timeout,
+
+            [Parameter(Mandatory=$False)]
+            [boolean] $pwsh,
+
+            [Parameter(
+                Position=1,
+                Mandatory=$False
+            )]
+            [string[]] $command,
+
+            [Parameter(Mandatory=$False)]
+            [switch]$NoWait = $false
+
+        )
+
+
+
+        foreach($hostname in @($mainComputers |% {$_.hostname}  | select -unique)) {
+            write-information "$(get-date): now working, via screenconnect, on $($hostname)"
+            & $screenconnectInvokersByHostname[$hostname] @PSBoundParameters
+        }
+    }.GetNewClosure()
+    
+
+
 
 }
 
