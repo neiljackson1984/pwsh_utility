@@ -129,6 +129,7 @@ function Initialize-RemoteSessions {
         "Get-LastLoggedOnUserName"
         "Get-LastLoggedOnUserProfile"
         "Get-LastLoggedOnUserSID"
+        "Get-LocalAccountTokenFilterPolicy"
         "Get-NeilWindowsUpdateLog"
         "Get-ShortPath"
         "getCwcPwshWrappedCommand"
@@ -149,6 +150,7 @@ function Initialize-RemoteSessions {
         "select-single"
         "sendKeystrokesToVm"
         "set-ipv6"
+        "Set-LocalAccountTokenFilterPolicy"
         "Set-ScreenSaveTimeOut"
         "uploadFileToSpecialPublicSharepointFolder"
     )

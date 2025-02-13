@@ -7621,3 +7621,50 @@ function Find-Intersect {
     }
     gi -LiteralPath $candidateFiles | select -expand FullName | select  -unique | sort
 }
+
+function Get-LocalAccountTokenFilterPolicy {
+    [CmdletBinding()]
+    param()
+
+    $Name = 'LocalAccountTokenFilterPolicy'
+    $Path = 'registry::HKLM\SOFTWARE\Microsoft\Windows\CurrentVersion\Policies\System'
+    return $(
+        (Get-Item -Path $Path).GetValue($Name) 
+    )
+}
+
+function Set-LocalAccountTokenFilterPolicy {
+    [CmdletBinding()]
+    [OutputType([void])]
+    param(
+        [Nullable[long]] $value
+    )
+    $Name = 'LocalAccountTokenFilterPolicy'
+    $Path = 'registry::HKLM\SOFTWARE\Microsoft\Windows\CurrentVersion\Policies\System'
+    write-information "initially, LocalAccountTokenFilterPolicy is $(Get-LocalAccountTokenFilterPolicy |% {if($null -eq $_){"null"}else{$_}})"
+
+    if($value -eq (Get-LocalAccountTokenFilterPolicy)){
+        write-information "LocalAccountTokenFilterPolicy is already as desired."
+    } elseif($null -eq $value){
+        write-information "removing the itemproperty"
+        @{
+            Name = $Name 
+            Path = $Path 
+            Confirm = $False
+        } |% { 
+            Remove-ItemProperty @_ 
+        }
+    } else {
+        @{
+            Name = $Name 
+            Path = $Path 
+            Type = 'DWord'
+            Value = $value
+        } |% { 
+            Set-ItemProperty @_ 
+        }
+    }
+
+    write-information "finally, LocalAccountTokenFilterPolicy is $(Get-LocalAccountTokenFilterPolicy |% {if($null -eq $_){"null"}else{$_}})"
+
+}
