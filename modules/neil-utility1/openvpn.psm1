@@ -305,3 +305,10 @@ function Disconnect-OpenVpnAllConnections {
     }
 
 }
+
+function Get-OpenVpnNetAdapter {
+    Get-NetAdapter |
+    ? {$_.InterfaceAlias -match "(?i)openvpn"} 
+    
+    ##  |  ? {$_.Status -eq "Up"}
+}
