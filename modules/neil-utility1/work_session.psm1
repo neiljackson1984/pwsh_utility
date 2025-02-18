@@ -51,7 +51,9 @@ function Initialize-RemoteSessions {
         [string[]] $namesOfFunctionsToImport = @(),
 
         [alias("bitwardenItemIdOfScreenconnectCredentials")]
-        [string] $bitwardenItemIdOfScreenconnectCredential
+        [string] $bitwardenItemIdOfScreenconnectCredential,
+
+        [string] $ConfigurationName
     )
 
     <# 2025-01-09-1014: old to new name convention
@@ -156,176 +158,182 @@ function Initialize-RemoteSessions {
     )
 
     $namesOfFunctionsToImport  = @($namesOfFunctionsToImport | select -unique)
-    $commonArgumentsForNewInvoker = @{
-        VariablesAndFunctionsToImport = @(
-            Get-Item -Path @(
-                $namesOfFunctionsToImport |% {"function:$($_)"}
-                $namesOfVariablesToImport |% {"variable:$($_)"}
+    $commonArgumentsForNewInvoker = @(
+        @{
+            VariablesAndFunctionsToImport = @(
+                Get-Item -Path @(
+                    $namesOfFunctionsToImport |% {"function:$($_)"}
+                    $namesOfVariablesToImport |% {"variable:$($_)"}
+                )
             )
-        )
 
-   
-        StartupScript = {
-            ## $InformationPreference='Continue'
-            <#  see
-                (https://learn.microsoft.com/en-us/powershell/module/microsoft.powershell.core/about/about_windows_powershell_compatibility?view=powershell-7.4)
+            StartupScript = {
+                ## $InformationPreference='Continue'
+                <#  see
+                    (https://learn.microsoft.com/en-us/powershell/module/microsoft.powershell.core/about/about_windows_powershell_compatibility?view=powershell-7.4)
 
-                see
-                (https://learn.microsoft.com/en-us/powershell/module/microsoft.powershell.core/about/about_powershell_config?view=powershell-7.4)
+                    see
+                    (https://learn.microsoft.com/en-us/powershell/module/microsoft.powershell.core/about/about_powershell_config?view=powershell-7.4)
 
-                see
-                (https://github.com/PowerShell/PowerShell-RFC/blob/master/Final/RFC0050-Importing-Windows-PowerShell-modules-in-PowerShell-Core.md)
+                    see
+                    (https://github.com/PowerShell/PowerShell-RFC/blob/master/Final/RFC0050-Importing-Windows-PowerShell-modules-in-PowerShell-Core.md)
 
-                Ideally,  I would like to manipulate the curently-active
-                settings corresponding to the compatiility-related settings
-                that can be controlled in a Powershell session configuration
-                file (namely, the "DisableImplicitWinCompat",
-                "WindowsPowerShellCompatibilityModuleDenyList", and
-                "WindowsPowerShellCompatibilityNoClobberModuleList"
-                settings). However, I can not seem to find any way to modify
-                (or even reliably read) these settings for the
-                currently-active session.  therefore, I will have to resort to a clunkier method for selectively disabling the WinPsCompat mechanism.
+                    Ideally,  I would like to manipulate the curently-active
+                    settings corresponding to the compatiility-related settings
+                    that can be controlled in a Powershell session configuration
+                    file (namely, the "DisableImplicitWinCompat",
+                    "WindowsPowerShellCompatibilityModuleDenyList", and
+                    "WindowsPowerShellCompatibilityNoClobberModuleList"
+                    settings). However, I can not seem to find any way to modify
+                    (or even reliably read) these settings for the
+                    currently-active session.  therefore, I will have to resort to a clunkier method for selectively disabling the WinPsCompat mechanism.
 
-                I would expect these settings to be exposed somewhere among the automatic variables or preference variables.  see perhaps:
-                    * (https://learn.microsoft.com/en-us/powershell/module/microsoft.powershell.core/about/about_automatic_variables?view=powershell-7.4)
-                    * (https://learn.microsoft.com/en-us/powershell/module/microsoft.powershell.core/about/about_preference_variables?view=powershell-7.4)
-            #>
-            &{# explicitly import some modules with judicious of the Windows Powershell compatibility mechanism
-                
-                <#  Explicitly import some modules with judicious of the
-                    Windows Powershell compatibility mechanism, in order to
-                    work around some bugs in the mechanism that is supposed
-                    to automatically correctly decide whether to use the
-                    powershell compatibility mechanism.  (there are some
-                    modules which powershell core wil, by default, load
-                    using the compatibility mechanism but which we would
-                    like to load (or try to load) without the compatibility
-                    mechanism.  Also, more rearely, there are some modules
-                    (e.g. the 'Appx' module) that Powershell core loads by
-                    default not using the compatibility mechanism (and it
-                    loads successfully), but then the module doesn't work,
-                    therefore we need to load it with the compatibility
-                    mechanism.)
-
+                    I would expect these settings to be exposed somewhere among the automatic variables or preference variables.  see perhaps:
+                        * (https://learn.microsoft.com/en-us/powershell/module/microsoft.powershell.core/about/about_automatic_variables?view=powershell-7.4)
+                        * (https://learn.microsoft.com/en-us/powershell/module/microsoft.powershell.core/about/about_preference_variables?view=powershell-7.4)
                 #>
+                &{# explicitly import some modules with judicious of the Windows Powershell compatibility mechanism
+                    
+                    <#  Explicitly import some modules with judicious of the
+                        Windows Powershell compatibility mechanism, in order to
+                        work around some bugs in the mechanism that is supposed
+                        to automatically correctly decide whether to use the
+                        powershell compatibility mechanism.  (there are some
+                        modules which powershell core wil, by default, load
+                        using the compatibility mechanism but which we would
+                        like to load (or try to load) without the compatibility
+                        mechanism.  Also, more rearely, there are some modules
+                        (e.g. the 'Appx' module) that Powershell core loads by
+                        default not using the compatibility mechanism (and it
+                        loads successfully), but then the module doesn't work,
+                        therefore we need to load it with the compatibility
+                        mechanism.)
+
+                    #>
 
 
-                ## $initialGlobalErrorActionPreference =  $global:errorActionPreference
-                ## $global:errorActionPreference = "stop"
-                ##if($env:computername -in @("cot15")){return}
-                
-                try{
-                    foreach($spec in @(
-                            @{nameOfModule = "ActiveDirectory"              ; weWantToLoadTheModuleByMeansOfWincompat = $False  }
-                            @{nameOfModule = "ADCSAdministration"           ; weWantToLoadTheModuleByMeansOfWincompat = $False  }
-                            @{nameOfModule = "AppX"                         ; weWantToLoadTheModuleByMeansOfWincompat = $False <# $True  #>  }
-                            @{nameOfModule = "DhcpServer"                   ; weWantToLoadTheModuleByMeansOfWincompat = $False  }
-                            @{nameOfModule = "DnsServer"                    ; weWantToLoadTheModuleByMeansOfWincompat = $False  }
-                            @{nameOfModule = "GroupPolicy"                  ; weWantToLoadTheModuleByMeansOfWincompat = $False  }
-                            @{nameOfModule = "hyper-v"                      ; weWantToLoadTheModuleByMeansOfWincompat = $False  }
-                            @{nameOfModule = "ServerManager"                ; weWantToLoadTheModuleByMeansOfWincompat = $False  }
-                            @{nameOfModule = "smbshare"                     ; weWantToLoadTheModuleByMeansOfWincompat = $False  }
-                            @{nameOfModule = "StorageMigrationService"      ; weWantToLoadTheModuleByMeansOfWincompat = $False  }
-                            <#  see
-                                (https://github.com/PowerShell/PowerShell/issues/13138#issuecomment-1820195503).
-                            #>
-                        )
-                    ){
-                        $module = $(get-module -SkipEditionCheck -listavailable -Name $spec.nameOfModule )
-                        
-                        
-                        if($module){
-                            ## $moduleSpecification  = @{
-                            ##     ModuleName      = $module.Name
-                            ##     GUID            = $module.Guid
-                            ##     RequiredVersion = $module.Version
-                            ## }
-
-                            $powershellWantsToLoadTheModuleByMeansOfWincompat =  [bool] -not $(
-                                ## get-module -listavailable -FullyQualifiedName $moduleSpecification 
-                                get-module -listavailable -FullyQualifiedName $module.Path
-                            )
-
-                            if($powershellWantsToLoadTheModuleByMeansOfWincompat -ne $spec.weWantToLoadTheModuleByMeansOfWincompat){
-                                <# In this case, powershell disagrees with
-                                    us about whether the module should be
-                                    loaded by means of wincompt.  Therefore,
-                                    we will explicitly load the module here
-                                    the way we want, in order to prevent
-                                    powershell from loading the module the
-                                    way we don't want later.
+                    ## $initialGlobalErrorActionPreference =  $global:errorActionPreference
+                    ## $global:errorActionPreference = "stop"
+                    ##if($env:computername -in @("cot15")){return}
+                    
+                    try{
+                        foreach($spec in @(
+                                @{nameOfModule = "ActiveDirectory"              ; weWantToLoadTheModuleByMeansOfWincompat = $False  }
+                                @{nameOfModule = "ADCSAdministration"           ; weWantToLoadTheModuleByMeansOfWincompat = $False  }
+                                @{nameOfModule = "AppX"                         ; weWantToLoadTheModuleByMeansOfWincompat = $False <# $True  #>  }
+                                @{nameOfModule = "DhcpServer"                   ; weWantToLoadTheModuleByMeansOfWincompat = $False  }
+                                @{nameOfModule = "DnsServer"                    ; weWantToLoadTheModuleByMeansOfWincompat = $False  }
+                                @{nameOfModule = "GroupPolicy"                  ; weWantToLoadTheModuleByMeansOfWincompat = $False  }
+                                @{nameOfModule = "hyper-v"                      ; weWantToLoadTheModuleByMeansOfWincompat = $False  }
+                                @{nameOfModule = "ServerManager"                ; weWantToLoadTheModuleByMeansOfWincompat = $False  }
+                                @{nameOfModule = "smbshare"                     ; weWantToLoadTheModuleByMeansOfWincompat = $False  }
+                                @{nameOfModule = "StorageMigrationService"      ; weWantToLoadTheModuleByMeansOfWincompat = $False  }
+                                <#  see
+                                    (https://github.com/PowerShell/PowerShell/issues/13138#issuecomment-1820195503).
                                 #>
+                            )
+                        ){
+                            $module = $(get-module -SkipEditionCheck -listavailable -Name $spec.nameOfModule )
+                            
+                            
+                            if($module){
+                                ## $moduleSpecification  = @{
+                                ##     ModuleName      = $module.Name
+                                ##     GUID            = $module.Guid
+                                ##     RequiredVersion = $module.Version
+                                ## }
 
-                                write-information (-join @(
-                                    "Trying to import the module "
-                                    "'$($module.Name)' version $($module.Version) (guid: $($module.Guid)) "
-                                    "explicitly "
-                                    if($spec.weWantToLoadTheModuleByMeansOfWincompat){
-                                        "by means of the Windows Powershell compatibility mechanism"
-                                    } else {
-                                        "without resorting to the Windows Powershell compatibility mechanism"
-                                    }
-                                    "." 
-                                ))
+                                $powershellWantsToLoadTheModuleByMeansOfWincompat =  [bool] -not $(
+                                    ## get-module -listavailable -FullyQualifiedName $moduleSpecification 
+                                    get-module -listavailable -FullyQualifiedName $module.Path
+                                )
 
-                                try{
-                                    $(
-                                        if($spec.weWantToLoadTheModuleByMeansOfWincompat){
-                                            @{
-                                                FullyQualifiedName = $module.Path
-                                                UseWindowsPowershell = $true
-                                            }
-                                        } else {
-                                            @{
-                                                ModuleInfo       = $module
-                                                SkipEditionCheck = $True
-                                            }
-                                        }
-                                    )|% { import-module @_  *>&1} | write-information
-
-                                    <#  clever automatic way to specify what
-                                        we want to do without having to
-                                        explicitly load  the module:
-
-                                        ```
-                                        $PSDefaultParameterValues['Import-Module:UseWindowsPowerShell'] = { 
-                                            if ((Get-PSCallStack)[1].Position.Text -match '\bAppX') { $true } 
-                                        } 
-                                        ```
-
-                                        see
-                                        (https://github.com/PowerShell/PowerShell/issues/13138#issuecomment-1820195503).
-
-                                        I am not using this technique for
-                                        fear that it might be too clever and
-                                        too fragile.
-
+                                if($powershellWantsToLoadTheModuleByMeansOfWincompat -ne $spec.weWantToLoadTheModuleByMeansOfWincompat){
+                                    <# In this case, powershell disagrees with
+                                        us about whether the module should be
+                                        loaded by means of wincompt.  Therefore,
+                                        we will explicitly load the module here
+                                        the way we want, in order to prevent
+                                        powershell from loading the module the
+                                        way we don't want later.
                                     #>
 
-
-                                }  catch {
                                     write-information (-join @(
-                                        "Blithely ignoring an exception that occured "
-                                        "while trying to import the module "
+                                        "Trying to import the module "
                                         "'$($module.Name)' version $($module.Version) (guid: $($module.Guid)) "
+                                        "explicitly "
                                         if($spec.weWantToLoadTheModuleByMeansOfWincompat){
                                             "by means of the Windows Powershell compatibility mechanism"
                                         } else {
                                             "without resorting to the Windows Powershell compatibility mechanism"
                                         }
-                                        ": "
-                                        $_
+                                        "." 
                                     ))
+
+                                    try{
+                                        $(
+                                            if($spec.weWantToLoadTheModuleByMeansOfWincompat){
+                                                @{
+                                                    FullyQualifiedName = $module.Path
+                                                    UseWindowsPowershell = $true
+                                                }
+                                            } else {
+                                                @{
+                                                    ModuleInfo       = $module
+                                                    SkipEditionCheck = $True
+                                                }
+                                            }
+                                        )|% { import-module @_  *>&1} | write-information
+
+                                        <#  clever automatic way to specify what
+                                            we want to do without having to
+                                            explicitly load  the module:
+
+                                            ```
+                                            $PSDefaultParameterValues['Import-Module:UseWindowsPowerShell'] = { 
+                                                if ((Get-PSCallStack)[1].Position.Text -match '\bAppX') { $true } 
+                                            } 
+                                            ```
+
+                                            see
+                                            (https://github.com/PowerShell/PowerShell/issues/13138#issuecomment-1820195503).
+
+                                            I am not using this technique for
+                                            fear that it might be too clever and
+                                            too fragile.
+
+                                        #>
+
+
+                                    }  catch {
+                                        write-information (-join @(
+                                            "Blithely ignoring an exception that occured "
+                                            "while trying to import the module "
+                                            "'$($module.Name)' version $($module.Version) (guid: $($module.Guid)) "
+                                            if($spec.weWantToLoadTheModuleByMeansOfWincompat){
+                                                "by means of the Windows Powershell compatibility mechanism"
+                                            } else {
+                                                "without resorting to the Windows Powershell compatibility mechanism"
+                                            }
+                                            ": "
+                                            $_
+                                        ))
+                                    }
                                 }
                             }
                         }
+                    } finally {
+                        ## $global:errorActionPreference = $initialGlobalErrorActionPreference 
                     }
-                } finally {
-                    ## $global:errorActionPreference = $initialGlobalErrorActionPreference 
                 }
             }
+
+            bitwardenItemIdOfCompanyParameters = $bitwardenItemIdOfCompanyParameters
+            ConfigurationName = "powershell.7" 
+            ## ConfigurationName = "microsoft.powershell" 
         }
-    }
+        if($ConfigurationName){@{ConfigurationName = $ConfigurationName}}
+    ) | Merge-HashTables
 
     $cwcArgs = @{ 
         bitwardenItemIdOfScreenconnectCredentials = $bitwardenItemIdOfScreenconnectCredential
@@ -349,12 +357,7 @@ function Initialize-RemoteSessions {
                     $hostname = (
                         @(
                             $commonArgumentsForNewInvoker    
-                            @{
-                                ComputerName = $hostname
-                                bitwardenItemIdOfCompanyParameters = $bitwardenItemIdOfCompanyParameters
-                                ConfigurationName = "powershell.7" 
-                                ## ConfigurationName = "microsoft.powershell" 
-                            }
+                            @{ComputerName = $hostname}
                         ) | 
                         Merge-HashTables |
                         % {New-Invoker @_ } 
@@ -375,13 +378,8 @@ function Initialize-RemoteSessions {
         $global:invokersByHostname[$hostnameOfHypervisor] =  $(
             @(
                 $commonArgumentsForNewInvoker    
-                @{
-                    ConfigurationName    = "powershell.7"
-                    ComputerName         = $hostnameOfHypervisor
-                    Credential           = Get-CredentialFromBitwardenItem $bitwardenItemIdOfWindowsCredentialOnTheHypervisor
-                    ##  bitwardenItemIdOfVpn = 
-                    bitwardenItemIdOfCompanyParameters = $bitwardenItemIdOfCompanyParameters
-                }
+                @{ComputerName = $hostnameOfHypervisor}
+                @{Credential = Get-CredentialFromBitwardenItem $bitwardenItemIdOfWindowsCredentialOnTheHypervisor}
             ) | 
             Merge-HashTables |
             % {New-Invoker @_ } 
