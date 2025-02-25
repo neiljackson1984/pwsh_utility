@@ -1811,9 +1811,26 @@ function Send-TestMessage(){
                 Mandatory = $True
             )
         ]
-        [Alias("To")]
-        [String] 
-        $recipientEmailAddress,
+        [Alias("recipientEmailAddress")]
+        [String[]] 
+        $To,
+
+        [
+            Parameter(
+                Mandatory = $False
+            )
+        ]
+        [String[]] 
+        $Cc,
+
+
+        [
+            Parameter(
+                Mandatory = $False
+            )
+        ]
+        [String[]] 
+        $Bcc,
 
         [
             Parameter(
@@ -1823,6 +1840,7 @@ function Send-TestMessage(){
         [String] 
         $emailAccount = "neil@autoscaninc.com",
 
+        [Alias("senderEmailAddress")]
         [
             Parameter(
                 Mandatory = $False
@@ -1830,39 +1848,59 @@ function Send-TestMessage(){
         ]
         [AllowEmptyString()]
         [String] 
-        $senderEmailAddress = $null
+        $From = $null
     )
     process {
 
-        if(-not $senderEmailAddress){
-            $senderEmailAddress = $emailAccount
-            Write-Information "senderEmailAddress: '$($senderEmailAddress)'"
+        if(-not $From){
+            $From = $emailAccount
+            Write-Information "From: '$($From)'"
         }
 
-        @{
-            emailAccount = $emailAccount
-            from         = $senderEmailAddress
-            to           =  "$recipientEmailAddress"
-            subject      = "test message from $($senderEmailAddress) to $($recipientEmailAddress) $('{0:yyyy/MM/dd HH:mm:ss K}' -f [timezone]::CurrentTimeZone.ToLocalTime((Get-Date)))"
-            body         = @( 
-                "This is a test message sent from $($senderEmailAddress) to $($recipientEmailAddress).  Please disregard."
+        $now = (Get-Date)
+        $timeStampText = "$('{0:yyyy/MM/dd HH:mm:ss K}' -f [timezone]::CurrentTimeZone.ToLocalTime($now))"
+        
+        $sendMailParameters = (
+            $(if($Cc){@{cc = $Cc}}else{@{}}) +
+            $(if($Bcc){@{bcc = $Bcc}}else{@{}}) +
+            @{
+                emailAccount = $emailAccount
+                from         = $From
+                to           = $To
 
-                ""
-                ""
+                ##subject      = "test message from $($From) to $($To) $($timeStampText)"
+                subject      = "$($timeStampText): test message from $($From) to $($To)"
+                body         = @( 
+                    
+                    "$($timeStampText)"
+                    ""
+                    "This is a test message sent from $($From) to $($To), cc ($Cc), bcc ($Bcc).  Please disregard."
 
-                "Sincerely,"
-                "Neil Jackson"
-                "neil@autoscaninc.com"
-                "425-218-6726 (cell)"
-                "206-282-1616 ext. 102 (office)"
-                ""
-                "Autoscan, Inc."
-                "4040 23RD AVE W"
-                "SEATTLE WA 98199-1209"
-                "206-282-1616"
-            ) -Join "`n"
+                    ""
+                    ""
 
-        } | % { Send-Mail @_ }
+                    "Sincerely,"
+                    "Neil Jackson"
+                    "neil@autoscaninc.com"
+                    "425-218-6726 (cell)"
+                    "206-282-1616 ext. 102 (office)"
+                    ""
+                    "Autoscan, Inc."
+                    "4040 23RD AVE W"
+                    "SEATTLE WA 98199-1209"
+                    "206-282-1616"
+                ) -Join "`n"
+
+            } 
+        )
+        
+        write-information "From: $($sendMailParameters['from'])"
+        write-information "To: $($sendMailParameters['to'])"
+        write-information "Cc: $($sendMailParameters['cc'])"
+        write-information "Bcc: $($sendMailParameters['bcc'])"
+        write-information "Subject: $($sendMailParameters['subject'])"
+
+        $sendMailParameters | % { Send-Mail @_ }
     }
 }
 
