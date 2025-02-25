@@ -7487,6 +7487,54 @@ function Select-Single {
     }
 }
 
+function Select-SingleOrDefault {
+    <# 
+        Similar to Selct-Single, except when there are zero objects, we retturn
+        $Default instead of throwing an exception.
+
+        TODO 2025-02-25-1410: fix the code repetition between
+        Select-SingleOrDefault and Select-Single.
+    #>
+    [CmdletBinding()]
+    [OutputType([Object])]
+    param(
+        [Parameter(ValueFromPipeline=$True)]
+        [Object] $InputObject,
+
+        [Parameter(Mandatory=$False)]
+        [Object] $Default = $null
+    )
+
+    begin {
+        [long] $countOfObjectsEncountered = 0
+        if($PSBoundParameters.ContainsKey('InputObject')){
+            $countOfObjectsEncountered  += 1
+        }  
+    }
+    process {
+        foreach($item in $input){
+            $countOfObjectsEncountered  += 1
+            if($countOfObjectsEncountered -gt 1 ){           
+                throw "more than one objects encountered.  We were expecting exactly one object."
+                write-error "more than one objects encountered.  We were expecting exactly one object."
+                return
+            }
+        }
+    }
+    end  {
+        if($countOfObjectsEncountered -eq 0 ){
+            ## throw "zero objects encountered.  We were expecting exactly one object."
+            ## write-error "zero objects encountered.  We were expecting exactly one object."
+            ## return
+            return $Default
+        }
+
+        if($countOfObjectsEncountered -eq 1){
+            return $InputObject
+        }
+    }
+}
+
 
 function Enable-RemoteDesktop {
     Set-ItemProperty -Path 'registry::HKLM\System\CurrentControlSet\Control\Terminal Server' -name "fDenyTSConnections" -value 0
