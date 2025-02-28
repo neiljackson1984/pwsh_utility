@@ -7754,3 +7754,44 @@ function Set-LocalAccountTokenFilterPolicy {
     write-information "finally, LocalAccountTokenFilterPolicy is $(Get-LocalAccountTokenFilterPolicy |% {if($null -eq $_){"null"}else{$_}})"
 
 }
+
+
+function tryGetE164FormattedPhoneNumber([string] $freeFormPhoneNumber){
+    
+    .{# install and load Google.LibPhoneNumber assembly (this is a very hacky way to manage dependencies)
+        if(-not $(& {[com.google.i18n.phonenumbers.PhoneNumberUtil]} -erroraction silentlycontinue 2>$null)){  
+            # see https://github.com/google/libphonenumber
+            push-location (new-temporarydirectory)
+            dotnet new console
+            dotnet add package Google.LibPhoneNumber --version 1.0.0 --source "https://api.nuget.org/v3/index.json"
+            dotnet build
+            ## gci . -file -force -recurse -filter "*.dll" | select -expand FullName
+    
+    
+            ##gi ".\bin\Debug\net8.0\*.dll" |% {Add-Type -Path $_ }
+            gi ".\bin\Debug\net*\*.dll" |% {Add-Type -Path $_ }
+            pop-location
+            ##copy-item ".\bin\Debug\net8.0\runtimes\win-x64\native\*.dll" (split-path -parent ([System.Runtime.Loader.AssemblyLoadContext]::Default.Assemblies |? {$_.GetName().Name -eq "Microsoft.Data.Sqlite"}).Location)
+            ##copy-item ".\bin\Debug\net8.0\runtimes\win-x64\native\*.dll" .
+    
+        }
+    } | write-information
+    
+    
+    $phoneNumberUtil = $([com.google.i18n.phonenumbers.PhoneNumberUtil]::getInstance())
+    
+    
+    return $( 
+        $(
+            try {
+                "$($phoneNumberUtil.format($phoneNumberUtil.parse($freeFormPhoneNumber, "US"), "E164"))"
+            } catch {
+                
+            }
+        ) |
+        ? {$_}
+    )
+}
+
+
+
