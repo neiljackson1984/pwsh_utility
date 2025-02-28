@@ -440,8 +440,11 @@ function Initialize-RemoteSessions {
 
         [CmdletBinding(PositionalBinding=$False)]
         Param(
-            [Parameter(Mandatory=$False)]
-            [int] $timeout,
+            [Parameter(Mandatory=$False)] 
+            [System.TimeSpan] $timeout,
+    
+            [Parameter(Mandatory=$False)] 
+            [int] $timeoutMilliseconds,
 
             [Parameter(Mandatory=$False)]
             [boolean] $pwsh,

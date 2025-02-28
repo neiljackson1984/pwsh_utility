@@ -4574,12 +4574,11 @@ function runInCwcSession {
         [Parameter(Mandatory=$False)] 
         [switch] $pwsh = $False,
 
+        [Parameter(Mandatory=$False)] 
+        [System.TimeSpan] $timeout,
 
         [Parameter(Mandatory=$False)] 
-        [int] $timeout,
-
-        ## [Parameter(Mandatory=$False)] 
-        ## [System.TimeSpan] $timeout,
+        [int] $timeoutMilliseconds,
 
         [Parameter(
             Position=0,
@@ -4609,6 +4608,11 @@ function runInCwcSession {
         # than just a single (array) command parameter) is to facilitate
         # splatting.
     )
+
+    $timeout ??= New-Timespan -Milliseconds $timeoutMilliseconds
+
+
+
     ## Import-Module ConnectWiseControlAPI
     <#
         We can't use version 0.3.5.0 of the ConnectWiseControlAPI module (whcih
@@ -4689,7 +4693,7 @@ function runInCwcSession {
             )
             NoWait = $NoWait
         } +
-        $(if($timeout){@{Timeout = $timeout}} else {@{}})
+        $(if($timeout.TotalMilliseconds){@{Timeout = $timeout.TotalMilliseconds}} else {@{}})
     ) | % { Invoke-CWCCommand @_ }
 }
 

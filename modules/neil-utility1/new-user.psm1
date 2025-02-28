@@ -1151,7 +1151,10 @@ function New-ScreenconnectInvoker {
         [CmdletBinding(PositionalBinding=$False)]
         Param(
             [Parameter(Mandatory=$False)] 
-            [int] $timeout,
+            [System.TimeSpan] $timeout,
+
+            [Parameter(Mandatory=$False)] 
+            [int] $timeoutMilliseconds,
 
             [Parameter(Mandatory=$False)] 
             [boolean] $pwsh,
