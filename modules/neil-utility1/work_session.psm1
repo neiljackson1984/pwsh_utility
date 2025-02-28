@@ -68,37 +68,10 @@ function Initialize-RemoteSessions {
         ```
     #>
 
-    if($false){
-        write-information "s2: $(${s2})"
-        $s2 = "ahoy I am the redefined s2"
-        write-information "s2: $(${s2})"
-
-        $global:s1 = "ahoy I am s1"
-        ## $global:function:s5 = {"ahoy I am the global function s5"}
-        
-        if($global:s4){
-            write-information "function:s3 is already defined"
-        } else {
-            write-information "defining function:s3"
-            $function:s3 = {write-output "ahoy I am the  function s3"}
-            $function:global:s6 = {write-output "ahoy I am the global function s6"}
-            $global:s4  = $true
-        }
-
-        s3
-        get-command s3
-        Export-ModuleMember -Function s3
-
-        s6
-        get-command s6
-
-
-        return
-    }
-    $global:companyParameters = $(getFieldMapFromBitwardenItem $bitwardenItemIdOfCompanyParameters)
+    $companyParameters = $(getFieldMapFromBitwardenItem $bitwardenItemIdOfCompanyParameters)
 
     $nameOfScreenconnectGroup = $companyParameters.nameOfScreenconnectGroup
-    $global:activeDirectoryDomainName = ($companyParameters.domainController -split "\.") | select -skip 1 | join-string -Separator "."
+    $activeDirectoryDomainName = ($companyParameters.domainController -split "\.") | select -skip 1 | join-string -Separator "."
 
     $namesOfVariablesToImport = @( $namesOfVariablesToImport )
     $namesOfFunctionsToImport = @( $namesOfFunctionsToImport )
@@ -350,7 +323,7 @@ function Initialize-RemoteSessions {
 
 
 
-    $global:invokersByHostname = (
+    $invokersByHostname = (
         @(
             foreach($hostname in @($computers |% {$_.hostname}  | select -unique)){
                 @{
@@ -375,7 +348,7 @@ function Initialize-RemoteSessions {
     
 
     if($hostnameOfHypervisor -and $bitwardenItemIdOfWindowsCredentialOnTheHypervisor){
-        $global:invokersByHostname[$hostnameOfHypervisor] =  $(
+        $invokersByHostname[$hostnameOfHypervisor] =  $(
             @(
                 $commonArgumentsForNewInvoker    
                 @{ComputerName = $hostnameOfHypervisor}
@@ -386,7 +359,7 @@ function Initialize-RemoteSessions {
         )  
     }
 
-    $global:screenconnectInvokersByHostname = (
+    $screenconnectInvokersByHostname = (
         @(
             foreach($hostname in @($computers |% {$_.hostname}  | select -unique)){
                 @{
@@ -399,19 +372,19 @@ function Initialize-RemoteSessions {
     foreach($computer in $computers ){
         ## if($computer.handle){
         ##     write-information "defining short-named functions (r$($computer.handle) and rs$($computer.handle)) for handle '$($computer.handle)' and hostname '$($computer.hostname)'. "
-        ##     Set-Item -LiteralPath "function:global:r$($computer.handle)" -Value $global:invokersByHostname[$computer.hostname]
-        ##     Set-Item -LiteralPath "function:global:rs$($computer.handle)" -Value $global:screenconnectInvokersByHostname[$computer.hostname]
+        ##     Set-Item -LiteralPath "function:global:r$($computer.handle)" -Value $invokersByHostname[$computer.hostname]
+        ##     Set-Item -LiteralPath "function:global:rs$($computer.handle)" -Value $screenconnectInvokersByHostname[$computer.hostname]
         ## }
         
         foreach($handle in $computer.handles){
             write-information "defining short-named functions (r$($handle) and rs$($handle)) for handle '$($handle)' and hostname '$($computer.hostname)'. "
-            Set-Item -LiteralPath "function:global:r$($handle)" -Value $global:invokersByHostname[$computer.hostname]
-            Set-Item -LiteralPath "function:global:rs$($handle)" -Value $global:screenconnectInvokersByHostname[$computer.hostname]
+            Set-Item -LiteralPath "function:global:r$($handle)" -Value $invokersByHostname[$computer.hostname]
+            Set-Item -LiteralPath "function:global:rs$($handle)" -Value $screenconnectInvokersByHostname[$computer.hostname]
         }
     }
 
-    
-    $function:global:rmain = {
+    $hostnamesOfMainComputers = @($mainComputers |% {$_.hostname}  | select -unique)
+    $function:rmain = {
 
         <# hack: I copied and pasted the parameter block from ($invokersByHostname.Values | select -first  1)  
 
@@ -426,13 +399,13 @@ function Initialize-RemoteSessions {
             [Object[]] $ArgumentList
         )
 
-        foreach($hostname in @($mainComputers |% {$_.hostname}  | select -unique)) {
+        foreach($hostname in $hostnamesOfMainComputers) {
             write-information "$(get-date): now working on $($hostname)"
             & $invokersByHostname[$hostname] @PSBoundParameters
         }
     }.GetNewClosure()
 
-    $function:global:rsmain = {
+    $function:rsmain = {
         <# hack: I copied and pasted the parameter block from ($screenconnectInvokersByHostname.Values | select -first  1)  
 
             #TODO: do this kind of currying automatically.
@@ -460,14 +433,21 @@ function Initialize-RemoteSessions {
 
         )
 
-
-
-        foreach($hostname in @($mainComputers |% {$_.hostname}  | select -unique)) {
+        foreach($hostname in $hostnamesOfMainComputers) {
             write-information "$(get-date): now working, via screenconnect, on $($hostname)"
             & $screenconnectInvokersByHostname[$hostname] @PSBoundParameters
         }
     }.GetNewClosure()
     
+    <# export some useful global variables: #>
+    ${global:hostnamesOfMainComputers}        = $hostnamesOfMainComputers
+    ${global:invokersByHostname}              = $invokersByHostname
+    ${global:screenconnectInvokersByHostname} = $screenconnectInvokersByHostname
+    ${function:global:rmain}                  = $function:rmain
+    ${function:global:rsmain}                 = $function:rsmain
+    ${global:companyParameters}               = $companyParameters
+    ${global:nameOfScreenconnectGroup}        = $nameOfScreenconnectGroup
+    ${global:activeDirectoryDomainName}       = $activeDirectoryDomainName
 
 
 
