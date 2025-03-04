@@ -8208,8 +8208,8 @@ function  New-UserFriendlyPassword {
     $passwordPredicate = {-not ($_ -match "(?-i)^.*[01IiLlOo()^].*`$")}
     $complexPrefix = (-join @(
         New-Password -Length 1 -Upper -Predicate $passwordPredicate
-        '@'
         New-Password -Length 1 -Digits -Predicate $passwordPredicate
+        '@'
     ))
 
     return (
