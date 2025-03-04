@@ -1218,7 +1218,7 @@ function setComputerNameAndJoinDomain {
     
 
     write-information "now working on '$($initialNameOfWorkstation )'."
-    runInCwcSession @cwcArgs -nameOfSession $initialNameOfWorkstation -timeout (New-Timespan -Minutes 2).TotalMilliSeconds  (
+    runInCwcSession @cwcArgs -nameOfSession $initialNameOfWorkstation -timeout (New-Timespan -Minutes 2) (
         @(
             "`$desiredHostnameOfWorkstation='$desiredHostnameOfWorkstation'"
             "`$username='$($bitwardenItemContainingActiveDirectoryCredential.login.username)'"
