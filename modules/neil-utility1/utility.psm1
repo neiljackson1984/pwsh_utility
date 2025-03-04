@@ -1796,6 +1796,12 @@ function Send-Mail{
     foreach ($address in @($bcc)){ $mailMessage.Bcc.Add($address) }
     $mailMessage.Subject = $subject
     $mailMessage.Body = $body
+
+    <# begin  experiment 2025-03-02-1302 #>
+    ## $mailMessage.Headers['X-6202f375f55149cabf0fc89d1734cfac'] = "yakfak"
+    ## $mailMessage.Headers['Message-ID'] = "$(new-guid)@myid.rattnow.com"
+    <# end experiment 2025-03-02-1302 #>
+
     $result = $SMTPClient.Send($mailMessage)
     Write-Information "result of sending the message: $result"
 
@@ -1848,7 +1854,38 @@ function Send-TestMessage(){
         ]
         [AllowEmptyString()]
         [String] 
-        $From = $null
+        $From = $null,
+
+        [
+            Parameter(
+                Mandatory = $False
+            )
+        ]
+        [String] 
+        $subjectPrefix = "",
+        [
+            Parameter(
+                Mandatory = $False
+            )
+        ]
+        [String] 
+        $subjectSuffix = "",
+
+        [
+            Parameter(
+                Mandatory = $False
+            )
+        ]
+        [String] 
+        $bodyPrefix = "",
+
+        [
+            Parameter(
+                Mandatory = $False
+            )
+        ]
+        [String] 
+        $bodySuffix = ""
     )
     process {
 
@@ -1869,7 +1906,7 @@ function Send-TestMessage(){
                 to           = $To
 
                 ##subject      = "test message from $($From) to $($To) $($timeStampText)"
-                subject      = "$($timeStampText): test message from $($From) to $($To)"
+                subject      = "$($timeStampText): test message from $($From) to $($To)" |% {"$($subjectPrefix)$($_)$($subjectSuffix)"}
                 body         = @( 
                     
                     "$($timeStampText)"
@@ -1889,7 +1926,9 @@ function Send-TestMessage(){
                     "4040 23RD AVE W"
                     "SEATTLE WA 98199-1209"
                     "206-282-1616"
-                ) -Join "`n"
+                ) -Join "`n" |
+                % {"$($bodyPrefix)$($_)$($bodySuffix)"}
+
 
             } 
         )
@@ -7798,4 +7837,387 @@ function tryGetE164FormattedPhoneNumber([string] $freeFormPhoneNumber){
 }
 
 
+function Get-NegatedTransportRuleCondition  ([hashtable] $positiveCondition){
+    <#  CAUTION: This is only meaningful if positiveCondition is "atomic"
+        (my own term) (i.e. not a composition of atomic conditions).   Todo:
+        handle the case where positive  condition is an exceptif...
+        condfition (so that two negations (performed by this function) will
+        be the identity)
+    #>
+    
+    $namesOfPositiveConditionParameters = @(
+        get-command new-transportrule |%  {$_.Parameters.Values} |%  {$_.Name} |
+        % {[regex]::Match($_, "(?i)(?<=^ExceptIf).+`$")}  |
+        ? {$_.Success} |
+        % {$_.Value}
+    )
 
+    $positiveCondition.GetEnumerator() |
+    % {
+        @{
+            $(
+                if($_.Key -in $namesOfPositiveConditionParameters){
+                    "ExceptIf$($_.Key)"
+                } else {
+                    $_.Key
+                } 
+            ) = $_.Value
+        }
+    } |
+    Merge-HashTables
+}
+
+function Get-TransportRuleSpecsToEvaluateConditions {
+    <# 
+        returns a secuence of (parameters to  create) transport rules
+        that will set the specified header to a "signature" of the
+        specified conditions.  The signature is a string consisting of
+        exactly $conditions.Count  characters, where the cahracter  at
+        index i is 1 if $condition i is true, else 0.
+
+        The condition signature can be tested by subsequent rules to
+        effectively achieve AND logic (which is otherwise exceedingly
+        difficult to achieve in a general way with Exchange Online
+        transport rules) (well, the algorithm herein is itself in some
+        sense "exceedingly difficult", but this function at least
+        encapsulates that exceeding difficulty -- that's the whole point
+        of this function.
+    #>
+    
+    [CmdletBinding()]
+    Param(
+        [parameter(Mandatory=$True)]
+        [System.Collections.Generic.List[Hashtable]] $conditions,
+
+        [parameter(Mandatory=$false)]
+        [string]  $uniqueHeaderNamePrefix = "X-$(new-guid)",
+
+        [parameter(Mandatory=$false)]
+        [string] $nameOfConditionSignatureHeader = "",
+
+        [parameter(Mandatory=$false)]
+        [string] $nameOfVersionHeader = "",
+
+        [parameter(Mandatory=$false)]
+        [string] $version =  "$(get-date -format o)",
+
+        [switch] $doStampVersionHeader = $false,
+
+        [switch] $doNotDoCleanup = $false
+    )
+
+   
+    if(-not $nameOfConditionSignatureHeader) {$nameOfConditionSignatureHeader = "$($uniqueHeaderNamePrefix)-condition-signature"}
+    if(-not $nameOfVersionHeader){$nameOfVersionHeader = "$($uniqueHeaderNamePrefix)-version"}
+
+    write-information  "nameOfConditionSignatureHeader: '$($nameOfConditionSignatureHeader)'"
+    write-information  "nameOfVersionHeader: '$($nameOfVersionHeader)'"
+    write-information  "version: '$($version)'"
+
+    $headerNamePrefixForPositiveMarker  = "$($uniqueHeaderNamePrefix)-condition"
+    $headerValueForPositiveMarker = "1"
+    <#  The exact choice  for this value is totally arbitrary.   We
+        only want to test whether each marker is present, not what its
+        particular value is, but the rules are easier to understand if
+        we have a fixed constant value for every marker header. 
+    #>
+
+    $namesOfHeadersToBeRemovedDuringCleanup = @()
+    $transportRuleSpecs = @()
+
+    $namesOfPartialSignatureHeaders = @(
+        0..($conditions.Count) |%  {
+            "$($uniqueHeaderNamePrefix)-partial-signature$($_)"
+        }
+    )
+
+    $namesOfPartialSignatureHeaders[$conditions.Count] = $nameOfConditionSignatureHeader
+    <# This brain damage (using a distinct header name for the i'th
+        partial signature header), seems to be encessary to avaoid
+        out-of-order rule evalutation that occurs if we try to us the
+        same single name for the signature header throught the entire
+        flow.
+
+        $namesOfPartialSignatureHeaders[is the name of the header that
+        will contain the partial signature of the first i conditions
+    #>
+
+
+    if($doStampVersionHeader){
+        $transportRuleSpecs += @(
+                
+            @(
+                @{Comments = "set the version header"}
+                @{
+                    SetHeaderName  = $nameOfVersionHeader
+                    SetHeaderValue = $version
+                }
+            ) | merge-hashtables
+
+            ##  $namesOfHeadersToBeRemovedDuringCleanup +=  $nameOfVersionHeader     
+        
+        )
+        <# the version header is just for debugging, so that I can detect
+        when the transport rule changes have updated.  i.e. which version of
+        these transport rules are in effect. #>
+    }
+
+    <#  the idea is that, as long as each of  our conditions
+        does not have both a positive header value test and a negative
+        header value test,  we can choose a positive header value test
+        or a negative value test to be combined with our test  .....
+        never mind that's not quite right.
+
+        What I want to combine is a positive  header value test to test
+        the accumulated partial condition signature, and another header
+        test (either a negative header value test or maybe a pattern
+        test (are we allowed to have both a pattern match header test
+        and a literal value header test in the same rule? -- if so that
+        would be more intelligible than theis negative-sense business.)
+        to test my condition of interest (or a marker of my condition of
+        interest).
+
+        The enabling hack here is that even though we can't have a
+        condition of the form (header A exists and header B exists), we
+        CAN have condtion of the form (header A exists and header b does
+        not exist.)
+
+        It occurs to me that this all works just as well if our marker
+        headers are positive-sense.
+    #>
+
+    <# set each positive-sense marker header according to whether the
+        correspondng condition obtains. 
+
+        For many conditions, we could evaluate the conditions directly in the
+        rules that construct the condition signature.  However, by "converting"
+        the original conditions into header values, we are guranteed that the
+        rules that  construct the signature will be valid (e.g. won't try to
+        include two different HeaderContainsMessageHeader parameters).
+
+        The whole point of this entire exercise is to overcome (by creating a
+        nearly unbounded, (combinatorially exploding) quantity of transport
+        rules that work together) the annoying limitation that Exchange
+        transport rules do not let you have a single rule that tests for, for
+        instance, the presence of two header values (with AND logic).
+
+    #>
+    for($conditionIndex=0; $conditionIndex -lt $conditions.Count; $conditionIndex++){
+        $transportRuleSpecs += @(
+            @(
+                @{Comments = "Selectively set positive-sense marker for condition $($conditionIndex)"}
+                $conditions[$conditionIndex]
+                @{
+                    SetHeaderName  = "$($headerNamePrefixForPositiveMarker)$($conditionIndex)"
+                    SetHeaderValue = $headerValueForPositiveMarker
+                }
+            ) | merge-hashtables
+            $namesOfHeadersToBeRemovedDuringCleanup += "$($headerNamePrefixForPositiveMarker)$($conditionIndex)"
+        )
+    }
+
+
+    if($false){
+        <# We  do not need to explicitly set the condition signature to
+        empty. We  can just assume that its  empty  when  we are working
+        on condition 0. #>
+        <# initialize the condition signature #>
+        $transportRuleSpecs  += (@(
+        @{Comments="initialize the condition signature to empty"}
+        @{
+            SetHeaderName  = $namesOfPartialSignatureHeaders[0]
+
+            ##SetHeaderValue = ""
+            <#  oops we can't set a header value to the empty string,
+                but fortuantely we can set a header to a string
+                containing a single space, which will work for our
+                application (provided I adjust the relevant regex below
+                so that we ignore spaces) 
+            #>
+            ##SetHeaderValue = " "
+            <# Yes, but when we  set the ehader value to s ingle  string
+                (or probabyl to any value consiting of  only spaces),
+                this header is apparently removed after the transport
+                rules are processed and before the message ends up in
+                the destination mailbox.  Therefore,  I will use a dummy
+                character.  any character will do as long is it is not a
+                space and is not 0 and is not 1.
+            #>
+            SetHeaderValue = "w"
+        
+        }
+        )  | merge-hashtables)
+    }
+
+
+    for($conditionIndex=0; $conditionIndex -lt $conditions.Count; $conditionIndex++){
+        <#  Our goal is to append rules as necessary to
+            trasnportRuleSpecs so that, after the message has flowed
+            through the rules that we add, the value of the header
+            $nameOfHeaderToContainConditionSignature will be modifed by
+            appending a character -- 1 if thisCondition, else 0.  
+
+            In other words, our ultimate goal is that we want the value
+            of $nameOfHeaderToContainConditionSignature to be a string that
+            is a sequence of characters, where character i reports the
+            state of condition i: 0 for false and 1 for true. (We can
+            then use subsequent rules look for any of several values (or
+            values matching a regex pattern) to respond to any arbitrary
+            state of truth or falseness for each of our conditions.
+            (This whole thing is a hack to work around Exchange
+            Transport Rules' lack of a way to have rule that tests
+            whether (header value A is present AND header value B is
+            present) (and will also be useful for other missing logical
+            combinations --any arbitrary combination  pattern in fact.).
+
+            Unfortunately, Exchange tranport rule actions provide no way
+            to set the value of a header  to anything except a hardcoded
+            value. There is no "appendToHeader" action for instance, and
+            there is (as far as I can tell) no way to interpolate any
+            dynamic value (like the existing value) in the value that
+            you write to a header --  it's just a static hardcoded
+            value.
+
+            However, we should be able to acheive the desired behavior
+            provided we are free to create huge numbers of transport
+            rules; we can have one transport rule for every possible
+            existing value of the header.
+
+            But its even messier, because we can not, in a single rule,
+            have a condition that is the logical union of two
+            header-value rules.  
+
+            For this test, we will assume that all of our conditions are
+            headerContainsWords conditions.
+        #>
+        $conditionWhereThisConditionIsMarkedTrue = @{
+            HeaderContainsMessageHeader = "$($headerNamePrefixForPositiveMarker)$($conditionIndex)"
+            HeaderContainsWords         = $headerValueForPositiveMarker
+        }
+
+        foreach($partialConditionSignature in @(
+            <#  every number from 0  up to and including
+                2^$conditionIndex - 1, written as a
+                $conditionIndex-digit binary number (but the -f operator
+                does not properly handle printing in 0-digit form (which
+                just means the empty string), so  we handle that one
+                explicitly)
+            #>
+            0..((1 -shl $conditionIndex) - 1) |
+            % {
+                if($conditionIndex  -eq 0){""}
+                else {"{0:b$($conditionIndex)}" -f $_ }
+            }
+        )){
+            $conditionWherePartialConditionSignatureObtains = $(
+                if($conditionIndex  -eq 0){@{}}
+                else{
+                    @{
+                        ## HeaderMatchesMessageHeader  = $nameOfHeaderToContainConditionSignature
+                        HeaderMatchesMessageHeader  = $namesOfPartialSignatureHeaders[$conditionIndex]
+                        HeaderMatchesPatterns       = @(
+                            <# evidently, Exchange regards "^\s*\s*`$" as an
+                            invalid regex, so we adapt:#>
+                            if($partialConditionSignature  -eq ""){"^w*`$"}
+                            else  {"^w*$($partialConditionSignature)w*`$"}
+                        )
+                        <# we might get away doing this with HeaderContainsWords
+                            instead -- I am just not sure that
+                            HeaderContainsWords  
+                            looks for whole words or partial words
+                        #>
+                    }
+                }
+            )
+
+            $transportRuleSpecs  += @(
+                @(
+                    @{Comments  =  "for condition $($conditionIndex) not being marked true, append a 0 to the condition signature" }
+                    $conditionWherePartialConditionSignatureObtains
+                    
+                    Get-NegatedTransportRuleCondition $conditionWhereThisConditionIsMarkedTrue
+                    <#  WE could just omit the
+                        `Get-NegatedTransportRuleCondition
+                        $conditionWhereThisConditionIsMarkedTrue` and
+                        blindly append a 0 to the signature.  This would
+                        then be conditionally overwritten by the next
+                        rule, which includes (the positive)
+                        $conditionWhereThisConditionIsMarkedTrue  .  I
+                        am leaving if in almost as a  test or for
+                        symmetry  (and to  see if it improves the weird
+                        ordering of trasnport  rules that occurs in the
+                        output  of Get-MessageTraceDetail.
+                    #>
+
+
+                    @{
+                        SetHeaderName  = $namesOfPartialSignatureHeaders[$conditionIndex + 1]
+                        SetHeaderValue = "$($partialConditionSignature)0"
+                    }
+                ) | merge-hashtables
+                if(-not ($namesOfPartialSignatureHeaders[$conditionIndex + 1]  -eq  $namesOfPartialSignatureHeaders[-1])){
+                    $namesOfHeadersToBeRemovedDuringCleanup += $namesOfPartialSignatureHeaders[$conditionIndex + 1]
+                }
+
+                @(
+                    @{Comments  =  "for condition $($conditionIndex) being marked true, append a 1 to the condition signature" }
+                    $conditionWherePartialConditionSignatureObtains
+                    $conditionWhereThisConditionIsMarkedTrue
+
+                    @{
+                        SetHeaderName  = $namesOfPartialSignatureHeaders[$conditionIndex + 1]
+                        SetHeaderValue = "$($partialConditionSignature)1"
+                    }
+                ) | merge-hashtables
+                if(-not ($namesOfPartialSignatureHeaders[$conditionIndex + 1]  -eq  $namesOfPartialSignatureHeaders[-1])){
+                    $namesOfHeadersToBeRemovedDuringCleanup += $namesOfPartialSignatureHeaders[$conditionIndex + 1]
+                }
+            ) 
+        }
+    }
+      
+
+    if(-not $doNotDoCleanup){
+        foreach($nameOfHeaderToBeRemoved in @($namesOfHeadersToBeRemovedDuringCleanup | select  -unique)){
+            $transportRuleSpecs += @(     
+                @(
+                    @{Comments = "cleanup: remove a leftover header named  '$($nameOfHeaderToBeRemoved)'"}
+                    @{
+                        RemoveHeader  = $nameOfHeaderToBeRemoved
+                    }
+                ) | merge-hashtables
+
+                $namesOfHeadersToBeRemovedDuringCleanup +=  $nameOfOurVersionHeader     
+            )
+        }
+    }
+
+    return $transportRuleSpecs
+}
+
+
+
+function  New-UserFriendlyPassword {
+    <# depends on the MlkPwgen powershell module (https://github.com/mkropat/MlkPwgen) #>
+    [CmdletBinding()]
+    [OutputType([String])]
+    Param(
+        [int] $Length = 29
+    )
+
+    $passwordPredicate = {-not ($_ -match "(?-i)^.*[01IiLlOo()^].*`$")}
+    $complexPrefix = (-join @(
+        New-Password -Length 1 -Upper -Predicate $passwordPredicate
+        '@'
+        New-Password -Length 1 -Digits -Predicate $passwordPredicate
+    ))
+
+    return (
+        -join @(
+            $complexPrefix
+
+            New-PronounceablePassword -Predicate   $passwordPredicate -Length ($Length - $complexPrefix.Length) |
+            % {$_.ToLower()}
+        )
+    )
+}
