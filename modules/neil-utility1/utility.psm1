@@ -8294,6 +8294,15 @@ function Set-GroupNameMangling {
         MAYBE TODO: allow control over the manglingPrefix, rather than using a
         built-in hardcoded value.
 
+        MAYBE TODO: After modifying the groups, wait until the changes sink in
+        (i.e. wait until the old identifier values will no longer retrieve the
+        group when passed as the -Identity paramter to Get-UnifiedGroup,
+        Get-Recipient, and the similar Exchange Online Powershell functions.)
+        If you mangle a group name and then immediately (within a few seconds)
+        attempt to create a transport rule whose succesfull creation depends on
+        the name mangling, the attempt to create the transport rule sometimes
+        fails because the name-mangling has not completely propagated.
+
     #>
     [CmdletBinding()]
     Param(
