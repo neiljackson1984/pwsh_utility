@@ -2134,34 +2134,42 @@ function setLicensesAssignedToMgUser{
 
 
 
-        @{
-            UserId = $mgUser.Id
-            RemoveLicenses = $skuIdsToRemoveFromUser
-            AddLicenses = (
-                ## it doesn't hurt to have a license here that the user already has.  The 
-                ## DisabledPlans property will be updated to match whatever we give here.
+        @(
+            @{UserId = $mgUser.Id}
+            if($true -or $skuIdsToRemoveFromUser){
+                @{RemoveLicenses = $skuIdsToRemoveFromUser}
+            }
+            
+            if($true -or $desiredSkuIds){
+                @{AddLicenses = (
+                        ## it doesn't hurt to have a license here that the user already has.  The 
+                        ## DisabledPlans property will be updated to match whatever we give here.
 
-                # [IMicrosoftGraphAssignedLicense[]]
-                @(
-                    $desiredSkuIds | 
-                    % {
-                        $skuId = $_
-                        $mgSubscribedSku = $allMgSubscribedSkus |? { $_.SkuId -eq  $skuId }
-                        
-                        # [IMicrosoftGraphAssignedLicense] 
-                        @{
-                            DisabledPlans = @(
-                                $mgSubscribedSku.ServicePlans |
-                                select -expand ServicePlanId |
-                                ? {-not ($_ -in $desiredIdsOfEnabledServicePlans)}
-                            )
-                            SkuId = $mgSubscribedSku.SkuId
-                        }
+                        # [IMicrosoftGraphAssignedLicense[]]
+                        @(
+                            $desiredSkuIds | 
+                            % {
+                                $skuId = $_
+                                $mgSubscribedSku = $allMgSubscribedSkus |? { $_.SkuId -eq  $skuId }
+                                
+                                # [IMicrosoftGraphAssignedLicense] 
+                                @{
+                                    DisabledPlans = @(
+                                        $mgSubscribedSku.ServicePlans |
+                                        select -expand ServicePlanId |
+                                        ? {-not ($_ -in $desiredIdsOfEnabledServicePlans)}
+                                    )
+                                    SkuId = $mgSubscribedSku.SkuId
+                                }
 
-                    }
-                )
-            )
-        } | % { Set-MgUserLicense @_ } 1> $null
+                            }
+                        )
+                    )
+                }
+            }
+            
+        ) | merge-hashtables | 
+        % { Set-MgUserLicense @_ } 1> $null
 
 
         $finalSkuIds = @(
@@ -7839,9 +7847,11 @@ function tryGetE164FormattedPhoneNumber([string] $freeFormPhoneNumber){
 
 function Get-NegatedTransportRuleCondition  ([hashtable] $positiveCondition){
     <#  CAUTION: This is only meaningful if positiveCondition is "atomic"
-        (my own term) (i.e. not a composition of atomic conditions).   Todo:
-        handle the case where positive  condition is an exceptif...
-        condfition (so that two negations (performed by this function) will
+        (my own term) (i.e. not a composition of atomic conditions).   
+        
+        TODO:
+        handle the case where the specified "positiveCondition" is an exceptif...
+        condition (so that two negations (as performed by this function) will
         be the identity)
     #>
     
@@ -7903,7 +7913,9 @@ function Get-TransportRuleSpecsToEvaluateConditions {
 
         [switch] $doStampVersionHeader = $false,
 
-        [switch] $doNotDoCleanup = $false
+        [switch] $doNotCleanup = $false,
+
+        [switch] $doStageSpecificSignatureHeaders = $false
     )
 
    
@@ -7927,19 +7939,22 @@ function Get-TransportRuleSpecsToEvaluateConditions {
 
     $namesOfPartialSignatureHeaders = @(
         0..($conditions.Count) |%  {
-            "$($uniqueHeaderNamePrefix)-partial-signature$($_)"
+            if($doStageSpecificSignatureHeaders -and ($_ -le $conditions.Count)){
+                "$($uniqueHeaderNamePrefix)-partial-signature$($_)"
+            } else {
+                $nameOfConditionSignatureHeader
+            }
         }
     )
 
-    $namesOfPartialSignatureHeaders[$conditions.Count] = $nameOfConditionSignatureHeader
-    <# This brain damage (using a distinct header name for the i'th
-        partial signature header), seems to be encessary to avaoid
-        out-of-order rule evalutation that occurs if we try to us the
-        same single name for the signature header throught the entire
-        flow.
+    <# This brain damage (using a distinct header name for the i'th partial
+        signature header), seems to be encessary to avaoid out-of-order rule
+        evalutation that occurs if we try to us the same single name for the
+        signature header throught the entire flow.
 
-        $namesOfPartialSignatureHeaders[is the name of the header that
-        will contain the partial signature of the first i conditions
+        $namesOfPartialSignatureHeaders[$i] is the name of the header that will
+        contain the partial signature obtained by evaluating the first i
+        conditions
     #>
 
 
@@ -8118,8 +8133,12 @@ function Get-TransportRuleSpecsToEvaluateConditions {
                         HeaderMatchesPatterns       = @(
                             <# evidently, Exchange regards "^\s*\s*`$" as an
                             invalid regex, so we adapt:#>
-                            if($partialConditionSignature  -eq ""){"^w*`$"}
-                            else  {"^w*$($partialConditionSignature)w*`$"}
+                            ##if($partialConditionSignature  -eq ""){"^w*`$"}
+                            ##else  {"^w*$($partialConditionSignature)w*`$"}
+
+                            if($partialConditionSignature  -eq ""){"^\s*`$"}
+                            else  {"^\s*$($partialConditionSignature)\s*`$"}
+
                         )
                         <# we might get away doing this with HeaderContainsWords
                             instead -- I am just not sure that
@@ -8177,7 +8196,7 @@ function Get-TransportRuleSpecsToEvaluateConditions {
     }
       
 
-    if(-not $doNotDoCleanup){
+    if(-not $doNotCleanup){
         foreach($nameOfHeaderToBeRemoved in @($namesOfHeadersToBeRemovedDuringCleanup | select  -unique)){
             $transportRuleSpecs += @(     
                 @(
@@ -8195,7 +8214,258 @@ function Get-TransportRuleSpecsToEvaluateConditions {
     return $transportRuleSpecs
 }
 
+function Set-GroupNameMangling {
+    <# 
+        .DESCRIPTION
+        ensures that the values of the identifiers of all distribution  groups
+        do (or do not -- depending on $manglingDesired) start with the
+        herein-hardcoded manglingPrefix.
 
+        This is useful when you want to create a transport rule that refers to
+        groups (or even create any transport rule (even one that has nothing to
+        do with groups) when a group-referencing transport rule happens to
+        already exist), which Exchange Online makes difficult: you run this
+        function with -desiredMangling:$true to mangle the group names, make
+        your modifications to the transport rules (using the unmangled smtp
+        address of the group), then run this function again with
+        -desiredMAngling:$false to unmangle the group names.
+
+        This scheme will be a boon when you want to have a transport rule that
+        has an SentTo predicate or a RedirectMesssageTo action that references a
+        group, but I am not sure exactly how such a process will affect an
+        attempt to make a transport rule that has an "is sent to a member of a
+        group" (or similar).  In the invocation of New-TransportRule (or
+        Set-TransportRule), you would have to use some identifier for the group
+        that New-TransportRule (or Set-TransportRule) would accept (i.e. not
+        throw an error about) while group names were mangled, and which would
+        result in a transport rule that would give the desired behavior once
+        group names had been unmangled.  I am hoping that we could use an
+        identifier like the GUID, that is unaffected (and does not need to be
+        affected) by the mangling process. The only question is whether Exchange
+        would resolve the GUID  to an smtp address at the time of transport rule
+        creation or, alternatively, at the time of transport-rule evalutation.
+        If the former, then we'd have difficulty creating a transport rule  with
+        an isSentToAMemberOf predicate (or similar).
+
+        TODO: We are currently (as of 2025-03-08-1336) only handling
+        unifiedGroups.  We ought to extend this to other types of distribution
+        group.
+
+        TODO: We are currently (as of 2025-03-08-1337) probably not dealing with
+        all possible $namesOfIdentifiers (i.e. the fields whose values you can
+        pass as the -Identity parameter to Get-UnifiedGroup,  Get-Recipient,
+        etc. (and other similar  Exchange Online Powershell functions) to return
+        the object in question.  In practice, we only care about identifiers
+        that might ever resemble an smtp address, because it is the smtp address
+        of a group that we wish to insert into the definition of a transport
+        rule (at least for my particular current application as of
+        2025-03-08-1339).  
+
+        For example, the "Name" property of a unified group.  Get-UnifiedGroup
+        considers the "Name" property as one possible "Identity" of a
+        unifedGroup, but we are not currently (as of 2025-03-08-1348) mangling
+        the Name property asa part of our mangling process (mainly because
+        Set-UnifiedGroup cannot modify the Name of a unified group (I suspect
+        you'd have to use the Microsoft Graph API to do it)) 
+
+        This name-mangling scheme might not work when applied to Microsoft 365
+        Groups that have isAssignableToRole being true.  Such groups are strange
+        objects, and are subject to some weird restrictions (e.g. not being able
+        to modify the smtp address after creation -- which would of course
+        prevent us from achieving complete name mangling, because the smtp
+        address is one of the identifiers of a group).  I suspect that a lot of
+        the counter-intutive restrictions with Microsoft 365 Groups (like the
+        restrictions that apply to a group having isAssignableToRole being true,
+        and the restriction that a Microsoft 365 Group can neither be a member
+        of a group nor have a group as a member) are motivated by a concern for
+        security.  The system seems to be designed with the goal of  eliminating
+        any possibility of inadvertently granting administrative rights to a
+        user (including the (administrative) right to grant administrative
+        rights to other users); any group construct that is even remotely
+        involved in conferring administrative rights (like a group having
+        isAssignableToRole being true) is severely restricted.  These
+        restrictions certainly interfere with intuitive usability of groups, and
+        I wonder whether there might be some more elegant and intuitive way to
+        achieve tight security.
+
+        MAYBE TODO: allow control over which groups are processed, rather than
+        blindly processing all groups.
+
+        MAYBE TODO: allow control over the manglingPrefix, rather than using a
+        built-in hardcoded value.
+
+    #>
+    [CmdletBinding()]
+    Param(
+        [bool] $manglingDesired = $true
+    )
+    $manglingPrefix = "485247d-mangled-"
+
+    $namesOfIdentifiers = @(
+        'PrimarySmtpAddress'
+        'DisplayName'
+        'Alias'
+
+        ##  'Name'
+    )
+
+    $unifiedGroupsToProcess = @(Get-UnifiedGroup -ResultSize:Unlimited)
+
+    foreach($unifiedGroup in $unifiedGroupsToProcess){
+        $unmangledIdentity  =  @{}
+        $mangledIdentity  =  @{}
+        
+        foreach($nameOfIdentifier  in  $namesOfIdentifiers){
+            $match = [regex]::Match(
+                <#### string input: #>
+                ## ($(Get-UnifiedGroup -Identity $unifiedGroup.GUID).$nameOfIdentifier) ,
+                <#  I can probably get away without re-looking-up the unified
+                    group, since we just looked it up above, and haven't yet
+                    modified it 
+                #>
+                ($unifiedGroup.$nameOfIdentifier),
+
+                <#### string pattern: #>
+                ## "(?i)^(?<prefix>(?:$([regex]::Escape($manglingPrefix)))*)(?<unmangledValue>.*)`$"
+                ## "(?i)^(?<prefix>(?:$([regex]::Escape($manglingPrefix)))?)(?<unmangledValue>.*)`$"
+                <#  It might make sense to detect arbitrarily many occurences of
+                    the mangling prefix rather than only zero or one occurence
+                    (asterisk vs. question mark in the "prefix" matching group
+                    in the regex).  If  we detect arbitrarily many occurences,
+                    then we can say that a value is mangled if and only if it
+                    starts with the mangling prefix.
+
+                    In  practice, it would probably suffice to detect only zero
+                    or one occurences of the mangling prefix at the beginning of
+                    the string (because what are the odds we'd ever have two
+                    occurences by chance...).  However, I like detecting
+                    arbitrarily many occurences of the mangling string because
+                    it makes the logic cleaner to think about, and because I can
+                    imagine things going haywire with the mangling process
+                    (getting interrupted and having to restart, perhaps) such
+                    that we accidentally insert two occurences of the mangling
+                    prefix.  Detecting arbitrarily many occurences of the
+                    mangling prefix will help correct such accidents on
+                    subsequent runs.  Of course, it also means that we can never
+                    legitimately have an (unmangled) identifier value thaat
+                    starts with the mangling prefix.  But this is not a huge
+                    loss, because the mangling prefix is, by design,  so weird
+                    and obscure that you wouold never want to have a legitimate
+                    identifier value that started with the mangling prefix.
+                #>
+                "(?i)^(?<prefix>(?:$([regex]::Escape($manglingPrefix)))*)(?<unmangledValue>.*)`$"
+            )
+
+            $unmangledValue  = $($match.Groups['unmangledValue'].Value)
+            
+            $unmangledIdentity[$nameOfIdentifier] = "$($unmangledValue)"
+            $mangledIdentity[$nameOfIdentifier]   = "$($manglingPrefix)$($unmangledValue)"
+        }
+
+        if($manglingDesired){
+            Set-UnifiedGroup -Identity $unifiedGroup.GUID  @mangledIdentity
+            Set-UnifiedGroup -Identity $unifiedGroup.GUID  -EmailAddresses @{remove=@($unmangledIdentity.PrimarySmtpAddress)}
+        } else  {
+            Set-UnifiedGroup -Identity $unifiedGroup.GUID  @unmangledIdentity
+            Set-UnifiedGroup -Identity $unifiedGroup.GUID  -EmailAddresses @{remove=@($mangledIdentity.PrimarySmtpAddress)}
+        }
+    }
+}
+
+Set-Alias Install-TransportRules  Install-TransportRule
+function Install-TransportRule {
+    <# 
+        .DESCRIPTION
+        Takes a sequence of $transportRuleSpecs.  A transportRuleSpec is a
+        hasahtable that contains a partial set of arguments for
+        New-TransportRule, omitting only Name, Priority, Enabled, and Mode.   A
+        transportRuleSpec is the pure business of a transport rule -- the
+        condition and the action -- and none of the metadata.
+
+        Takes a rootPathOfTransportRules which is a path-style (i.e.
+        slash-delimited) prefix for the names of transport rules.   We will
+        regard every transport rule whose name is a subpath of
+        rootPathOfTransportRules to be our business.  We will  delete any suich
+        existing transport rules and create zero or more new transport rules
+        whose names are in this rootPathOfTransportRules.
+    #>
+
+    [CmdletBinding()]
+    Param(
+        [string] $rootPath,
+
+        [System.Collections.Generic.List[Hashtable]] $transportRuleSpecs = @(),
+
+        [switch] $noGroupNameMangling = $false
+    )
+    if(-not $rootPath){$rootPath = "/$(new-guid)"}
+
+    ##  $uniquePrefixForTransportRules    = "$(new-guid)"
+    ##  $rootPath =  (@(
+    ##      ""
+    ##      $uniquePrefixForTransportRules
+    ##  ) -join "/").ToLower()
+
+    .{#  delete our existing transport rules 
+        &{# delete our existing transport rules
+            write-host "deleting our existing transport rules if any"
+            $ourExistingTransportRules = @(
+                Get-TransportRule -ResultSize "Unlimited"  |
+                ? {
+                    $_.Name  -match 
+                    (-join @(
+                        "(?i)^"
+                        [regex]::Escape($rootPath)
+                        "(`$|/).*"
+                    ))
+                }
+            )
+    
+            write-information "deleting $($ourExistingTransportRules.Count) existing transport rules"
+
+
+            $ourExistingTransportRules | 
+            %{
+                write-information "removing existing transport rule '$($_.Name)'."
+                Remove-TransportRule -Confirm:$false -Identity $_
+            }
+
+            write-information "finished deleting our existing transport rules"
+        }
+    
+    }  
+    
+    write-information  "creating $($transportRuleSpecs.Count) transport rules"
+    if(-not $noGroupNameMangling){
+        write-information "mangling group names"
+        Set-GroupNameMangling -manglingDesired:$true
+    }
+    $transportRuleIndex = 0
+    foreach($transportRuleSpec in $transportRuleSpecs){
+        @(
+            @{
+                #  ====== parameters that are neither condition nor action: ====== 
+                Name = (@($rootPath;$transportRuleIndex) -join "/" )
+                Priority              = $transportRuleIndex
+                Enabled               = $True
+                ## Comments              = ""
+                Mode                  = "Enforce"
+            } 
+            $transportRuleSpec
+            $commonCondition
+        )|Merge-HashTables  |
+        % {
+            write-information "creating the transport rule '$($_['Name'])'"
+            New-TransportRule @_
+        } | out-null
+        $transportRuleIndex += 1
+    }
+    if(-not $noGroupNameMangling){
+        write-information "unmangling group names"
+        Set-GroupNameMangling -manglingDesired:$false
+    }
+    write-information  "finished creating transport rules"
+}
 
 function  New-UserFriendlyPassword {
     <# depends on the MlkPwgen powershell module (https://github.com/mkropat/MlkPwgen) #>
