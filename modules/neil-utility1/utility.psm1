@@ -8518,6 +8518,12 @@ function Install-TransportRule {
         rootPathOfTransportRules to be our business.  We will  delete any suich
         existing transport rules and create zero or more new transport rules
         whose names are in this rootPathOfTransportRules.
+
+        MAYBE TODO: look at the existing transport rules and the to-be-installed
+        transport rules and figure out the minimal set of groups that need to be
+        mangled in order to allow the desired change to the transport rules to
+        succeed. Then, only mangle/unmangle those groups.  This would reduce the
+        wait time.
     #>
 
     [CmdletBinding()]
@@ -8526,7 +8532,7 @@ function Install-TransportRule {
 
         [System.Collections.Generic.List[Hashtable]] $transportRuleSpecs = @(),
 
-        [switch] $noGroupNameMangling = $false
+        [switch] $groupNameMangling = $false
     )
     if(-not $rootPath){$rootPath = "/$(new-guid)"}
 
@@ -8566,7 +8572,7 @@ function Install-TransportRule {
     }  
     
     write-information  "creating $($transportRuleSpecs.Count) transport rules"
-    if($transportRuleSpecs  -and  (-not $noGroupNameMangling)){
+    if($transportRuleSpecs  -and  ($groupNameMangling)){
         write-information "mangling group names"
         Set-GroupNameMangling -manglingDesired:$true
     }
@@ -8590,7 +8596,6 @@ function Install-TransportRule {
         } | out-null
         $transportRuleIndex += 1
     }
-    ##if($transportRuleSpecs  -and  (-not $noGroupNameMangling)){
     if(
         ## $transportRuleSpecs  -and 
         <#  We are intentionally unmangling here even if transportRuleSpecs is
@@ -8602,10 +8607,10 @@ function Install-TransportRule {
             take to mangle (or unmangle) all the groups.
         #>
 
-        <# Never ming -- I can't stand  the wait: #>
+        <# Never mind -- I can't stand  the wait: #>
         $transportRuleSpecs  -and 
 
-        (-not $noGroupNameMangling)
+        ($groupNameMangling)
     ){
 
         write-information "unmangling group names"
