@@ -8602,6 +8602,9 @@ function Install-TransportRule {
             take to mangle (or unmangle) all the groups.
         #>
 
+        <# Never ming -- I can't stand  the wait: #>
+        $transportRuleSpecs  -and 
+
         (-not $noGroupNameMangling)
     ){
 
