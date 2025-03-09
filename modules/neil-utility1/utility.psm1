@@ -8245,7 +8245,20 @@ function Set-GroupNameMangling {
         would resolve the GUID  to an smtp address at the time of transport rule
         creation or, alternatively, at the time of transport-rule evalutation.
         If the former, then we'd have difficulty creating a transport rule  with
-        an isSentToAMemberOf predicate (or similar).
+        an isSentToAMemberOf predicate (or similar).   (TODO:  figure out when
+        exactly the string passed as the -SentTo or  -SentoToAMemberOf (or
+        similar) parameter to NEw-TransportRule (or Set-TransportRule) is
+        resolved to a known recipient -- does this happen at rule-creation time
+        or at rule-evaluation time?).
+
+        You can pretty-well work around the group-reference restriction (thereby
+        eliminating the need for all of this name-mangling rigamarole) in the
+        case of a SentTo predicate, by using a RecipientAddressMatchesPatterns
+        predicate instead.  However, there does not seem to be any analagous
+        workaround in the case of a RedirectMessageTo action or a BlindCopyTo
+        action.  (TODO: experiment to confirm this  -- maybe wrapping the
+        address in angle brackets or prefixing with "smtp:" or using a
+        plus-address might do the trick.)
 
         TODO: We are currently (as of 2025-03-08-1336) only handling
         unifiedGroups.  We ought to extend this to other types of distribution
@@ -8294,16 +8307,42 @@ function Set-GroupNameMangling {
         MAYBE TODO: allow control over the manglingPrefix, rather than using a
         built-in hardcoded value.
 
-        MAYBE TODO: After modifying the groups, wait until the changes sink in
-        (i.e. wait until the old identifier values will no longer retrieve the
-        group when passed as the -Identity paramter to Get-UnifiedGroup,
-        Get-Recipient, and the similar Exchange Online Powershell functions.)
-        If you mangle a group name and then immediately (within a few seconds)
-        attempt to create a transport rule whose succesfull creation depends on
-        the name mangling, the attempt to create the transport rule sometimes
-        fails because the name-mangling has not completely propagated.
+        MAYBE TODO [DONE 2025-03-08-1450]: After modifying the groups, wait
+        until the changes sink in (i.e. wait until the old identifier values
+        will no longer retrieve the group when passed as the -Identity paramter
+        to Get-UnifiedGroup, Get-Recipient, and the similar Exchange Online
+        Powershell functions.) If you mangle a group name and then immediately
+        (within a few seconds) attempt to create a transport rule whose
+        succesfull creation depends on the name mangling, the attempt to create
+        the transport rule sometimes fails because the name-mangling has not
+        completely propagated.
 
     #>
+
+
+
+    <#  Comment from an early variation of this function:
+
+        Exchange Online powershell (or maybe Exchange Online itself), prevents
+        us from creating a transport rule that has either a SentTo condition or
+        a RedirectMessageTo action that references a distribution group.
+        However, Exchange Online is perfectly happy to have such a rule (once
+        the rule exists), and the rule does behave as expected, and as desired
+        in our application.  The only trick is how to convince Exchange Online
+        to  let us create the rule in the first place.
+
+        Therefore, we must contrive that, at the instant when we create the
+        rule, no distribution group identified by our desired SentTo value or
+        our desired RediretMessageTo value exists.   We can do this by
+        temporarily ensuring that the email address in question does not belong
+        to the group, either as a primary or a non-primary address.  We will do
+        this by temporarily changing any matching address belonging to our group
+        (or I suppose, more generally, any group, but in this case it suffices
+        to look only at the group we're currently dealing with) by prepending
+        $setasidePrefix .
+    #>
+            
+
     [CmdletBinding()]
     Param(
         [bool] $manglingDesired = $true
@@ -8320,7 +8359,12 @@ function Set-GroupNameMangling {
 
     $unifiedGroupsToProcess = @(Get-UnifiedGroup -ResultSize:Unlimited)
 
+    ##$identitiesWeWantToBeUnresolvable  = @()
+    $desiredIdentityToGuidMap  = @{}
+
     foreach($unifiedGroup in $unifiedGroupsToProcess){
+        write-information "now $($manglingDesired ? "mangling" : "unmangling") the group '$($unifiedGroup.PrimarySmtpAddress)'."
+        
         $unmangledIdentity  =  @{}
         $mangledIdentity  =  @{}
         
@@ -8371,14 +8415,91 @@ function Set-GroupNameMangling {
             $mangledIdentity[$nameOfIdentifier]   = "$($manglingPrefix)$($unmangledValue)"
         }
 
-        if($manglingDesired){
-            Set-UnifiedGroup -Identity $unifiedGroup.GUID  @mangledIdentity
-            Set-UnifiedGroup -Identity $unifiedGroup.GUID  -EmailAddresses @{remove=@($unmangledIdentity.PrimarySmtpAddress)}
-        } else  {
-            Set-UnifiedGroup -Identity $unifiedGroup.GUID  @unmangledIdentity
-            Set-UnifiedGroup -Identity $unifiedGroup.GUID  -EmailAddresses @{remove=@($mangledIdentity.PrimarySmtpAddress)}
+        $desiredIdentity   = $($manglingDesired  ?   $mangledIdentity :  $unmangledIdentity)
+        $undesiredIdentity = $($manglingDesired  ? $unmangledIdentity :    $mangledIdentity)
+
+
+        Set-UnifiedGroup -Identity $unifiedGroup.GUID  @desiredIdentity
+        Set-UnifiedGroup -Identity $unifiedGroup.GUID  -EmailAddresses @{remove=@($undesiredIdentity.PrimarySmtpAddress)}
+        ##$identitiesWeWantToBeUnresolvable += $undesiredIdentity
+
+        foreach($value in $desiredIdentity.Values){
+            $desiredIdentityToGuidMap[$value] = $unifiedGroup.GUID
+        }
+        foreach($value in $undesiredIdentity.Values){
+            $desiredIdentityToGuidMap[$value] = $null
         }
     }
+
+    $maximumAllowedWaitDuration = $(new-timespan -minutes 3)
+    $holdOffDuration            = $(new-timespan -seconds 8)
+    $extraWaitDuration          = $(new-timespan -seconds 5)
+    $waitStartTime              = $(get-date)
+    ##  write-information "waiting up to $($maximumAllowedWaitDuration) for there to be no unifiedGroup having identity '$($permanentPrimarySmtpAddress)'."
+    while(
+        ((get-date) -lt ($waitStartTime + $maximumAllowedWaitDuration))
+    ){
+        ##  $resolvableIdentifierValues = @(
+        ##      @(
+        ##          $identitiesWeWantToBeUnresolvable |
+        ##          % {$_.Values} |
+        ##          ? {$_} |
+        ##          ?{
+        ##              @(
+        ##                  @(
+        ##                      $(get-unifiedgroup -identity $_ -erroraction silentlycontinue)
+        ##                      $(get-recipient -identity $_ -erroraction silentlycontinue)
+        ##                  ) |? {$_}
+        ##              )
+        ##          }
+        ##      )
+        ##  )
+
+        $actualIdentityToGuidMap = @{}
+        $failingKeys = @()
+        write-information "$(get-date -format o): evaluating resolvability of the identifiers."
+        foreach($key in $desiredIdentityToGuidMap.Keys){
+            $actualIdentityToGuidMap[$key] = $(
+                $(
+                    $(get-unifiedgroup -identity $key -erroraction silentlycontinue) ?? 
+                    $(get-recipient -identity $key -erroraction silentlycontinue)
+                ).GUID
+            )
+            if($desiredIdentityToGuidMap[$key] -ne $actualIdentityToGuidMap[$key]){
+                $failingKeys += $key
+            }
+        }
+
+        
+
+        if(-not $failingKeys){
+            write-information "$(get-date -format o): all identifiers, mangled and unmangled, have the desired resolvability.  Hooray."
+            break
+        }
+        write-information (-join @(
+            "$(get-date -format o): Unfortunately, the following $($failingKeys.Count) identifiers do not "
+            "have the desired resolvability: "
+            "$( $failingKeys  | sort | join-string -separator ", " )"
+        ))
+        write-information (-join @(
+            "$(get-date -format o): waiting "
+            ## "(until $(get-date ($waitStartTime + $maximumAllowedWaitDuration) -format o )) "
+            "up to $($maximumAllowedWaitDuration) "
+            "for the desired resolvability to obtain."
+        ))
+        start-sleep -duration $holdOffDuration
+
+        <#  MAYBE TODO: throw an error (or at least a more attention-grabbing
+            warning message) any of the $identitiesWeWantToBeUnresolvable are still
+            resolvable after $maximumAllowedWaitDuration is up. 
+        #>
+        <#  MAYBE TODO [DONE]: check that all expected new identifiers resolve
+            correctly to the expected group. 
+        #>
+    }
+    start-sleep -duration $extraWaitDuration
+
+
 }
 
 Set-Alias Install-TransportRules  Install-TransportRule
@@ -8445,7 +8566,7 @@ function Install-TransportRule {
     }  
     
     write-information  "creating $($transportRuleSpecs.Count) transport rules"
-    if(-not $noGroupNameMangling){
+    if($transportRuleSpecs  -and  (-not $noGroupNameMangling)){
         write-information "mangling group names"
         Set-GroupNameMangling -manglingDesired:$true
     }
@@ -8469,7 +8590,21 @@ function Install-TransportRule {
         } | out-null
         $transportRuleIndex += 1
     }
-    if(-not $noGroupNameMangling){
+    ##if($transportRuleSpecs  -and  (-not $noGroupNameMangling)){
+    if(
+        ## $transportRuleSpecs  -and 
+        <#  We are intentionally unmangling here even if transportRuleSpecs is
+            empty. This helps ensure that running Install-TransportRules with
+            noGroupMangling:$false will always (attempt to) leave groups
+            unmangled.   This could help recover from  accidentally-leftover
+            mangling in some situations.  the only downsideis the
+            agonizingly-long time (on the order of 20 seconds per group) it can
+            take to mangle (or unmangle) all the groups.
+        #>
+
+        (-not $noGroupNameMangling)
+    ){
+
         write-information "unmangling group names"
         Set-GroupNameMangling -manglingDesired:$false
     }
