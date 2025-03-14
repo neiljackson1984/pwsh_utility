@@ -6575,7 +6575,7 @@ function Get-SelfElevatingScriptBlock {
 
 
     $elevatingPreamble  =  {
-
+        $informationPreference  = 'Continue'
         # elevate thineself:
 
         if (
@@ -8642,4 +8642,58 @@ function  New-UserFriendlyPassword {
             % {$_.ToLower()}
         )
     )
+}
+
+
+function Convert-ToBase64EncodedCliXml {
+    [CmdletBinding()]
+    [OutputType([String])]
+    Param(
+        [Parameter(Mandatory=$true)]
+        [Object] $inputObject
+    )
+
+    [System.Convert]::ToBase64String(
+        [System.Text.Encoding]::UTF8.GetBytes((
+            $(
+                switch('strategy2'){
+                    strategy1 {
+                        $(
+                            $pathOfTemporaryClixmlFile = (join-path $env:temp "$(new-guid).xml")
+                            Export-CliXml -Path $pathOfTemporaryClixmlFile -InputObject $inputObject | out-null
+                            gc -raw $pathOfTemporaryClixmlFile 
+                        )
+                    }
+                    strategy2 {
+                        ConvertTo-CliXml -Depth 30 -InputObject $inputObject
+                    }
+                }
+            )
+        ))
+    )
+}
+
+function Convert-FromBase64EncodedCliXml {
+    [CmdletBinding()]
+    [OutputType([Object])]
+    Param(
+        [Parameter(Mandatory=$true)]
+        [String] $base64EncodedCliXml
+    )
+    $cliXml = (
+        [System.Text.Encoding]::UTF8.GetString(
+            [System.Convert]::FromBase64String($base64EncodedCliXml)
+        )
+    )
+
+    switch('strategy2'){
+        strategy1 {
+            $pathOfTemporaryClixmlFile = (join-path $env:temp "$(new-guid).xml")
+            Set-Content -Path $pathOfTemporaryClixmlFile -Value $cliXml
+            $(Import-Clixml -Path $pathOfTemporaryClixmlFile)
+        }
+        strategy2 {
+            ConvertFrom-CliXml -InputObject $cliXml
+        }
+    }
 }

@@ -87,6 +87,9 @@ function Initialize-RemoteSessions {
 
     $namesOfFunctionsToImport += @(
         "addEntryToSystemPathPersistently"
+        "blipnetworkadapter"
+        "Convert-FromBase64EncodedCliXml"
+        "Convert-ToBase64EncodedCliXml"
         "cslmgr"
         "Disable-IPv6"
         "Disable-UserAccountControl"
