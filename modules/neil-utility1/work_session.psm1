@@ -126,6 +126,7 @@ function Initialize-RemoteSessions {
         "runInActiveSession"
         "Select-Enumerated"
         "select-single"
+        "select-singleordefault"
         "sendKeystrokesToVm"
         "set-ipv6"
         "Set-LocalAccountTokenFilterPolicy"
