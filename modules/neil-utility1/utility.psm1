@@ -2131,17 +2131,15 @@ function setLicensesAssignedToMgUser{
 
             Update-MgUser -UserId $mgUser.Id -UsageLocation $newUsageLocation 1> $null
         }
+        write-information "ahoo"
+        write-information "$($skuIdsToRemoveFromUser.GetType().FullName)"
+        write-information "$($skuIdsToRemoveFromUser.Count)"
 
-
-
-        @(
-            @{UserId = $mgUser.Id}
-            if($true -or $skuIdsToRemoveFromUser){
-                @{RemoveLicenses = $skuIdsToRemoveFromUser}
-            }
-            
-            if($true -or $desiredSkuIds){
-                @{AddLicenses = (
+        if($false){
+            @(
+                @{UserId = $mgUser.Id}
+                @{removeLicenses = $skuIdsToRemoveFromUser}
+                @{addLicenses = (
                         ## it doesn't hurt to have a license here that the user already has.  The 
                         ## DisabledPlans property will be updated to match whatever we give here.
 
@@ -2166,10 +2164,208 @@ function setLicensesAssignedToMgUser{
                         )
                     )
                 }
+            ) | merge-hashtables | 
+            % { Set-MgUserLicense @_ } 1> $null
+        }
+
+        if($false){
+            foreach($param in @(
+                    @{RemoveLicenses = $skuIdsToRemoveFromUser}
+                    @{AddLicenses = (
+                        ## it doesn't hurt to have a license here that the user already has.  The 
+                        ## DisabledPlans property will be updated to match whatever we give here.
+
+                        # [IMicrosoftGraphAssignedLicense[]]
+                        @(
+                            $desiredSkuIds | 
+                            % {
+                                $skuId = $_
+                                $mgSubscribedSku = $allMgSubscribedSkus |? { $_.SkuId -eq  $skuId }
+                                
+                                # [IMicrosoftGraphAssignedLicense] 
+                                @{
+                                    DisabledPlans = @(
+                                        $mgSubscribedSku.ServicePlans |
+                                        select -expand ServicePlanId |
+                                        ? {-not ($_ -in $desiredIdsOfEnabledServicePlans)}
+                                    )
+                                    SkuId = $mgSubscribedSku.SkuId
+                                }
+
+                            }
+                        )
+                    )
+                }
+            )){
+                @(
+                    @{UserId = $mgUser.Id}
+                    $param
+                ) | merge-hashtables | 
+                % { Set-MgUserLicense @_ } 1> $null
             }
+        }
+
+        if($false){
+            @(
+                @{UserId = $mgUser.Id}
+                
+                @{
+                    BodyParameter = @{
+                        ##removeLicenses = $(if($skuIdsToRemoveFromUser.Count -gt 0){$skuIdsToRemoveFromUser} else {$null})
+                        removeLicenses = $skuIdsToRemoveFromUser
+                        addLicenses = (
+                            <# it doesn't hurt to have a license here that the user already has.  The 
+                                DisabledPlans property will be updated to match whatever we give here. 
+                            #>
+
+                            # [IMicrosoftGraphAssignedLicense[]]
+                            @(
+                                $desiredSkuIds | 
+                                % {
+                                    $skuId = $_
+                                    $mgSubscribedSku = $allMgSubscribedSkus |? { $_.SkuId -eq  $skuId }
+                                    
+                                    # [IMicrosoftGraphAssignedLicense] 
+                                    @{
+                                        disabledPlans = @(
+                                            $mgSubscribedSku.ServicePlans |
+                                            select -expand ServicePlanId |
+                                            ? {-not ($_ -in $desiredIdsOfEnabledServicePlans)}
+                                        )
+                                        skuId = ([guid] $mgSubscribedSku.SkuId)
+                                    }
+
+                                }
+                            )
+                        )
+                    }
+                }
+            ) | merge-hashtables | 
+            % { Set-MgUserLicense @_ } 1> $null
+        }
+
+        if($false){
+            $response = @{
+                Method = "POST"
+                Uri = "v1.0/users/$($mgUser.Id)/assignLicense"
+                Body = @{
+                    removeLicenses = $skuIdsToRemoveFromUser
+                    addLicenses = (
+                        <# it doesn't hurt to have a license here that the user already has.  The 
+                            DisabledPlans property will be updated to match whatever we give here. 
+                        #>
+
+                        # [IMicrosoftGraphAssignedLicense[]]
+                        @(
+                            $desiredSkuIds | 
+                            % {
+                                $skuId = $_
+                                $mgSubscribedSku = $allMgSubscribedSkus |? { $_.SkuId -eq  $skuId }
+                                
+                                # [IMicrosoftGraphAssignedLicense] 
+                                @{
+                                    DisabledPlans = @(
+                                        $mgSubscribedSku.ServicePlans |
+                                        select -expand ServicePlanId |
+                                        ? {-not ($_ -in $desiredIdsOfEnabledServicePlans)}
+                                    )
+                                    SkuId = ([guid] $mgSubscribedSku.SkuId)
+                                }
+
+                            }
+                        )
+                    )
+                }
+            } |% { Invoke-MgGraphRequest @_ }
+        }
+        <# see (https://github.com/microsoftgraph/msgraph-sdk-powershell/issues/3229) #>
+
+        ##  works: 
+        if($true){
+            $response = @{
+                Method = "Get"
+                Uri = "v1.0/subscribedSkus"
+                OutputType = 'HttpResponseMessage'
+            } |% { Invoke-MgGraphRequest @_ }
+            $authorizationHeaderValue = $response.RequestMessage.Headers.Authorization
             
-        ) | merge-hashtables | 
-        % { Set-MgUserLicense @_ } 1> $null
+            foreach($body in @(
+                    ## @{
+                    ##     RemoveLicenses = @(
+                    ##         
+                    ##         @(
+                    ##             $skuIdsToRemoveFromUser
+                    ##             $desiredSkuIds
+                    ##         ) | 
+                    ##         select -unique
+                    ##     )
+                    ##     AddLicenses  = @()
+                    ##     
+                    ## }
+                    @{
+                        RemoveLicenses  = @($skuIdsToRemoveFromUser)
+                        AddLicenses = (
+                            ## it doesn't hurt to have a license here that the user already has.  The 
+                            ## DisabledPlans property will be updated to match whatever we give here.
+
+                            # [IMicrosoftGraphAssignedLicense[]]
+                            @(
+                                $desiredSkuIds | 
+                                % {
+                                    $skuId = $_
+                                    $mgSubscribedSku = $allMgSubscribedSkus |? { $_.SkuId -eq  $skuId }
+                                    
+                                    # [IMicrosoftGraphAssignedLicense] 
+                                    @{
+                                        
+                                        disabledPlans = @(
+                                            $mgSubscribedSku.ServicePlans |
+                                            select -expand ServicePlanId |
+                                            ? {-not ($_ -in $desiredIdsOfEnabledServicePlans)}
+                                        )
+
+                                        skuId = $mgSubscribedSku.SkuId
+                                        <#  2025-03-23-1756:  If either of the
+                                            keys "skuId" or "disabledPlans" is
+                                            changed so that the first letter is
+                                            capitalized, the call fails.  I
+                                            suspect that this is a new
+                                            development, and I suspect that this
+                                            might be responsible for the error
+                                            which I have been encountering when
+                                            trying to call Set-MgUserLicense,
+                                            and which I believe is the same
+                                            error as that described at
+                                            (https://github.com/microsoftgraph/msgraph-sdk-powershell/issues/3229).
+                                        #>
+                                    }
+
+                                }
+                            )
+                        )
+                }
+            )){
+                ## $response = @{
+                ##     Method = "POST"
+                ##     Uri = "v1.0/users/$($mgUser.Id)/assignLicense"
+                ##     Body = $body
+                ## } |% { Invoke-MgGraphRequest @_ }
+
+
+                $response = @{
+                    Uri        = "https://graph.microsoft.com/v1.0/users/$($mgUser.Id)/assignLicense"
+                    Method     = "POST"
+                    ContentType = "application/json"
+                    Headers  = @{
+                        Authorization = $authorizationHeaderValue
+                    }
+                    Body = $body | convertto-json -depth 50
+                } | % {Invoke-WebRequest @_}
+            }
+
+            <#  #>
+        }
+
 
 
         $finalSkuIds = @(
@@ -7601,56 +7797,116 @@ function Show-MicrosoftGraphLicenseReport {
     ## connectToOffice365 -bitwardenItemIdOfTheConfiguration $companyParameters['idOfBitwardenItemContainingMicrosoftGraphManagementConfiguration']
 
 
-    $mgSubscribedSkus = @((Get-MgSubscribedSKU -Property * ))
+   ##  $mgSubscribedSkus = @((Get-MgSubscribedSKU -Property * ))
 
+    <# see (https://learn.microsoft.com/en-us/entra/identity/users/licensing-service-plan-reference) #>
+    $urlOfProductNamesAndServicePlansCsvFile = "https://download.microsoft.com/download/e/3/e/e3e9faf2-f28b-490a-9ada-c6089a1fc5b0/Product%20names%20and%20service%20plan%20identifiers%20for%20licensing.csv"
+    $productNamesAndServicePlansTable = (import-csv (downloadFileAndReturnPath $urlOfProductNamesAndServicePlansCsvFile))
 
+    $servicePlanNamesByServicePlanId =  @{}
 
     $data = @(
-        Get-MgUser  |
-        ? {(Get-MgUser -UserId $_.Id -Property "AssignedLicenses").AssignedLicenses} | 
-        select-object @(
-            "UserPrincipalName"
-            "DisplayName"
-            @{
-                name="skuPartNumbers"
-                expression = {
-                    @(
-                        foreach($assignedLicense in (Get-MgUser -UserId $_.Id -Property "AssignedLicenses").AssignedLicenses){
-                            # @(Get-MgSubscribedSku | ? {$_.SkuId -eq $assignedLicense.SkuId})[0].SkuPartNumber
-                            skuIdToSkuPartNumber $assignedLicense.SkuId
-                        }
-                    ) | Sort
-                }
-            }
-            if($reportOnComponents){
-                @{
-                    name="servicePlans"
-                    expression = {
-                    @(
-                            @(
-                                
-                                foreach($assignedPlan in (Get-MgUser -UserId $_.Id -Property "AssignedPlans").AssignedPlans){
-                                    @(
-                                        # $assignedPlan.Service
-                                        "$($assignedPlan.Service) ($($assignedPlan.servicePlanId)): $($assignedPlan.CapabilityStatus)"
+        foreach($mgUser in @(Get-MgUser -all)){
+            $assignedLicenses  = $(
+                (
+                    Get-MgUser -UserId $mgUser.Id -Property "AssignedLicenses"
+                ).AssignedLicenses
+            )
+            $assignedPlans  = $(
+                (
+                    Get-MgUser -UserId $mgUser.Id -Property "AssignedPlans"
+                ).AssignedPlans
+            )
 
-                                        <#  see
-                                            [https://learn.microsoft.com/en-us/entra/identity/users/licensing-service-plan-reference]
-                                            for a list of servicePlan guids.  
-                                        #>
-                                        
-                                        # $mgSubscribedSkus.ServicePlans | 
-                                        #     ? { $_.ServicePlanId -eq $assignedPlan.ServicePlanId } |
-                                        #     % { $_.ServicePlanName } |
-                                        #     Select-Object -First 1
-                                    )
-                                } 
-                            ) | Select -Unique | Sort 
-                        ) -join "`n"
+            if(-not $assignedLicenses){continue}
+
+            
+            
+            ([pscustomobject] (
+                @(
+                    @{
+                        UserPrincipalName = $mgUser.UserPrincipalName
+                        DisplayName       = $mgUser.DisplayName
+                        skuPartNumbers = (
+                            @(
+                                foreach($assignedLicense in $assignedLicenses){
+                                    skuIdToSkuPartNumber $assignedLicense.SkuId
+                                }
+                            ) | sort
+                        )
+                    } 
+
+                    if($reportOnComponents){
+                        @{
+                            servicePlans = (
+                                @(
+                                    @(
+                                        foreach($assignedPlan in $assignedPlans){
+                                            if(-not $servicePlanNamesByServicePlanId.ContainsKey($assignedPlan.servicePlanId)){
+                                                $servicePlanNamesByServicePlanId[$assignedPlan.servicePlanId] =  @(
+
+                                                    $productNamesAndServicePlansTable |
+                                                    ? {$_.Service_Plan_Id -eq $assignedPlan.servicePlanId} |
+                                                    % { $_.Service_Plan_Name, $_.Service_Plans_Included_Friendly_Names }
+                                                    select -unique |
+                                                    sort
+                                                ) 
+                                            }
+                                            
+                                            
+
+                                            @(
+                                                # $assignedPlan.Service
+                                                ##"$($assignedPlan.Service) ($($assignedPlan.servicePlanId)): $($assignedPlan.CapabilityStatus)"
+                                                
+                                                (
+                                                    @(
+                                                        $assignedPlan.servicePlanId
+
+                                                        (-join @(
+                                                            "("
+                                                                @(
+                                                                    @(
+                                                                        $servicePlanNamesByServicePlanId[$assignedPlan.servicePlanId]
+                                                                        $assignedPlan.Service
+                                                                    ) |
+                                                                    select -unique  |
+                                                                    sort
+                                                                ) -join ", "
+                                                            ")"
+                                                        ))
+                                                        
+                                                        ": $($assignedPlan.CapabilityStatus)"
+                                                    ) -join "`t"
+                                                )
+
+                                                <#  see
+                                                    [https://learn.microsoft.com/en-us/entra/identity/users/licensing-service-plan-reference]
+                                                    for a list of servicePlan guids.  
+                                                #>
+                                                
+                                                # $mgSubscribedSkus.ServicePlans | 
+                                                #     ? { $_.ServicePlanId -eq $assignedPlan.ServicePlanId } |
+                                                #     % { $_.ServicePlanName } |
+                                                #     Select-Object -First 1
+                                            )
+                                        } 
+                                    ) | 
+                                    Select -Unique | 
+                                    Sort 
+                                ) -join "`n"
+                            ) 
+                        }
                     }
-                }
-            }
-        ) 
+                )  | merge-hashtables 
+            ) ) |
+            select @(
+                'UserPrincipalName'
+                'DisplayName'
+                'skuPartNumbers'
+                if($reportOnComponents){'servicePlans'}
+            )
+        }
     )
 
 
