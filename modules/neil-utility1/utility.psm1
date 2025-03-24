@@ -2131,9 +2131,9 @@ function setLicensesAssignedToMgUser{
 
             Update-MgUser -UserId $mgUser.Id -UsageLocation $newUsageLocation 1> $null
         }
-        write-information "ahoo"
-        write-information "$($skuIdsToRemoveFromUser.GetType().FullName)"
-        write-information "$($skuIdsToRemoveFromUser.Count)"
+        ## write-information "ahoo"
+        ## write-information "$($skuIdsToRemoveFromUser.GetType().FullName)"
+        ## write-information "$($skuIdsToRemoveFromUser.Count)"
 
         if($false){
             @(
