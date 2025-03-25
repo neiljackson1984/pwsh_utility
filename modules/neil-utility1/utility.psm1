@@ -7788,6 +7788,111 @@ function Enable-RemoteDesktop {
     Enable-NetFirewallRule -DisplayGroup "Remote Desktop"
 }
 
+function Get-MicrosoftProductNamesAndServicePlansTable {
+    [CmdletBinding()]
+    [OutputType([System.Collections.Generic.IEnumerable[HashTable]])]
+    param()
+    <# see (https://learn.microsoft.com/en-us/entra/identity/users/licensing-service-plan-reference) #>
+    $urlOfProductNamesAndServicePlansCsvFile = "https://download.microsoft.com/download/e/3/e/e3e9faf2-f28b-490a-9ada-c6089a1fc5b0/Product%20names%20and%20service%20plan%20identifiers%20for%20licensing.csv"
+    $productNamesAndServicePlansTableWithPossibleDuplicateRows = (import-csv (downloadFileAndReturnPath $urlOfProductNamesAndServicePlansCsvFile))
+
+    $groupedRows = @(
+        $productNamesAndServicePlansTableWithPossibleDuplicateRows | 
+        group -Property ($productNamesAndServicePlansTableWithPossibleDuplicateRows[0] | get-member -MemberType:NoteProperty | select -expand Name ) 
+    )
+
+    $productNamesAndServicePlansTable = @(
+        $groupedRows |
+        % {$_.Group[0]}
+    )
+
+    $groupsHavingDuplication  =  @($groupedRows |? {$_.Count -ne 1})
+
+    if($groupsHavingDuplication){
+        write-warning (-join @(
+            "found $($groupsHavingDuplication.Count) duplicate rows, "
+            "namely: "
+            @(
+                foreach($groupInfo in $groupsHavingDuplication ){
+                    ##Add-Member -PassThru -InputObject $groupInfo.Group[0].Clone() -NotePropertyMembers @{count = $groupInfo.Count}
+
+
+                    $groupInfo.Group[0] |
+                    select @(
+                        @{
+                            n="count"
+                            e={$groupInfo.Count}
+                        }
+                        ($groupInfo.Group[0] | get-member -MemberType:NoteProperty | select -expand Name | sort) 
+                    )
+                }
+            ) |
+            ft -auto |
+            out-string
+        ))
+    }
+
+    return $productNamesAndServicePlansTable
+}
+
+function Get-MicrosoftProductsTable {
+    [CmdletBinding()]
+    [OutputType([System.Collections.Generic.IEnumerable[HashTable]])]
+    param()
+    $productNamesAndServicePlansTable = Get-MicrosoftProductNamesAndServicePlansTable 
+
+
+    $productDatumsWithNonUniqueKeys = @()
+    $productsTable = @(
+        foreach($groupInfo in @($productNamesAndServicePlansTable | group GUID )){
+            $productKeys = @(
+                'Product_Display_Name'
+                'String_Id'
+                'GUID'
+            )
+
+            $productDatums = @(
+                $groupInfo.Group |
+                select $productKeys |
+                group $productKeys |
+                % {$_.Group[0]}
+            )
+
+
+            if($productDatums.Count -ne 1){
+                write-warning (-join @(
+                    "For product GUID '$($groupInfo.Name)', "
+                    "we were expecting to find exactly one (distinct) datum, "
+                    "but instead we found exactly $($productDatums.Count) datums."
+                ))
+                $productDatumsWithNonUniqueKeys += $productDatums
+                continue
+            }
+
+            $includedServicePlansIdsWithPossibleDuplicates = @(
+                $groupInfo.Group |% {$_.Service_Plan_Id} | sort
+            )
+
+            $includedServicePlansIds = @($includedServicePlansIdsWithPossibleDuplicates | select -unique |  sort)
+
+            if($includedServicePlansIdsWithPossibleDuplicates.Count -ne $includedServicePlansIds.Count){
+                write-warning (-join @(
+                    "For product GUID '$($groupInfo.Name)', "
+                    "we found $($includedServicePlansIdsWithPossibleDuplicates.Count - $includedServicePlansIds.Count) "
+                    "duplicate service plan ids."
+                ))
+            }
+
+            $productDatum = $productDatums[0]
+            Add-Member -InputObject $productDatum -NotePropertyMembers @{includedServicePlansIds = $includedServicePlansIds}
+            $productDatum
+        } 
+    )
+
+
+    return $productsTable
+}
+
 function Show-MicrosoftGraphLicenseReport {
     [CmdletBinding()]
     param(
@@ -7798,10 +7903,7 @@ function Show-MicrosoftGraphLicenseReport {
 
 
    ##  $mgSubscribedSkus = @((Get-MgSubscribedSKU -Property * ))
-
-    <# see (https://learn.microsoft.com/en-us/entra/identity/users/licensing-service-plan-reference) #>
-    $urlOfProductNamesAndServicePlansCsvFile = "https://download.microsoft.com/download/e/3/e/e3e9faf2-f28b-490a-9ada-c6089a1fc5b0/Product%20names%20and%20service%20plan%20identifiers%20for%20licensing.csv"
-    $productNamesAndServicePlansTable = (import-csv (downloadFileAndReturnPath $urlOfProductNamesAndServicePlansCsvFile))
+    $productNamesAndServicePlansTable = Get-MicrosoftProductNamesAndServicePlansTable 
 
     $servicePlanNamesByServicePlanId =  @{}
 
