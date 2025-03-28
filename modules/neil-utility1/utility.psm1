@@ -2587,7 +2587,10 @@ function grantUserAccessToMailbox(
 
 
     $mgUserToBeGrantedAccess = Get-MgUser -UserId $idOfUserToBeGrantedAccess
-    $mailbox = Get-Mailbox -ID $idOfMailbox
+    $mailbox = $( 
+        $(Get-Mailbox -identity $idOfMailbox) ?? 
+        $(Get-Mailbox -PublicFolder -identity $idOfMailbox)
+    )
 
     Write-Information "now giving the user $($mgUserToBeGrantedAccess.UserPrincipalName) full access to the mailbox $($mailbox.PrimarySmtpAddress)."
 
@@ -9054,4 +9057,12 @@ function Convert-FromBase64EncodedCliXml {
             ConvertFrom-CliXml -InputObject $cliXml
         }
     }
+}
+
+function Get-AllMigrationUserStatistics {
+    return @(
+        Get-MigrationUser -ResultSize:unlimited |
+        sort Identity |
+        %{Get-MigrationUserStatistics -IncludeReport -IncludeSkippedItems -IncludeCopilotReport -Identity $_}
+    )
 }
