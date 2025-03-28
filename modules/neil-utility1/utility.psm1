@@ -9066,3 +9066,137 @@ function Get-AllMigrationUserStatistics {
         %{Get-MigrationUserStatistics -IncludeReport -IncludeSkippedItems -IncludeCopilotReport -Identity $_}
     )
 }
+
+function reportOnLastMatchingMessageTrace([scriptblock] $predicate){
+    $lookaheadDuration = (New-Timespan -seconds 200)
+    
+    
+    $messageTraces =  @(
+        Get-MessageTrace -StartDate (Get-Date).AddHours(-48) -EndDate (Get-Date).AddMinutes(60) 
+    )
+
+    $messageTraceIdOfInterest = $(
+        $messageTraces | 
+        ? { & $predicate $_ } |
+        sort Received | 
+        select -last 1 |
+        select -expand MessageTraceId
+    )
+    if(-not $messageTraceIdOfInterest){
+        write-output  "we found no message traces of interest"
+        return
+    }
+
+    "messageTraceIdOfInterest: $($messageTraceIdOfInterest)"
+
+    $messageTracesOfInterest = @(
+        $messageTraces |
+        ? {($_.MessageTraceId -eq  $messageTraceIdOfInterest)} 
+    )
+
+    
+    $timeOfFirstNotice = $(
+        $messageTracesOfInterest |
+        select -expand StartDate |
+        sort |
+        select -first 1
+    )
+
+    $possiblyRelatedMessageTraces = @(
+        $messageTraces |
+        ? {
+            (-not ($_.MessageTraceId -eq  $messageTraceIdOfInterest ))  -and
+            (
+                ($_.Received -gt $timeOfFirstNotice) -and
+                ($_.Received -lt ($timeOfFirstNotice.Add($lookaheadDuration)))
+            )
+        } 
+    )
+
+
+    $senderAddresses =  @(
+        $messageTracesOfInterest |
+        select -expand SenderAddress |
+        select -unique | 
+        sort
+    )
+
+    $recipientAddresses =  @(
+        $messageTracesOfInterest |
+        select -expand RecipientAddress |
+        select -unique | 
+        sort
+    )
+
+    "messageTraceIdOfInterest: $($messageTraceIdOfInterest)"
+    "senderAddresses: $($senderAddresses)"
+    "recipientAddresses: $($recipientAddresses)"
+
+    function getFormattedDateTime([system.datetime] $utcDateTime){
+        ##"$(([datetimeoffset] ([datetime]::SpecifyKind($utcDateTime,'Utc'))).ToLocalTime())"
+        "{0:o}"  -f ([datetimeoffset] ([datetime]::SpecifyKind($utcDateTime,'Utc'))).ToLocalTime()
+    }
+
+    $selectedPropertiesOfMessageTrace  =  @(
+
+        'MessageTraceId'
+        'SenderAddress'
+        'RecipientAddress'
+        ##  'Index'
+        @{n='Received'; e={getFormattedDateTime $_.Received}}
+        ## @{n='StartDate'; e={getFormattedDateTime $_.StartDate}}
+        ## @{n='EndDate'; e={getFormattedDateTime $_.EndDate}}
+        'MessageId'
+
+        'Status'
+
+        'Subject'
+    )
+
+    @(
+        $messageTracesOfInterest
+        $possiblyRelatedMessageTraces
+    ) |
+    sort Received |
+    select -property $selectedPropertiesOfMessageTrace |
+    ft -auto
+
+
+
+
+
+    foreach($messageTrace in @($messageTracesOfInterest | sort  Received)){
+        "="*80
+        "messageTrace: "
+        ##$messageTrace | select *  -Exclude PSComputerName,RunspaceId,PSShowComputerName,Index,StartDate,EndDate | fl
+        
+        $messageTrace |
+        select -property $selectedPropertiesOfMessageTrace  |
+        fl
+
+        "messageTraceDetails: "
+        Get-MessageTraceDetail -MessageTraceId  $messageTrace.MessageTraceId -RecipientAddress $messageTrace.RecipientAddress | ## sort Date |
+        select @(
+            ##'Date'
+            @{n='Date'; e={getFormattedDateTime $_.Date}}
+            'Event'
+            'Action'
+            @{
+                n="Sequence`nNumber"
+                e={([xml]  $_.Data).root.MEP |? {$_.Name -eq  'SequenceNumber'} |%  {$_.Long} }
+            }
+            @{
+                n="Rcpt`nCount"
+                e={([xml]  $_.Data).root.MEP |? {$_.Name -eq  'RcptCount'} |%  {$_.Integer} }
+            }
+            @{
+                n='SourceContext'
+                e={([xml]  $_.Data).root.MEP |? {$_.Name -eq  'SourceContext'} |%  {$_.String} }
+            }
+            'Detail'
+            
+        ) |
+        ft -auto
+    }
+}
+#%%
