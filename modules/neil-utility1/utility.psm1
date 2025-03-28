@@ -9087,7 +9087,6 @@ function reportOnLastMatchingMessageTrace([scriptblock] $predicate){
         return
     }
 
-    "messageTraceIdOfInterest: $($messageTraceIdOfInterest)"
 
     $messageTracesOfInterest = @(
         $messageTraces |
