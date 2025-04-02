@@ -1702,7 +1702,9 @@ function Send-Mail{
         
         [string] $subject, 
         
-        [string] $body
+        [string] $body,
+
+        [bool] $IsBodyHtml = $False
     )
     # unlock the bitwarden vault:
     # unlockTheBitwardenVault
@@ -1796,6 +1798,7 @@ function Send-Mail{
     foreach ($address in @($bcc)){ $mailMessage.Bcc.Add($address) }
     $mailMessage.Subject = $subject
     $mailMessage.Body = $body
+    $mailMessage.IsBodyHtml = $IsBodyHtml
 
     <# begin  experiment 2025-03-02-1302 #>
     ## $mailMessage.Headers['X-6202f375f55149cabf0fc89d1734cfac'] = "yakfak"
@@ -2577,12 +2580,12 @@ function setSmtpAddressesOfMailbox
 function grantUserAccessToMailbox(
     $idOfUserToBeGrantedAccess, 
     $idOfMailbox, 
-    [switch] $sendInstructionalMessageToUsersThatHaveBeenGrantedAccess=$False, 
-    [string] $emailAccountForSendingAdvisoryMessages="neil@autoscaninc.com", 
-    [string] $dummyAddressForAdvisoryMessages="administrator@autoscaninc.com",
-    [switch] $sendAdvisoryMessageToDummyAddressInsteadOfRealRecipientAddress=$False,
-    [switch] $createInboxRuleToRedirect=$False,
-    [switch] $automapping = $false
+    [switch] $sendInstructionalMessageToUsersThatHaveBeenGrantedAccess       = $False,
+    [string] $emailAccountForSendingAdvisoryMessages                         = "neil@autoscaninc.com",
+    [string] $dummyAddressForAdvisoryMessages                                = "administrator@autoscaninc.com",
+    [switch] $sendAdvisoryMessageToDummyAddressInsteadOfRealRecipientAddress = $False,
+    [switch] $createInboxRuleToRedirect                                      = $False,
+    [switch] $automapping                                                    = $false
 ){
 
 
@@ -2595,9 +2598,10 @@ function grantUserAccessToMailbox(
     Write-Information "now giving the user $($mgUserToBeGrantedAccess.UserPrincipalName) full access to the mailbox $($mailbox.PrimarySmtpAddress)."
 
     Remove-MailboxPermission -Identity $mailbox.Id   -User    $mgUserToBeGrantedAccess.Id -AccessRights FullAccess -Confirm:$false -ErrorAction SilentlyContinue
-    <#     we first remove any existing permission, as a way (apparently, this is the
-    only way) to set the value of the Automapping property (we can't read the
-    current value of automapping) #>
+    <#  We first remove any existing permission, as a way (apparently, this is
+        the only way) to set the value of the Automapping property (we can't
+        read the current value of automapping) 
+    #>
     Add-MailboxPermission    -Identity $mailbox.Id   -User    $mgUserToBeGrantedAccess.Id -AccessRights FullAccess -Automapping:$automapping
     Add-RecipientPermission  -Identity $mailbox.Id   -Trustee $mgUserToBeGrantedAccess.Id -AccessRights SendAs  -confirm:$false
 
@@ -4954,7 +4958,8 @@ function Get-ComputerStatusFromScreenconnect {
     [CmdletBinding()]
     param(
         [string] $bitwardenItemIdOfScreenconnectCredentials,
-        [string] $nameOfScreenconnectGroup
+        [string] $nameOfScreenconnectGroup,
+        [ScriptBlock] $scriptBlock
     )
 
     Connect-ToScreenconnectByMeansOfBitwardenItem $bitwardenItemIdOfScreenconnectCredentials
@@ -5042,6 +5047,34 @@ function Get-ComputerStatusFromScreenconnect {
 
                                                 "fDenyTSConnections: $(Get-ItemPropertyValue -Path 'HKLM:\System\CurrentControlSet\Control\Terminal Server' -name "fDenyTSConnections")"
                                             }
+                                        ) -join "`n"
+                                    )
+                                    Timeout = 25000
+                                    NoWait  = $False
+                                } |% { Invoke-CWCCommand @_}
+                            } else {
+                                Write-Information "$($cwcSession.Name) is unreachable via Screenconnect."
+                            }
+                        ) | out-string
+
+                        
+                    }
+                }
+                
+                if($scriptBlock){
+                    @{
+                        result = $(
+                            if($guestIsConnected){
+                                Write-Information "$($cwcSession.Name) is reachable.  Now running the specified scriptblock via screenconnect. "
+                                @{
+                                    GUID       = $cwcSession.SessionID
+                                    Powershell = $True
+                                    Command    = (
+                                        @(
+                                            @(
+
+                                            )
+                                            $scriptBlock
                                         ) -join "`n"
                                     )
                                     Timeout = 25000
