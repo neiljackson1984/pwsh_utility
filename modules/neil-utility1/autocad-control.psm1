@@ -36,33 +36,35 @@
 }
 
 
-Set-Alias awaitQuiescense awaitAutocadQuiescense
-function awaitAutocadQuiescense($acad){
+Set-Alias awaitQuiescence awaitAutocadQuiescence
+Set-Alias awaitQuiescense awaitAutocadQuiescence
+Set-Alias awaitAutocadQuiescense awaitAutocadQuiescence
+function awaitAutocadQuiescence($acad){
     while(
         -not $(
             try{
                 $acad.GetAcadState().IsQuiescent
             } catch {
-                write-host "encountered exception while awaiting quiescense: $($_)."
+                write-information "encountered exception while awaiting quiescence: $($_)."
                 $false
             }
         )
     ){
-        write-host "awaiting quiescence"; Start-Sleep -Seconds 2
+        write-information "awaiting quiescence"; Start-Sleep -Seconds 2
     }
 }
 
 function tryToCloseDrawing1($acad){
     try{
-        awaitQuiescense($acad)
-        Write-Host "`$acad.Documents.Count: $($acad.Documents.Count)"
+        awaitQuiescence($acad)
+        write-information "`$acad.Documents.Count: $($acad.Documents.Count)"
         $acad.Documents['Drawing1.dwg'] |% {$_.Close()}
-        Write-Host "`$acad.Documents.Count: $($acad.Documents.Count)"
+        write-information "`$acad.Documents.Count: $($acad.Documents.Count)"
         
     } catch {
-        Write-Host "encountered an error trying to close Drawing1.dwg: $($_)"
+        write-information "encountered an error trying to close Drawing1.dwg: $($_)"
     } finally {
-        awaitQuiescense($acad)
+        awaitQuiescence($acad)
     }
 }
 
@@ -82,12 +84,12 @@ function Get-AutocadDocument([Object] $acad, [String] $pathOfDwgFile){
     )
 
     if($existingDocumentCandidates.Count -eq 1){
-        write-host "using already open document: $($pathOfDwgFile)"
+        write-information "using already open document: $($pathOfDwgFile)"
         return $existingDocumentCandidates[0]
     } else {
-        Write-host "opening: $($pathOfDwgFile)"
+        write-information "opening: $($pathOfDwgFile)"
         $document = $acad.Documents.Open("$($pathOfDwgFile)")
-        awaitQuiescense($acad)
+        awaitQuiescence($acad)
         return $document
     }
 }
@@ -184,11 +186,11 @@ function Get-AutocadComObject{
 
         # https://devblogs.microsoft.com/powershell/getobject/
 
-        $acad = New-Object -ComObject "AutoCAD.Application"; awaitQuiescense($acad)
+        $acad = New-Object -ComObject "AutoCAD.Application"; awaitQuiescence($acad)
         # $acad = [System.Runtime.Interopservices.Marshal]::GetActiveObject("AutoCAD.Application")
 
         #%%
-        # $acad.Visible = $false;         awaitQuiescense($acad)
+        # $acad.Visible = $false;         awaitQuiescence($acad)
         # .Visible is a read-only propertyt.
 
 
