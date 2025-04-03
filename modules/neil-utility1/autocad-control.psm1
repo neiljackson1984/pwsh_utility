@@ -94,7 +94,13 @@ function Get-AutocadDocument([Object] $acad, [String] $pathOfDwgFile){
 
 set-alias getAcad Get-AutocadComObject
 set-alias getAutocadComObject Get-AutocadComObject
-function Get-AutocadComObject([string] $product){
+function Get-AutocadComObject{
+
+    [CmdletBinding()]
+    param(
+        [string] $product
+    )
+
     <#
         try to get existing acad com object.  
         In the case where there is already an existing object, we'll ignore the
@@ -279,3 +285,63 @@ function Set-AutocadSelection([Object] $document, [Object[]] $entities){
     # document before sending the command to acad.
 }
 
+function Install-AutocadElevatedComRegistration {
+    <#  This fixes a problem that I encountered 2025-04-02-1657, likely due to
+        my having recently enabled User Account Control in Windows, wherein,
+        upon running Get-AutocadComObject from an elevated shell, I would get
+        the error "New-Object: Retrieving the COM class factory for component
+        with CLSID {00000000-0000-0000-0000-000000000000} failed due to the
+        following error: 80040154 Class not registered (0x80040154
+        (REGDB_E_CLASSNOTREG)).".  This problem was unique to an elevated shell
+        -- it diod not happen in a non-elevated shell.
+
+        This function copies the relevant AutoCAD-related COM registration
+        registry data from the HKEY_CURRENT_USER hive (or actually from
+        HKEY_CLASSES_ROOT, which seems to be a composite of
+        HKEY_CURRENT_USER\SOFTWARE\Classes and
+        HKEY_LOCAL_MACHINE\SOFTWARE\Classes, defaulting to the former in case of
+        conflicting entries.) explicitly to the HKEY_LOCAL_MACHINE .   The
+        vagueries of COM registration and User Account Control are above my
+        paygrade, and I have no doubt that this is opening up some attack vector
+        that I couldn't fathom, but at least it seems to solve my immediate
+        problem.
+
+        Run this function as a one-time fix in case you encounter the
+        aforementioned error when running Get-AutocadComObject from an elevated
+        shell.
+    #>
+
+    ##$sourceRoot  = "HKEY_CURRENT_USER\SOFTWARE\Classes"
+    $sourceRoot  = "HKEY_CLASSES_ROOT"
+    $destinationRoot  = "HKEY_LOCAL_MACHINE\SOFTWARE\Classes"
+    
+    $humanReadableNamedSourceKeys = @(gci "registry::$($sourceRoot)" |? {$_.PSChildName -match "(?-i)^AutoCAD\.Application(\.\d+)?`$"})
+    $classIds = @(
+        $humanReadableNamedSourceKeys |
+        % {Get-ItemPropertyValue -Path (join-path $_.PSPath "CLSID") -Name "(default)"} | 
+        select -unique | 
+        ? {$_}  |
+        sort
+    )
+    $guidNamedSourceKeys = @(
+        $classIds |
+        % {gi "registry::$($sourceRoot)\CLSID\$($_)"}  | 
+        ? {$_}
+    )
+    $sourceKeys = @(
+        $humanReadableNamedSourceKeys
+        $guidNamedSourceKeys
+    )
+
+    foreach($sourceKey in $sourceKeys){
+        write-information "now working on '$($sourceKey.Name)'"
+        $pathOfTemporaryRegFile1 = (join-path $env:temp "$(new-guid).reg")
+        $pathOfTemporaryRegFile2 = (join-path $env:temp "$(new-guid).reg")
+        reg export $sourceKey.Name $pathOfTemporaryRegFile1 
+        (gc -raw $pathOfTemporaryRegFile1) -replace ([regex]::escape($sourceRoot)),$destinationRoot >  $pathOfTemporaryRegFile2
+
+        ## gc $pathOfTemporaryRegFile2
+        reg import $pathOfTemporaryRegFile2
+    }
+    
+}
