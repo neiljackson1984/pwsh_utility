@@ -3558,6 +3558,37 @@ function downloadFileAndReturnPath {
                     split-path -leaf $result.json.'urle.path'
                 }
 
+
+                    <#  as  of 2025-04-10-1746, curl "does not yet support the
+                        "filename*" field (filenames with explicit character
+                        sets)."  in the content-disposition header value. (see
+                        (https://curl.se/docs/manpage.html)).  
+
+                        Therefore, I am polyfilling by  means of .NET's
+                        System.Net.Http.Headers.ContentDispositionHeaderValue
+                        class.
+                    #>
+
+                if($result.header_json.'content-disposition'){
+                    foreach($headerValue in $result.header_json.'content-disposition' ){
+                    
+                        $contentDispositionHeaderValue = $(
+                            [System.Net.Http.Headers.ContentDispositionHeaderValue] $headerValue
+                        )
+
+                        if (-not $contentDispositionHeaderValue){continue}
+
+                        $contentDispositionHeaderValue.FileNameStar
+
+                        $contentDispositionHeaderValue.FileName
+
+                    }
+                }
+
+                <# 2025-04-10-1755:  TODO: think through the interactions of
+                redirections and content-disposition header  -- I still don't
+                think I am correctly handling all cases. #>
+
                 split-path -leaf $initialPathOfDownloadedFile 
             } | 
             ?{$_} |
