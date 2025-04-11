@@ -1,12 +1,25 @@
 #!powershell
 
-function enable-ipv6(){set-ipv6 $true}
-function disable-ipv6(){set-ipv6 $false}
+## function enable-ipv6(){set-ipv6 $true}
+## function disable-ipv6(){set-ipv6 $false}
 
-function set-ipv6(){
+function Enable-IPv6    {set-ipversion -ipversion 6 -desiredToBeEnabled $true   }
+function Disable-IPv6   {set-ipversion -ipversion 6 -desiredToBeEnabled $false  }
+
+function Enable-IPv4    {set-ipversion -ipversion 4 -desiredToBeEnabled $true   }
+function Disable-IPv4   {set-ipversion -ipversion 4 -desiredToBeEnabled $false  }
+
+
+function set-ipversion(){
+    [CmdletBinding()]
+    
     param (
         [Parameter()]
-        [Bool]$desiredState
+        [ValidateSet(4,6)]
+        [int] $ipVersion,
+
+        [Parameter()]
+        [Bool] $desiredToBeEnabled
     )
 
     <#
@@ -16,24 +29,31 @@ function set-ipv6(){
         you the initial and final states for each adapter.
     #>
 
+    $componentId = @{
+        4 = 'ms_tcpip'
+        6 = 'ms_tcpip6'
+    }[$ipVersion]
+
     foreach ($netAdapter in (Get-NetAdapter))
     {
-        $initialState = ($netAdapter | Get-NetAdapterBinding -ComponentID ms_tcpip6).Enabled
+        $initialState = ($netAdapter | Get-NetAdapterBinding -ComponentID $componentId).Enabled
         
-        if($desiredState){
-            $netAdapter | Enable-NetAdapterBinding  -ComponentID ms_tcpip6
+        if($desiredToBeEnabled){
+            $netAdapter | Enable-NetAdapterBinding  -ComponentID $componentId
         } else {
-            $netAdapter | Disable-NetAdapterBinding  -ComponentID ms_tcpip6
+            $netAdapter | Disable-NetAdapterBinding  -ComponentID $componentId
         } 
 
-        $finalState = ($netAdapter | Get-NetAdapterBinding  -ComponentID ms_tcpip6).Enabled
+        $finalState = ($netAdapter | Get-NetAdapterBinding  -ComponentID $componentId).Enabled
 
-        Write-Host "$($netAdapter.name): $initialState --> $finalState"
+        Write-Host "$($netAdapter.name) $($componentId): $initialState --> $finalState"
     }
 }
 
 
-Export-ModuleMember -function enable-ipv6
-Export-ModuleMember -function disable-ipv6
-Export-ModuleMember -function set-ipv6
+Export-ModuleMember -function Enable-IPv6
+Export-ModuleMember -function Disable-IPv6
+Export-ModuleMember -function Enable-IPv4
+Export-ModuleMember -function Disable-IPv4
+## Export-ModuleMember -function set-ipv6
 

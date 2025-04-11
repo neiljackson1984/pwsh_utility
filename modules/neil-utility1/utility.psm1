@@ -5224,14 +5224,14 @@ function publishFile {
         [string] $pathOfFile,
 
         [parameter()]
-        [string] $bitwardenItemIdOfCredentials,
+        [string] $bitwardenItemIdOfCredential,
 
         [parameter()]
         [string] $destination
         # overrides the default destination.  This is a relative path within the "Attachments" folder.
     )
     # $pathOfFile = "S:\Microsoft\Microsoft Office 2013\SW_DVD5_NTRL_Office_Professional_Plus_2013_W32_English_MSI_FPP_X18-65189.ISO"
-    $strongFilename = (split-path -leaf (getStronglyNamedPath $pathOfFile))
+    ## $strongFilename = (split-path -leaf (getStronglyNamedPath $pathOfFile))
     # $pathOfDestinationDirectory = (join-path $env:OneDriveCommercial Attachments)
     # $pathOfDestinationFile = (join-path $pathOfDestinationDirectory $strongFilename)
     # Copy-Item $pathOfFile $pathOfDestinationFile | out-null
@@ -5253,29 +5253,30 @@ function publishFile {
 
     ## UPLOAD the FILE: 
 
-    #### $drive = @{
-    ####     Method        = "GET"
-    ####     Uri           = "v1.0/drives/me"
-    ####     ContentType   = 'multipart/form-data'
-    #### } | % {Invoke-MgGraphRequest @_} 
+    if($false){ # bad technique:
+        $drive = @{
+            Method        = "GET"
+            Uri           = "v1.0/drives/me"
+            ContentType   = 'multipart/form-data'
+        } | % {Invoke-MgGraphRequest @_} 
 
 
-    ## $x = @{
-    ##     Method        = "PUT"
-    ##     Uri           = "v1.0/drives/me/items/root:/Attachments/$($strongFilename):/content"
-    ##     InputFilePath = $pathOfFile
-    ##     ContentType   = 'multipart/form-data'
-    ## } | % {Invoke-MgGraphRequest @_}
+        ## $x = @{
+        ##     Method        = "PUT"
+        ##     Uri           = "v1.0/drives/me/items/root:/Attachments/$($strongFilename):/content"
+        ##     InputFilePath = $pathOfFile
+        ##     ContentType   = 'multipart/form-data'
+        ## } | % {Invoke-MgGraphRequest @_}
 
-    ### $x = @{
-    ###     # DriveId = $drive.id
-    ###     DriveId = "me"
-    ###     InFile = $pathOfFile
-    ###     DriveItemId = "root:/Attachments/$($strongFilename):"
-    ### } | % {Set-MgDriveItemContent @_}
+        ### $x = @{
+        ###     # DriveId = $drive.id
+        ###     DriveId = "me"
+        ###     InFile = $pathOfFile
+        ###     DriveItemId = "root:/Attachments/$($strongFilename):"
+        ### } | % {Set-MgDriveItemContent @_}
 
-    # neither of the above two techniques handle large files (but they both work for small files.
-
+        # neither of the above two techniques handle large files (but they both work for small files.
+    }
 
     ## $attachmentsFolder = @{
     ##     Method        = "GET"
@@ -5293,138 +5294,260 @@ function publishFile {
     ##     }
     ## } |% {New-MgDriveItem @_}
 
-    $sizeThresholdForSinglePut = 20
-    # the main point of this is to be able to handle zero-byte files, whcih the uploadsession technique can't handle.
-    
-    $relativePathOfDestination = $(if($destination){$destination}else{$strongFilename})
 
-    if($totalLength -lt $sizeThresholdForSinglePut){    
-        $x = @{
+    ##$relativePathOfDestination = $(if($destination){$destination}else{$strongFilename})
+    $relativePathOfDestination = $(if($destination){$destination}else{(split-path -leaf (getStronglyNamedPath $pathOfFile))})
+
+
+    $sizeThresholdForNonChunkedUpload = 20
+    <#  the only reason for doing a non-chunked upload for very small files
+        (files of size less than $sizeThresholdForNonChunkedUpload) is to be
+        able to handle zero-byte files, which the uploadsession technique can't
+        handle. 
+    #>
+    if($totalLength -lt $sizeThresholdForNonChunkedUpload){    
+        @{
             Method        = "PUT"
             Uri           = "v1.0/drives/me/items/root:/Attachments/$($relativePathOfDestination):/content"
             InputFilePath = $pathOfFile
             ContentType   = 'multipart/form-data'
-        } | % {Invoke-MgGraphRequest @_}
+        } | % {Invoke-MgGraphRequest @_} | 
+        out-null
     } else {
 
         $sliceSizeDivisor = (320 * 1024)
         $maximumAllowedContentLengthPerRequest = 50 * [math]::pow(2,20)
-        # the real maximum allowed value is 60 mebibytes, according to [https://learn.microsoft.com/en-us/graph/api/driveitem-createuploadsession?view=graph-rest-1.0#create-an-upload-session]
-        # but I am setting mine a bit lower mainly in order to make the progress messages more frequent.
-        $sliceSize = $sliceSizeDivisor * [math]::floor($maximumAllowedContentLengthPerRequest/$sliceSizeDivisor)
+        <#  the real maximum allowed value is 60 mebibytes, according to
+            [https://learn.microsoft.com/en-us/graph/api/driveitem-createuploadsession?view=graph-rest-1.0#create-an-upload-session]
+            but I am setting mine a bit lower mainly in order to make the
+            progress messages more frequent. 
+        #>
+        $preferredSliceSize = $sliceSizeDivisor * [math]::floor($maximumAllowedContentLengthPerRequest/$sliceSizeDivisor)
+        <#  This rigamarole with sliceSizeDivisor  ensures that our preferredSliceSize is
+            a multiple of $sliceSizeDivisor .  At the moment (2025-04-11-1429),
+            I can't remember why I did this.s
+        #>
 
-        ## $fileStream = [System.IO.File]::OpenRead($pathOfFile)
-        ##  $totalLength = $fileStream.Length
-        
 
-
-        # see [https://learn.microsoft.com/en-us/graph/api/driveitem-createuploadsession?view=graph-rest-1.0#create-an-upload-session]
+        <# see [https://learn.microsoft.com/en-us/graph/api/driveitem-createuploadsession?view=graph-rest-1.0#create-an-upload-session] #>
         $uploadSession = @{
             DriveId = "me"
             DriveItemId = "root:/Attachments/$($relativePathOfDestination):"
         } | % {New-MgDriveItemUploadSession @_}
 
-        ## $uploadSession.GetType()
 
-        # see [https://learn.microsoft.com/en-us/graph/sdks/large-file-upload?tabs=csharp]
-
-        ##$lastByteIndexUploaded = -1
-        ##while($lastByteIndexUploaded -lt ($totalLength - 1)){
-        ##    $sliceStart = $lastByteIndexUploaded
-        ##    $sliceStop = [math]::min( $sliceStart + $sliceSize, $totalLength )
-        ##    # we will upload the bytes at indices $sliceStart, $sliceStart + 1, ..., $sliceStop - 1 .
-        ##
-        ##    
-        ##    $x = @{
-        ##        Method        = "PUT"
-        ##        Uri           = $uploadSession.UploadUrl
-        ##        # ContentType   = 'multipart/form-data'
-        ##        Headers = @{
-        ##            "Content-Length" = "$($sliceStop - $sliceStart)"
-        ##            "Content-Range" = "bytes $($sliceStart)-$($sliceStop - 1)/$($totalLength)"
-        ##        }
-        ##        Body = $fileStream.ReadExactly
-        ##    } | % {Invoke-MgGraphRequest @_}
-        ##
-        ##    $lastByteIndexUploaded = $sliceStop - 1
-        ##    Write-Host ("$(get-date): uploaded {0:}/{1:} bytes ({2:f1} %)" -f ($lastByteIndexUploaded + 1),($totalLength),(($lastByteIndexUploaded + 1)/($totalLength)))
-        ##}
-        ##$fileStream.Close()
-
-        $countOfBytesUploaded = 0
-        
-        # get-content is quite slow, I think compared to lower-level file stream operations.
-
-        # [System.Net.Http.StreamContent] might be a way to pass streaming input to Invoke-WebRequest.
-        #
-        # We  might also use curl instead of Invoke-WebRequest
-
-
-        Get-Content -AsByteStream -ReadCount $sliceSize $pathOfFile |
-        % {
-            
-            # $chunk = $_
-            [byte[]] $chunk = $_
-        
-            
-
-            ## $x = @{
-            ##     Method               = "PUT"
-            ##     Uri                  = $uploadSession.UploadUrl
-            ##     # ContentType          = 'application/octet-stream'
-            ##     ContentType          = 'application/octet-stream'
-            ##     # SkipHeaderValidation = $True
-            ##     Headers              = @{
-            ##         "Content-Range"  = "bytes $($countOfBytesUploaded)-$($countOfBytesUploaded + $chunk.Count - 1)/$($totalLength)"
-            ##         # "Content-Length" = "$($chunk.Count)"
-            ##         # "Content-Type"   = 'application/octet-stream'
-            ##     }
-            ##     Body = $chunk
-            ## } | % {Invoke-MgGraphRequest @_}
-
+        if($false){
             $x = @{
-                Method = "PUT"
-                ContentType          = 'application/octet-stream'
-                Headers              = @{
-                    "Content-Range"  = "bytes $($countOfBytesUploaded)-$($countOfBytesUploaded + $chunk.Count - 1)/$($totalLength)"
-                    # "Content-Length" = "$($chunk.Count)"
-                    # "Content-Type"   = 'application/octet-stream'
-                }
-                Uri = $uploadSession.UploadUrl
-                Body = $chunk
-            } |% {Invoke-WebRequest @_}
-        
-        
-            $countOfBytesUploaded += $chunk.Count
-        
-            Write-Information (
-                "$(get-date): uploaded {0:}/{1:} bytes ({2:f1} %)" -f @(
-                    $countOfBytesUploaded
-                    $totalLength
-                    100 * $countOfBytesUploaded/$totalLength
-                )
+                Method        = "PUT"
+                Uri           = $uploadSession.UploadUrl
+                InputFilePath = $pathOfFile
+                ContentType   = 'multipart/form-data'
+            } | % {Invoke-MgGraphRequest @_}
+        }
+
+        if($false){
+            <# curl does not have built-in support for the kind of multi-request chunked upload that we need to do. #>
+            curl @(
+                "--verbose"
+                "--location"
+                "--upload-file"; $pathOfFile
+                ## "--data-binary"; "@$($pathOfFile)"
+                ## "--header"; "Content-Type: application/octet-stream"
+                ## "--request"; "PUT"
+                $uploadSession.UploadUrl
             )
         }
 
-        ## $x = @{
-        ##     Method        = "PUT"
-        ##     Uri           = $uploadSession.UploadUrl
-        ##     InputFilePath = $pathOfFile
-        ##     ContentType   = 'multipart/form-data'
-        ## } | % {Invoke-MgGraphRequest @_}
 
-        ## curl @(
-        ##     "--location"
-        ##     "--upload-file"; $pathOfFile
-        ##     ## "--data-binary"; "@$($pathOfFile)"
-        ##     ## "--header"; "Content-Type: application/octet-stream"
-        ##     ## "--request"; "PUT"
-        ##     $uploadSession.UploadUrl
-        ## )
+        <# see [https://learn.microsoft.com/en-us/graph/sdks/large-file-upload?tabs=csharp] #>
+        if($false){
+            $fileStream = [System.IO.File]::OpenRead($pathOfFile)
+            $totalLength = $fileStream.Length
+            
+
+
+
+            $lastByteIndexUploaded = -1
+            while($lastByteIndexUploaded -lt ($totalLength - 1)){
+                $sliceStart = $lastByteIndexUploaded
+                $sliceStop = [math]::min( $sliceStart + $preferredSliceSize, $totalLength )
+                <# we will upload the bytes at indices $sliceStart, $sliceStart + 1, ..., $sliceStop - 1 . #>
+                
+                
+                $x = @{
+                    Method        = "PUT"
+                    Uri           = $uploadSession.UploadUrl
+                    # ContentType   = 'multipart/form-data'
+                    Headers = @{
+                        "Content-Length" = "$($sliceStop - $sliceStart)"
+                        "Content-Range" = "bytes $($sliceStart)-$($sliceStop - 1)/$($totalLength)"
+                    }
+                    Body = $fileStream.ReadExactly
+                } | % {Invoke-MgGraphRequest @_}
+               
+                $lastByteIndexUploaded = $sliceStop - 1
+                Write-Information ("$(get-date): uploaded {0:}/{1:} bytes ({2:f1} %)" -f ($lastByteIndexUploaded + 1),($totalLength),(($lastByteIndexUploaded + 1)/($totalLength)))
+            }
+            $fileStream.Close()
+        }
+        
+        if($false){
+            <#  get-content is quite slow, I think compared to lower-level file stream operations. 
+
+                [System.Net.Http.StreamContent] might be a way to pass streaming input to Invoke-WebRequest.
+                
+                We  might also use curl instead of Invoke-WebRequest
+            #>
+
+            $countOfBytesUploaded = 0
+            Get-Content -AsByteStream -ReadCount $preferredSliceSize $pathOfFile |
+            % {
+                [byte[]] $chunk = $_
+
+                $x = @{
+                    Method = "PUT"
+                    ContentType          = 'application/octet-stream'
+                    Headers              = @{
+                        "Content-Range"  = "bytes $($countOfBytesUploaded)-$($countOfBytesUploaded + $chunk.Count - 1)/$($totalLength)"
+                        # "Content-Length" = "$($chunk.Count)"
+                        # "Content-Type"   = 'application/octet-stream'
+                    }
+                    Uri = $uploadSession.UploadUrl
+                    Body = $chunk
+                } |% {Invoke-WebRequest @_}
+            
+            
+                $countOfBytesUploaded += $chunk.Count
+            
+                Write-Information (
+                    "$(get-date): uploaded {0:}/{1:} bytes ({2:f1} %)" -f @(
+                        $countOfBytesUploaded
+                        $totalLength
+                        100 * $countOfBytesUploaded/$totalLength
+                    )
+                )
+            }
+        }
+        if($false){
+            $fileStream = [System.IO.File]::OpenRead($pathOfFile)
+            $totalLength = $fileStream.Length
+
+            $countOfBytesUploaded = 0
+            while($countOfBytesUploaded -lt $totalLength){
+                $sliceStart = $countOfBytesUploaded
+                $sliceStop  = [math]::min( $sliceStart + $preferredSliceSize, $totalLength )
+                <#  we will upload the bytes at indices 
+
+                    $sliceStart, $sliceStart + 1, ..., $sliceStop - 1 . 
+                #>
+            
+                ## $fileContent = [System.Net.Http.StreamContent]::new($fileStream)
+
+                $x = @{
+                    Method = "PUT"
+                    ContentType = 'application/octet-stream'
+                    Headers              = @{
+                        "Content-Range"  = "bytes $($sliceStart)-$($sliceStop - 1)/$($totalLength)"
+                        # "Content-Length" = "$($sliceStop - $sliceStart)"
+                    }
+                    Uri = $uploadSession.UploadUrl
+                    ## Body = $fileStream 
+                    <#  The problem is that there is no straightforward way to
+                        construct a stream-like object that can be passed to
+                        Invoke-WebRequest as the Body parameter that will expose
+                        just the desired slice of the whole file stream.
+
+                    #>
+                } |% {Invoke-WebRequest @_}
+            
+
+
+
+
+                $countOfBytesUploaded = $sliceStop
+                Write-Information (
+                    "$(get-date): uploaded {0:}/{1:} bytes ({2:f1} %)" -f @(
+                        $countOfBytesUploaded
+                        $totalLength
+                        100 * $countOfBytesUploaded/$totalLength
+                    )
+                )
+            }
+            $fileStream.Close()
+
+        }
+        if($true){
+            $fileStream = [System.IO.File]::OpenRead($pathOfFile)
+            $totalLength = $fileStream.Length
+
+            write-information "preferredSliceSize: $($preferredSliceSize)"
+
+            $countOfBytesUploaded = 0
+            $chunk = New-Object byte[] $preferredSliceSize
+
+            while($countOfBytesUploaded -lt $totalLength){
+                $sliceStart = $countOfBytesUploaded
+                <#  we will upload the bytes at indices $sliceStart, $sliceStart
+                    + 1, ..., $sliceStart + $chunk.Count -1 . 
+
+                    $chunk.Count is determined below based on exactly how many
+                    bytes $fileStream.Read() reads from the fileStream.  We
+                    expect $chunk.Count to be preferredSliceSize for all chunks
+                    with the possible exception of the final chunk, which might
+                    be smaller than $preferredSliceSize.
+                #>
+
+                $countOfBytesRead = $fileStream.Read(
+                    <# buffer: #>
+                    $chunk,
+                    
+                    <# offset  (offset within the buffer at which the bytes are to be placed): #>
+                    0,
+
+                    <# count (maximum number of  bytes to read): #>
+                    $preferredSliceSize
+                )
+
+                if($countOfBytesRead -ne $preferredSliceSize){
+                    write-information "resizing chunk: changing size from $($chunk.Count) to $($countOfBytesRead)"
+                    [array]::Resize[byte]([ref] $chunk, $countOfBytesRead)
+                }
+            
+                Write-Information (
+                    "$(get-date): invoking webrequest"
+                )
+                @{
+                    Method = "PUT"
+                    ContentType = 'application/octet-stream'
+                    Headers              = @{
+                        "Content-Range"  = "bytes $($sliceStart)-$($sliceStart + $chunk.Count - 1)/$($totalLength)"
+                        # "Content-Length" = "$($chunk.Count)"
+                    }
+                    Uri = $uploadSession.UploadUrl
+                    Body = $chunk
+                } |% {Invoke-WebRequest @_} |  
+                out-null
+                <# TODO: error handling and retries #>
+
+                $countOfBytesUploaded += $chunk.Count
+
+                Write-Information (
+                    "$(get-date): uploaded {0:}/{1:} bytes ({2:f1} %)" -f @(
+                        $countOfBytesUploaded
+                        $totalLength
+                        100 * $countOfBytesUploaded/$totalLength
+                    )
+                )
+            }
+            $fileStream.Close()
+
+        }
+
+
 
     }
 
-    ## CREATE the LINK:
+    <# CREATE the LINK: #>
     $z = @{
         Method = "POST"
         Uri    = "v1.0/drives/me/items/root:/Attachments/$($relativePathOfDestination):/createLink"
@@ -5436,18 +5559,18 @@ function publishFile {
     $a = ([System.UriBuilder] $z.link.webUrl)
     $a.Query += "$($a.Query ? '&' : '')download=1"
 
-    # The "x-name" query parameter is my own invention (and hopefully is ignored by sharepoint).  It is purely annotative, meant for the human that might read the url.
+    <# The "x-name" query parameter is my own invention (and hopefully is
+    ignored by sharepoint).  It is purely annotative, meant for the human that
+    might read the url. #>
     $a.Query += "$($a.Query ? '&' : '')x-name=$([System.Web.HttpUtility]::UrlPathEncode((split-path -leaf $relativePathOfDestination)))"
 
-    # perhaps see [https://learn.microsoft.com/en-us/microsoft-365/community/query-string-url-tricks-sharepoint-m365]
+    <# perhaps see [https://learn.microsoft.com/en-us/microsoft-365/community/query-string-url-tricks-sharepoint-m365] #>
 
     <#
         It would be nice to (optionally) return something that is not just the
         raw url, but is something like some html that could be pasted into an
         email message or similar, that would include a hyperlink, with filename.
     #>
-
-    # $x.Name
     return $a.Uri.AbsoluteUri
 
 }
@@ -9262,4 +9385,26 @@ function reportOnLastMatchingMessageTrace([scriptblock] $predicate){
         ft -auto
     }
 }
-#%%
+
+function Get-InternetConnectedIpAddress {
+    <#  Gets all ip addresses assigned to a network adapter on this computer that
+        appear to be usable for Internet traffic (according to the results of
+        Get-NEtConnectionProfile)
+    #>
+    [CmdletBinding()]
+    [OutputType([System.Net.IPAddress])]
+    param(
+
+    )
+
+    get-netconnectionprofile |
+    % {
+        ## 'Internet' -in @($_.IPv4Connectivity;$_.IPv6Connectivity) 
+        if($_.IPv4Connectivity -eq 'Internet'){get-netipaddress -InterfaceIndex $_.InterfaceIndex -AddressFamily:IPv4 }
+        if($_.IPv6Connectivity -eq 'Internet'){get-netipaddress -InterfaceIndex $_.InterfaceIndex -AddressFamily:IPv6 }
+    } |
+    ? {$_.AddressState -eq "Preferred"} |
+    ? { -not [System.Net.IPAddress]::Parse($_.ToString()).IsIPv6LinkLocal} |
+    ? { -not [System.Net.IPAddress]::Parse($_.ToString()).IsIPv6SiteLocal} |
+    sort
+}
