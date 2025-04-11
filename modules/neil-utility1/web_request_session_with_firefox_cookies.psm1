@@ -76,7 +76,8 @@ function Get-WebRequestSessionWithFirefoxCookies {
         $globallyUniqueNameOfPackagesDirectory = "0d9099a3b7ac4035861dfa79b2c73022"
         $pathOfPackagesDirectory = (join-path (join-path $env:temp $globallyUniqueNameOfPackagesDirectory) "packages")
         ## nuget install System.Data.SQLite -OutputDirectory $pathOfPackagesDirectory | write-host
-        nuget install System.Data.SQLite -OutputDirectory $pathOfPackagesDirectory -Source "https://api.nuget.org/v3/index.json" | write-information
+        New-Item -itemtype directory -force -path $pathOfPackagesDirectory | out-null
+        nuget install System.Data.SQLite -OutputDirectory $pathOfPackagesDirectory -Source "https://api.nuget.org/v3/index.json" -Verbosity detailed | write-information
 
     }
         
@@ -139,14 +140,19 @@ function Get-WebRequestSessionWithFirefoxCookies {
 
     # Import the cookies into the WebRequestSession
     foreach ($row in $cookiesTable.Rows) {
-        $cookie         = New-Object System.Net.Cookie
-        $cookie.Name    = $row["name"]
-        $cookie.Value   = $row["value"]
-        $cookie.Domain  = $row["host"]
-        $cookie.Path    = $row["path"]
-        $cookie.Secure  = [bool]$row["isSecure"]
-        $cookie.Expires = [datetime]::FromFileTimeUtc(10000000 * [long]$row["expiry"] + 116444736000000000)
-        $webRequestSession.Cookies.Add($cookie)
+        try{
+            $cookie         = New-Object System.Net.Cookie
+            $cookie.Name    = $row["name"]
+            $cookie.Value   = $row["value"]
+            $cookie.Domain  = $row["host"]
+            $cookie.Path    = $row["path"]
+            $cookie.Secure  = [bool]$row["isSecure"]
+            $cookie.Expires = [datetime]::FromFileTimeUtc(10000000 * [long]$row["expiry"] + 116444736000000000)
+            $webRequestSession.Cookies.Add($cookie)
+            write-information "succesfully imported a cookie"
+        } catch {
+            write-warning "encountered exception when trying to import a cookie: $($_)"
+        }
     }
 
     # Return the WebRequestSession object

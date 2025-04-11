@@ -317,6 +317,7 @@ function Install-AutocadElevatedComRegistration {
     $sourceRoot  = "HKEY_CLASSES_ROOT"
     $destinationRoot  = "HKEY_LOCAL_MACHINE\SOFTWARE\Classes"
     
+    ## $humanReadableNamedSourceKeys = @(gci "registry::$($sourceRoot)" |? {$_.PSChildName -match "(?-i)^Outlook\.Application(\.\d+)?`$"})
     $humanReadableNamedSourceKeys = @(gci "registry::$($sourceRoot)" |? {$_.PSChildName -match "(?-i)^AutoCAD\.Application(\.\d+)?`$"})
     $classIds = @(
         $humanReadableNamedSourceKeys |
