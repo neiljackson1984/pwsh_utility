@@ -8204,7 +8204,7 @@ function Show-MicrosoftGraphLicenseReport {
 
     $data | format-table -autosize:$True -Wrap:$True
 
-    Get-MgSubscribedSKU | select SkuPartNumber, {$_.PrepaidUnits.Enabled}, ConsumedUnits | ft -auto
+    Get-MgSubscribedSKU | select SkuId, SkuPartNumber, {$_.PrepaidUnits.Enabled}, ConsumedUnits | ft -auto
 
 }
 
