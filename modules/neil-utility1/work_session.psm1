@@ -70,7 +70,7 @@ function Initialize-RemoteSessions {
 
     $companyParameters = $(getFieldMapFromBitwardenItem $bitwardenItemIdOfCompanyParameters)
 
-    $nameOfScreenconnectGroup = $companyParameters.nameOfScreenconnectGroup
+    $nameOfScreenconnectGroup = $companyParameters.nameOfScreenconnectGroup ?? 'All Machines'
     $activeDirectoryDomainName = ($companyParameters.domainController -split "\.") | select -skip 1 | join-string -Separator "."
 
     $namesOfVariablesToImport = @( $namesOfVariablesToImport )
