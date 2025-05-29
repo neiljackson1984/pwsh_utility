@@ -9408,3 +9408,47 @@ function Get-InternetConnectedIpAddress {
     ? { -not [System.Net.IPAddress]::Parse($_.ToString()).IsIPv6SiteLocal} |
     sort
 }
+
+function getPartsOfPathOfMailboxFolder([string] $absolutePathOfMailboxFolder){
+    <#  For example, pathParts of ":\Inbox\automated_crap\crashplan_automated_crap" is
+        @('Inbox'; 'automated_crap'; 'crashplan_automated_crap')
+    #>
+    $parts = [String[]] @(
+        $absolutePathOfThisPart = $absolutePathOfMailboxFolder
+        while(-not (
+            ($absolutePathOfThisPart -eq '')  -or
+            ($absolutePathOfThisPart -eq '\')  -or
+            ($absolutePathOfThisPart -eq '/')  -or
+            ($absolutePathOfThisPart -match  "^[^\\\/:]*:(\\|\/|)`$") 
+        )){
+            ##$thisPart = split-path -leaf $absolutePathOfThisPart
+            $thisPart = $absolutePathOfThisPart |% {[System.IO.Path]::TrimEndingDirectorySeparator($_)} |% {[System.IO.Path]::GetFileName( $_)}|% {[System.IO.Path]::TrimEndingDirectorySeparator($_)} 
+            ##write-information "pushing: '$($thisPart)'"
+
+            $thisPart
+            ##$absolutePathOfThisPart  =  split-path -parent $absolutePathOfThisPart
+            $absolutePathOfThisPart  = $absolutePathOfThisPart  |% {[System.IO.Path]::TrimEndingDirectorySeparator($_)} |% {[System.IO.Path]::GetDirectoryName( $_)}|% {[System.IO.Path]::TrimEndingDirectorySeparator($_)} 
+
+        }
+    )
+
+    [array]::Reverse($parts)
+
+    return $parts
+}
+
+function getOrCreateMailboxFolder([string] $absolutePathOfMailboxFolder){
+    <# get a mailobx folder, creating it if it does not already exist #>
+
+    $folder  = Get-MailboxFolder -Identity ":\"
+    foreach($part in (getPartsOfPathOfMailboxFolder $absolutePathOfMailboxFolder)){
+        $folder = $(
+            ##(Get-MailboxFolder -Identity (join-path $folder.Identity $part)) ??
+            (Get-MailboxFolder -Identity ([System.IO.Path]::Join($folder.Identity,$part))  -erroraction SilentlyContinue ) ??
+            (
+                New-MailboxFolder -Parent $folder.Identity -Name $part
+            )
+        )
+    }
+    return $folder
+}
