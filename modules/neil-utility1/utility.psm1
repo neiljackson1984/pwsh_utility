@@ -1080,277 +1080,294 @@ function runInSshSession {
             string.
         #>
 
-        if($false){
-            # $inputObjects | ssh @sshOptionArguments "" @argumentList
-            if($inputObjects.Count -gt 0){
-                ## $inputObjects | ssh @sshOptionArguments "" @argumentList
-                ## ( ,[byte[]] ($inputObjects | % { [System.Text.Encoding]::UTF8.GetBytes($_) })   ) | ssh @sshOptionArguments "" @argumentList
-                
-                ( 
-                    ,[byte[]] ([System.Text.Encoding]::UTF8.GetBytes(($inputObjects -join "`n")))
-                ) | 
-                ssh $sshArguments
+        switch("strategy1"){
+            strategy1 {
+                # $inputObjects | ssh @sshOptionArguments "" @argumentList
+                if($inputObjects.Count -gt 0){
+                    ## $inputObjects | ssh @sshOptionArguments "" @argumentList
+                    ## ( ,[byte[]] ($inputObjects | % { [System.Text.Encoding]::UTF8.GetBytes($_) })   ) | ssh @sshOptionArguments "" @argumentList
+                    
+                    ( 
+                        ,[byte[]] ([System.Text.Encoding]::UTF8.GetBytes(($inputObjects -join "`n")))
+                    ) | 
+                    ssh $sshArguments
 
-                <#  it is a bit of a hack to be hardcoding our line ending
-                    conventions here, but for the application that I happen to be
-                    working on at the moment, I want unix-style line endings, and I
-                    don't care too much about a terminal newline (I would rather
-                    have no terminal newline sequence than a \r\n sequence, which is
-                    what I would get if I did not do the byte pipe workaround
-                    above.)
-
-
-                    Interactive commands are a bit wonky, I think.  At least, I
-                    think I have observed that powershell caches stderr and only
-                    prints it once rr has returned.  I think I ahve observed that
-                    powershell does not do this weird stderr caching behavior when
-                    there is no pipeline input to rr (i.e. when the below "else"
-                    clause obtains).
-
-                    the significant differnece between these two cases (this "if"
-                    block and the below "else" block), at least insofar as what
-                    would affect stream handling, is that in this "if" block, we
-                    pipe some input into ssh wheras in the below "else" block we do
-                    not pipe anything into ssh.  Therefore, perhaps it is the piping
-                    of input that is causing the stderr caching.  (and I suspect the
-                    stderr caching has more to do with powershell than ssh).
-
-                    I might be completely wrong about powershell having anything to
-                    do with the "stderr caching" behavior. I noticed the "stderr
-                    caching behavior" when attempting to run the Sophos interactive
-                    "cc" command via an ssh session to a Sophos UTM SG router.  The
-                    behavior could have been entirely the result of things happening
-                    in bash and ssh daemon within the sophos router.
-
-                    No, never mind, the stderr caching is a powershell thing (or
-                    maybe an ssh thing).  look at this:
-
-                    ```
-                    rr "bash -c 'echo 1 here is some stderr 1>&2; echo 2 and here is some stdout; echo 3 and here is some more stderr 1>&2; '"
-                    ```
-                    ## 2 and here is some stdout
-                    ## 1 here is some stderr
-                    ## 3 and here is some more stderr
-
-                    The following might be relevant:
-                    [https://stackoverflow.com/questions/45316295/the-order-of-stdout-and-stderr-in-bash]
-
-                    the "stderr cahching" behaviour might have to do with bash (or
-                    perhaps the program running within bash) thinks it is connected
-                    to a terminal, and deciding to do line buffereing (iof connected
-                    to a terminal) or block buffering (if not connected to a
-                    terminal).
-
-                    the following might also be relevant:
-                    [https://www.gnu.org/software/bash/manual/bash.html#Interactive-Shells] 
-
-                #>
-            } else {
-                # write-host "no inputObjects given"
-                ssh $sshArguments
-                <#  I was hoping that this would run in a way that is fully
-                    connected to the terminal, but it does not. 
-                #>
-            }
-        }
-
-        <# 2025-01-21-1827: With the latest version of openssh (OpenSSH_9.9p1,
-            OpenSSL 3.0.15 3 Sep 2024), I have noticed that, when I pipe the
-            output of ssh (or, equivalently (i think), pipe the output of
-            runInSshSession) to anything other than Out-Default (or similarly
-            attempt to capture the output of the command in a variable), an
-            apparent race condition kicks in, where (it seems) ssh waits for
-            powershell to read its stderr before dying or emitting more stuff on
-            stdout, and powershell waits for ssh to emit more stuff on stdout or
-            die.  
-
-            Curiously, wrapping the invocation in "bash -c" doesn't help.
-
-            I suspect that the essential problem is the "deadlock" condition due
-            to synchronous io operations, as  described at
-            (https://learn.microsoft.com/en-us/dotnet/api/system.diagnostics.process.standarderror?view=net-9.0#remarks).
-
-            Specifically, quoting from that document:
-
-            """
-            A deadlock condition results if the parent process calls
-            p.StandardOutput.ReadToEnd followed by p.StandardError.ReadToEnd and
-            the child process writes enough text to fill its error stream. The
-            parent process would wait indefinitely for the child process to
-            close its StandardOutput stream. The child process would wait
-            indefinitely for the parent to read from the full StandardError
-            stream.
-            """
-
-            The problem is possibly exacerbated by some idiosyncratic behvaior
-            by ssh; I don't remember encountering this  problem on the older
-            version of ssh that I have been running until now (and I cannot
-            remember exactly what version of ssh that was -- it was some version
-            earlier than OpenSSH 9.7, I think.).
-
-            To work around this problem, we are now invoking ssh by means of
-            System.Diagnostics.Process.
-
-            This should produce the correct, desired, behavior in cases where we
-            are capturing the output of  runInSshSession (by piping it to
-            another command, for example).  However, it will prevent the
-            occasionally-desirable behavior, which we had before this fix, that
-            we could run runInSshSession with $argumentList being empty, and not
-            attempting to capture the output, and running in an interactive
-            powershell session, and we would then be dropped into an interactive
-            remote shell session (just like calling ssh without specifying a
-            remote command).
-
-            To recover this lost functionality,  I should probably try to detect
-            when we are running interactively (i.e. when our output is not being
-            captured), which should be detectable, in some cases by looking  at
-            $PSCmdlet.MyInvocation.PipelinePosition and
-            $PSCmdlet.MyInvocation.PipelineLength , and then in that case not
-            use the work-around (when our output is not being captured, the
-            deadlock condition does not occur, even when we don't use the
-            workaround).  I am reluctant to attempt this because I don't have a
-            good sense of a generally correct way to detect when we are running
-            interactively.
-
-            This whole business of interactive consoles is always a major
-            headache.
-
-            I think I basaically blame powershell for not doing something
-            approximating asynchronously reading stderr and  stdout when
-            capturing the output.  For most executables, Powershell's laziness
-            is probably tolerable, but something finicky about ssh (which may
-            also perhaps deserve a bit of blame) exposes the underlying
-            deficiency in powershell's stream-reading behavior when capturing
-            stdout.
-
-            Perhaps there is some kind of shim program (possiblyt a built-in
-            powershell command ?) which could run ssh and buffer/read stdout and
-            stderr correctly so as to prevent the deadlock.
-
-            see (https://www.google.com/search?q=powershell+does+not+read+stderr+of+a+command+whose+output+is+being+captured)
-
-            see (https://stackoverflow.com/questions/8184827/powershell-capture-the-output-from-external-process-that-writes-to-stderr-in-a)
-        #>
-
-        $startInfo  = [System.Diagnostics.ProcessStartInfo] @{
-            FileName = "ssh"    
-            RedirectStandardOutput = $True
-            ##RedirectStandardInput = $(if($inputObjects.Count -gt 0){$True}else{$False})
-            RedirectStandardInput = $True
-            RedirectStandardError = $True
-        }
-        $sshArguments |% {$startInfo.ArgumentList.Add($_)}
-
-        $process = [System.Diagnostics.Process]  @{
-            StartInfo = $startInfo
-        }
-        $process.Start()| out-null
-
-        write-debug "process.CommandLine: $($process.CommandLine)"
-
-        ## if($inputObjects.Count -gt 0){
-        ##     $standardInputWritingTask = $process.StandardInput.WriteAsync(($inputObjects -join "`n"))
-        ##     ##$standardInputFlushingTask = $standardInputWritingTask.ContinueWith($process.StandardInput.Flush)
-        ##     $standardInputFlushingTask = $standardInputWritingTask.ContinueWith(  ([System.Action[System.Threading.Tasks.Task]] { $process.StandardInput.Flush()} ))
-        ## }  else {
-        ##     $process.standardInput.Close()
-        ## }
-
-        $standardInputWritingTask = (
-            $process.StandardInput.
-            WriteAsync(($inputObjects -join "`n")).ContinueWith(  ([System.Action[System.Threading.Tasks.Task]] { $process.StandardInput.Flush()} ))
-            <# I  have a sense that I should somehow be using the asynchronous  flush  function here, if the fluish function is needed at  all. #>
-            ## ContinueWith(  ([System.Action[System.Threading.Tasks.Task]] { $process.StandardInput.Close()} ))
-            ##  ContinueWith(  ([System.Action[System.Threading.Tasks.Task]] { $process.StandardInput.Flush()} )).
-            ## ContinueWith(  ([System.Action[System.Threading.Tasks.Task]] { $process.StandardInput.Close()} ))
-        )
+                    <#  it is a bit of a hack to be hardcoding our line ending
+                        conventions here, but for the application that I happen to be
+                        working on at the moment, I want unix-style line endings, and I
+                        don't care too much about a terminal newline (I would rather
+                        have no terminal newline sequence than a \r\n sequence, which is
+                        what I would get if I did not do the byte pipe workaround
+                        above.)
 
 
-        $standardErrorLineReadingTask = $process.StandardError.ReadLineAsync()
-        $standardOutputLineReadingTask = $process.StandardOutput.ReadLineAsync()
-        $weHaveReachedTheEndOfStandardOutput = $False
-        $weHaveReachedTheEndOfStandardError = $False
-        $weHaveFinishedWritingToStandardInput = $False
+                        Interactive commands are a bit wonky, I think.  At least, I
+                        think I have observed that powershell caches stderr and only
+                        prints it once rr has returned.  I think I ahve observed that
+                        powershell does not do this weird stderr caching behavior when
+                        there is no pipeline input to rr (i.e. when the below "else"
+                        clause obtains).
 
+                        the significant differnece between these two cases (this "if"
+                        block and the below "else" block), at least insofar as what
+                        would affect stream handling, is that in this "if" block, we
+                        pipe some input into ssh wheras in the below "else" block we do
+                        not pipe anything into ssh.  Therefore, perhaps it is the piping
+                        of input that is causing the stderr caching.  (and I suspect the
+                        stderr caching has more to do with powershell than ssh).
 
-        do{
-            
-            
-            [System.Threading.Tasks.Task]::WaitAny(@(
-                if(-not $weHaveReachedTheEndOfStandardError ){$standardErrorLineReadingTask}
-                if(-not $weHaveReachedTheEndOfStandardOutput ){$standardOutputLineReadingTask}
-                if(-not $weHaveFinishedWritingToStandardInput ){$standardInputWritingTask}
-            ))  |  out-null
-            
-            if(-not $weHaveReachedTheEndOfStandardError ){
-                if($standardErrorLineReadingTask.IsCompleted){
-                    $standardErrorLine = $standardErrorLineReadingTask.Result
-                    if($null -eq $standardErrorLine ){
-                        write-debug  "encountered a null standardErrorLine"
-                        $weHaveReachedTheEndOfStandardError = $True
-                    } else  {
-                        write-debug "capturing a standardErrorLine: '$($standardErrorLine)'"
-                        <# should we strip the newline sequence from the end of the
-                        line?  No, the ReadLine(or ReadLineAsync()) function does  this
-                        already. #>
-                        write-error -ErrorId NativeCommandError -Message $standardErrorLine
-                        ##write-error -Message $standardErrorLine
-                        $standardErrorLineReadingTask = $process.StandardError.ReadLineAsync()
-                    } 
-                    ##$standardErrorLineReadingTask = $process.StandardError.ReadLineAsync()
-                    write-debug  "process.StandardError.EndOfStream:$($process.StandardError.EndOfStream)"
+                        I might be completely wrong about powershell having anything to
+                        do with the "stderr caching" behavior. I noticed the "stderr
+                        caching behavior" when attempting to run the Sophos interactive
+                        "cc" command via an ssh session to a Sophos UTM SG router.  The
+                        behavior could have been entirely the result of things happening
+                        in bash and ssh daemon within the sophos router.
+
+                        No, never mind, the stderr caching is a powershell thing (or
+                        maybe an ssh thing).  look at this:
+
+                        ```
+                        rr "bash -c 'echo 1 here is some stderr 1>&2; echo 2 and here is some stdout; echo 3 and here is some more stderr 1>&2; '"
+                        ```
+                        ## 2 and here is some stdout
+                        ## 1 here is some stderr
+                        ## 3 and here is some more stderr
+
+                        The following might be relevant:
+                        [https://stackoverflow.com/questions/45316295/the-order-of-stdout-and-stderr-in-bash]
+
+                        the "stderr cahching" behaviour might have to do with bash (or
+                        perhaps the program running within bash) thinks it is connected
+                        to a terminal, and deciding to do line buffereing (iof connected
+                        to a terminal) or block buffering (if not connected to a
+                        terminal).
+
+                        the following might also be relevant:
+                        [https://www.gnu.org/software/bash/manual/bash.html#Interactive-Shells] 
+
+                    #>
+                } else {
+                    # write-host "no inputObjects given"
+                    ssh $sshArguments
+                    <#  I was hoping that this would run in a way that is fully
+                        connected to the terminal, but it does not. 
+                    #>
                 }
             }
 
-            if(-not $weHaveReachedTheEndOfStandardOutput ){
-                if($standardOutputLineReadingTask.IsCompleted){
-                    $standardOutputLine = $standardOutputLineReadingTask.Result
-                    if($null -eq $standardOutputLine ){
-                        write-debug  "encountered a null standardOutputLine"
-                        $weHaveReachedTheEndOfStandardOutput = $True
-                    } else {
-                        write-debug "capturing a standardOutputLine: '$($standardOutputLine)'"
-                        <# should we strip the newline sequence from the end of the
-                        line?  No, the ReadLine(or ReadLineAsync()) function does  this
-                        already. #>
-                        write-output $standardOutputLine
-                        $standardOutputLineReadingTask = $process.StandardOutput.ReadLineAsync()
+            strategy2  {
+                <#  2025-01-21-1827: With the latest version of openssh
+                    (OpenSSH_9.9p1, OpenSSL 3.0.15 3 Sep 2024), I have noticed
+                    that, when I pipe the output of ssh (or, equivalently (i
+                    think), pipe the output of runInSshSession) to anything
+                    other than Out-Default (or similarly attempt to capture the
+                    output of the command in a variable), an apparent race
+                    condition kicks in, where (it seems) ssh waits for
+                    powershell to read its stderr before dying or emitting more
+                    stuff on stdout, and powershell waits for ssh to emit more
+                    stuff on stdout or die.  
+
+                    Curiously, wrapping the invocation in "bash -c" doesn't
+                    help.
+
+                    I suspect that the essential problem is the "deadlock"
+                    condition due to synchronous io operations, as  described at
+                    (https://learn.microsoft.com/en-us/dotnet/api/system.diagnostics.process.standarderror?view=net-9.0#remarks).
+
+                    Specifically, quoting from that document:
+
+                    """
+                    A deadlock condition results if the parent process calls
+                    p.StandardOutput.ReadToEnd followed by
+                    p.StandardError.ReadToEnd and the child process writes
+                    enough text to fill its error stream. The parent process
+                    would wait indefinitely for the child process to close its
+                    StandardOutput stream. The child process would wait
+                    indefinitely for the parent to read from the full
+                    StandardError stream.
+                    """
+
+                    The problem is possibly exacerbated by some idiosyncratic
+                    behvaior by ssh; I don't remember encountering this  problem
+                    on the older version of ssh that I have been running until
+                    now (and I cannot remember exactly what version of ssh that
+                    was -- it was some version earlier than OpenSSH 9.7, I
+                    think.).
+
+                    To work around this problem, we are now invoking ssh by
+                    means of System.Diagnostics.Process.
+
+                    This should produce the correct, desired, behavior in cases
+                    where we are capturing the output of  runInSshSession (by
+                    piping it to another command, for example).  However, it
+                    will prevent the occasionally-desirable behavior, which we
+                    had before this fix, that we could run runInSshSession with
+                    $argumentList being empty, and not attempting to capture the
+                    output, and running in an interactive powershell session,
+                    and we would then be dropped into an interactive remote
+                    shell session (just like calling ssh without specifying a
+                    remote command).
+
+                    To recover this lost functionality,  I should probably try
+                    to detect when we are running interactively (i.e. when our
+                    output is not being captured), which should be detectable,
+                    in some cases by looking  at
+                    $PSCmdlet.MyInvocation.PipelinePosition and
+                    $PSCmdlet.MyInvocation.PipelineLength , and then in that
+                    case not use the work-around (when our output is not being
+                    captured, the deadlock condition does not occur, even when
+                    we don't use the workaround).  I am reluctant to attempt
+                    this because I don't have a good sense of a generally
+                    correct way to detect when we are running interactively.
+
+                    This whole business of interactive consoles is always a
+                    major headache.
+
+                    I think I basaically blame powershell for not doing
+                    something approximating asynchronously reading stderr and
+                    stdout when capturing the output.  For most executables,
+                    Powershell's laziness is probably tolerable, but something
+                    finicky about ssh (which may also perhaps deserve a bit of
+                    blame) exposes the underlying deficiency in powershell's
+                    stream-reading behavior when capturing stdout.
+
+                    Perhaps there is some kind of shim program (possiblyt a
+                    built-in powershell command ?) which could run ssh and
+                    buffer/read stdout and stderr correctly so as to prevent the
+                    deadlock.
+
+                    see
+                    (https://www.google.com/search?q=powershell+does+not+read+stderr+of+a+command+whose+output+is+being+captured)
+
+                    see
+                    (https://stackoverflow.com/questions/8184827/powershell-capture-the-output-from-external-process-that-writes-to-stderr-in-a)
+
+                    2025-06-10-1113:  This might have been fixed as of Openssh
+                    version (indicated by `ssh -V`): "OpenSSH_10.0p2, OpenSSL
+                    3.0.16 11 Feb 2025"
+                #>
+
+                $startInfo  = [System.Diagnostics.ProcessStartInfo] @{
+                    FileName = "ssh"    
+                    RedirectStandardOutput = $True
+                    ##RedirectStandardInput = $(if($inputObjects.Count -gt 0){$True}else{$False})
+                    RedirectStandardInput = $True
+                    RedirectStandardError = $True
+                }
+                $sshArguments |% {$startInfo.ArgumentList.Add($_)}
+
+                $process = [System.Diagnostics.Process]  @{
+                    StartInfo = $startInfo
+                }
+                $process.Start()| out-null
+
+                write-debug "process.CommandLine: $($process.CommandLine)"
+
+                ## if($inputObjects.Count -gt 0){
+                ##     $standardInputWritingTask = $process.StandardInput.WriteAsync(($inputObjects -join "`n"))
+                ##     ##$standardInputFlushingTask = $standardInputWritingTask.ContinueWith($process.StandardInput.Flush)
+                ##     $standardInputFlushingTask = $standardInputWritingTask.ContinueWith(  ([System.Action[System.Threading.Tasks.Task]] { $process.StandardInput.Flush()} ))
+                ## }  else {
+                ##     $process.standardInput.Close()
+                ## }
+
+                $standardInputWritingTask = (
+                    $process.StandardInput.
+                    WriteAsync(($inputObjects -join "`n")).ContinueWith(  ([System.Action[System.Threading.Tasks.Task]] { $process.StandardInput.Flush()} ))
+                    <# I  have a sense that I should somehow be using the asynchronous  flush  function here, if the fluish function is needed at  all. #>
+                    ## ContinueWith(  ([System.Action[System.Threading.Tasks.Task]] { $process.StandardInput.Close()} ))
+                    ##  ContinueWith(  ([System.Action[System.Threading.Tasks.Task]] { $process.StandardInput.Flush()} )).
+                    ## ContinueWith(  ([System.Action[System.Threading.Tasks.Task]] { $process.StandardInput.Close()} ))
+                )
+
+
+                $standardErrorLineReadingTask = $process.StandardError.ReadLineAsync()
+                $standardOutputLineReadingTask = $process.StandardOutput.ReadLineAsync()
+                $weHaveReachedTheEndOfStandardOutput = $False
+                $weHaveReachedTheEndOfStandardError = $False
+                $weHaveFinishedWritingToStandardInput = $False
+
+
+                do{
+                    
+                    
+                    [System.Threading.Tasks.Task]::WaitAny(@(
+                        if(-not $weHaveReachedTheEndOfStandardError ){$standardErrorLineReadingTask}
+                        if(-not $weHaveReachedTheEndOfStandardOutput ){$standardOutputLineReadingTask}
+                        if(-not $weHaveFinishedWritingToStandardInput ){$standardInputWritingTask}
+                    ))  |  out-null
+                    
+                    if(-not $weHaveReachedTheEndOfStandardError ){
+                        if($standardErrorLineReadingTask.IsCompleted){
+                            $standardErrorLine = $standardErrorLineReadingTask.Result
+                            if($null -eq $standardErrorLine ){
+                                write-debug  "encountered a null standardErrorLine"
+                                $weHaveReachedTheEndOfStandardError = $True
+                            } else  {
+                                write-debug "capturing a standardErrorLine: '$($standardErrorLine)'"
+                                <# should we strip the newline sequence from the end of the
+                                line?  No, the ReadLine(or ReadLineAsync()) function does  this
+                                already. #>
+                                write-error -ErrorId NativeCommandError -Message $standardErrorLine
+                                ##write-error -Message $standardErrorLine
+                                $standardErrorLineReadingTask = $process.StandardError.ReadLineAsync()
+                            } 
+                            ##$standardErrorLineReadingTask = $process.StandardError.ReadLineAsync()
+                            write-debug  "process.StandardError.EndOfStream:$($process.StandardError.EndOfStream)"
+                        }
                     }
-                    ##$standardOutputLineReadingTask = $process.StandardOutput.ReadLineAsync()
-                    ## $endOfOutput = $($process.StandardOutput.EndOfStream)
-                    ## if(-not $endOfOutput){
-                    ##     write-debug  "not at end"
-                    ## }
-                    write-debug  "process.StandardOutput.EndOfStream:$($process.StandardOutput.EndOfStream)"
 
-                    ##write-debug  "process.StandardOutput.EndOfStream: $(&{try{$errorActionPreference  = 'Stop'; $process.StandardOutput.EndOfStream}catch{$_}})"
-                }
+                    if(-not $weHaveReachedTheEndOfStandardOutput ){
+                        if($standardOutputLineReadingTask.IsCompleted){
+                            $standardOutputLine = $standardOutputLineReadingTask.Result
+                            if($null -eq $standardOutputLine ){
+                                write-debug  "encountered a null standardOutputLine"
+                                $weHaveReachedTheEndOfStandardOutput = $True
+                            } else {
+                                write-debug "capturing a standardOutputLine: '$($standardOutputLine)'"
+                                <# should we strip the newline sequence from the end of the
+                                line?  No, the ReadLine(or ReadLineAsync()) function does  this
+                                already. #>
+                                write-output $standardOutputLine
+                                $standardOutputLineReadingTask = $process.StandardOutput.ReadLineAsync()
+                            }
+                            ##$standardOutputLineReadingTask = $process.StandardOutput.ReadLineAsync()
+                            ## $endOfOutput = $($process.StandardOutput.EndOfStream)
+                            ## if(-not $endOfOutput){
+                            ##     write-debug  "not at end"
+                            ## }
+                            write-debug  "process.StandardOutput.EndOfStream:$($process.StandardOutput.EndOfStream)"
+
+                            ##write-debug  "process.StandardOutput.EndOfStream: $(&{try{$errorActionPreference  = 'Stop'; $process.StandardOutput.EndOfStream}catch{$_}})"
+                        }
+                    }
+
+                    if(-not $weHaveFinishedWritingToStandardInput ){
+                        if($standardInputWritingTask.IsCompleted){
+                            $weHaveFinishedWritingToStandardInput  = $True
+                            write-debug  "weHaveFinishedWritingToStandardInput: $($weHaveFinishedWritingToStandardInput)"
+                            $process.StandardInput.Close()
+                        }
+                    }
+
+                } until (
+                    ## $standardOutputLineReadingTask.IsCompleted -and
+                    ## $standardErrorLineReadingTask.IsCompleted -and
+                    ## $process.StandardError.EndOfStream -and 
+                    ## $process.StandardOutput.EndOfStream -and 
+
+                    $weHaveReachedTheEndOfStandardOutput -and
+                    $weHaveReachedTheEndOfStandardError -and
+                    $weHaveFinishedWritingToStandardInput
+                )
+                write-debug "reached end of reading and writing loop"
+                ##  write-debug  "process.StandardOutput.EndOfStream: $(&{try{$errorActionPreference  = 'Stop'; $process.StandardOutput.EndOfStream}catch{$_}})"
+
+                <# I am sure I have grossly mis-used the asynchronous constructs.  This
+                needs to be cleaned up  massivley, but I think it is at least correct
+                and functional.#>
             }
-
-            if(-not $weHaveFinishedWritingToStandardInput ){
-                if($standardInputWritingTask.IsCompleted){
-                    $weHaveFinishedWritingToStandardInput  = $True
-                    write-debug  "weHaveFinishedWritingToStandardInput: $($weHaveFinishedWritingToStandardInput)"
-                    $process.StandardInput.Close()
-                }
-            }
-
-        } until (
-            ## $standardOutputLineReadingTask.IsCompleted -and
-            ## $standardErrorLineReadingTask.IsCompleted -and
-            ## $process.StandardError.EndOfStream -and 
-            ## $process.StandardOutput.EndOfStream -and 
-
-            $weHaveReachedTheEndOfStandardOutput -and
-            $weHaveReachedTheEndOfStandardError -and
-            $weHaveFinishedWritingToStandardInput
-        )
-        write-debug "reached end of reading and writing loop"
-        ##  write-debug  "process.StandardOutput.EndOfStream: $(&{try{$errorActionPreference  = 'Stop'; $process.StandardOutput.EndOfStream}catch{$_}})"
-
-        <# I am sure I have grossly mis-used the asynchronous constructs.  This
-        needs to be cleaned up  massivley, but I think it is at least correct
-        and functional.#>
+        }    
     }
 }
 
