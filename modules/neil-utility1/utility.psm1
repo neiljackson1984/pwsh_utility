@@ -1080,7 +1080,7 @@ function runInSshSession {
             string.
         #>
 
-        switch("strategy1"){
+        switch("strategy2"){
             strategy1 {
                 # $inputObjects | ssh @sshOptionArguments "" @argumentList
                 if($inputObjects.Count -gt 0){
@@ -1245,6 +1245,11 @@ function runInSshSession {
                     2025-06-10-1113:  This might have been fixed as of Openssh
                     version (indicated by `ssh -V`): "OpenSSH_10.0p2, OpenSSL
                     3.0.16 11 Feb 2025"
+
+                    2025-06-15-1258: I think I might have jsut observed that
+                    this is still happening, wven with "OpenSSH_10.0p2, OpenSSL
+                    3.0.16 11 Feb 2025", which seemed initially to be immune
+                    from the problem.
                 #>
 
                 $startInfo  = [System.Diagnostics.ProcessStartInfo] @{
