@@ -19,6 +19,9 @@ class Computer {
     [string] $hostname
     [string[]] $handles
 
+    <# optionally overrides the credential that would otherwise be used #>
+    [PSCredential] $credential
+
     Computer(){}
 
     Computer([string] $hostname){$this.hostname = $hostname}
@@ -333,10 +336,13 @@ function Initialize-RemoteSessions {
     $invokersByHostname = (
         @(
             foreach($hostname in @($computers |% {$_.hostname}  | select -unique)){
+                $credential  = $($computers |? {$_.hostname -eq $hostname} |% credential  |? {$_}  | select  -first 1)
+
                 @{
                     $hostname = (
                         @(
-                            $commonArgumentsForNewInvoker    
+                            $commonArgumentsForNewInvoker
+                            if($credential){@{Credential = $credential}  }
                             @{ComputerName = $hostname}
                         ) | 
                         Merge-HashTables |
