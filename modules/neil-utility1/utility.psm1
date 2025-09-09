@@ -122,6 +122,24 @@ function New-BitwardenItem {
     return (Get-BitwardenItem -bitwardenItemId $newlyCreatedBitwardenItem['id'] )
 }
 
+function New-BitwardenFolder {
+    [OutputType([HashTable])]
+    [CmdletBinding()]
+    Param (
+        [Parameter(HelpMessage=  "The name of the bitwarden folder")]
+        [String] $name = "THIS IS AN AUTOMATICALLY GENERATED NAME $(Get-Date -Format "yyyy-MM-dd_HH-mm-ss") c0f223d7178f4e4c85f7e1b902bc3739"
+    )
+
+    [HashTable] $bitwardenFolder = ( bw --nointeraction --raw get template folder | ConvertFrom-Json -AsHashtable)
+    $bitwardenFolder['name'] = $name
+
+    unlockTheBitwardenVault
+    $result = [System.Convert]::ToBase64String( ([system.Text.Encoding]::UTF8).GetBytes(($bitwardenFolder | ConvertTo-Json -Depth 50)) )  | bw --nointeraction --raw create folder 
+    $newlyCreatedBitwardenFolder = ( $result | ConvertFrom-Json -AsHashtable)
+    Write-Information "created new bitwarden folder having id $($newlyCreatedBitwardenFolder['id'])."
+    return $newlyCreatedBitwardenFolder
+}
+
 
 
 function getFieldMapFromBitwardenItem {
@@ -2654,15 +2672,29 @@ function grantUserAccessToMailbox(
 
                 ""
 
-                "You can access this mailbox's webmail interface at https://outlook.office.com/mail/$($mailbox.PrimarySmtpAddress) ."
+                "You can access the $($mailbox.PrimarySmtpAddress) mailbox's webmail interface at https://outlook.office.com/mail/$($mailbox.PrimarySmtpAddress) ."
 
                 ""
+                switch("strategy2"){
+                    strategy1 {
+                        -join  @(
+                            "If so desired, you can add this mailbox to the left sidebar of "    
+                            "Outlook on your computer by doing the following: Within Outlook, "  
+                            "go to File -> Account Settings -> Account Settings -> Change -> "   
+                            " More Settings -> Advanced -> Add .  Then, type " 
+                            "'$($mailbox.PrimarySmtpAddress)' as the address of the mailbox that you want to add."
+                        )
+                    }
 
-                "If so desired, you can add this mailbox to the left sidebar of "    + `
-                "Outlook on your computer by doing the following: Within Outlook, "  + `
-                "go to File -> Account Settings -> Account Settings -> Change -> "   + `
-                " More Settings -> Advanced -> Add .  Then, type " + `
-                "'$($mailbox.PrimarySmtpAddress)' as the address of the mailbox that you want to add."
+                    strategy2 {
+                        -join  @(
+                            "To add the $($mailbox.PrimarySmtpAddress) mailbox to the Outlook app on your computer, " 
+                            "follow the instructions at "
+                            "https://support.microsoft.com/en-us/office/open-and-use-a-shared-mailbox-in-outlook-d94a8e9e-21f1-4240-808b-de9c9c088afd "
+                            "that describe how to add a shared mailbox to Outlook."
+                        )
+                    }
+                }
 
                 ""
             )
@@ -2671,14 +2703,16 @@ function grantUserAccessToMailbox(
             $messageBodyLines += 
                 @( 
 
-                    "In addition to you having full access to the $($mailbox.PrimarySmtpAddress) mailbox, " +
-                    "there is an Inbox Rule within the $($mailbox.PrimarySmtpAddress) mailbox " +
-                    "that is causing a copy of any message sent to that mailbox to be deposited in your inbox.  " +
-                    "If so desired, you can delete the Inbox Rule in the web interface at " + 
-                    "https://outlook.office.com/mail/$($mailbox.PrimarySmtpAddress)/options/mail/rules .  " +
-                    "The name of the Inbox Rule is `"$($nameOfInboxRule)`".  " +
-                    "Deleting the Inbox Rule will cause the automatic forwarding of messages to stop, but will " + 
-                    "have no effect on your ability to access the mailbox."
+                    -join @(
+                        "In addition to you having full access to the $($mailbox.PrimarySmtpAddress) mailbox, " 
+                        "there is an Inbox Rule within the $($mailbox.PrimarySmtpAddress) mailbox " 
+                        "that is causing a copy of any message sent to that mailbox to be deposited in your inbox.  " 
+                        "If so desired, you can delete the Inbox Rule in the web interface at " 
+                        "https://outlook.office.com/mail/$($mailbox.PrimarySmtpAddress)/options/mail/rules .  " 
+                        "The name of the Inbox Rule is `"$($nameOfInboxRule)`".  " 
+                        "Deleting the Inbox Rule will cause the automatic forwarding of messages to stop, but will " 
+                        "have no effect on your ability to access the mailbox."
+                    )
 
                     ""
                 )
@@ -3494,7 +3528,34 @@ function downloadFileAndReturnPath {
                 ## "--header"; "Accept: text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,*/*;q=0.8"
                 ## "--header"; "Accept-Language: en-US,en;q=0.5"
                 ## "--header"; "Accept-Encoding: gzip, deflate, br"
-                "--header"; "Accept-Encoding: *"
+                
+                ## "--header"; "Accept-Encoding: gzip, deflate, br, zstd"
+                ## "--header"; "Accept-Encoding: *"
+                <#  2025-09-09-1122: I am noticing that curl is not decoding
+                    gzip--encoded response content.  (This came up in the
+                    context of downloading from sharepoint online, which,
+                    weirdly, seems to gzip-encode a file selectively depending
+                    on whether the name of the file ends in ".txt")
+
+                    see (https://github.com/curl/curl/issues/3192)
+
+                    see
+                    (https://stackoverflow.com/questions/18983719/is-there-any-way-to-get-curl-to-decompress-a-response-without-sending-the-accept/56008375)
+
+                    see
+                    (https://everything.curl.dev/internals/content-encoding.html)
+
+                    the fix seems to be to pass the "--compressed" option to
+                    curl.  This will cause curl to add an Accept-Encoding header
+                    field containing all of the encodings curl supports, and to
+                    automatically decode any encdoed response -- exactly what I
+                    need.  (although surprising that curl doesn't do this by
+                    default).
+                #>
+                "--compressed"
+
+
+
                 # I have observed at least one server that requires the Accept-Encoding to be present.
 
                 # "--cookie-jar";$pathOfCookieJarFile
@@ -8226,7 +8287,22 @@ function Show-MicrosoftGraphLicenseReport {
 
     $data | format-table -autosize:$True -Wrap:$True
 
-    Get-MgSubscribedSKU | select SkuId, SkuPartNumber, {$_.PrepaidUnits.Enabled}, ConsumedUnits | ft -auto
+    Get-MgSubscribedSKU | select @(
+        'SkuId'
+        'SkuPartNumber'
+        @{
+            n='ProductDisplayName'
+            e={
+                $subscribedSku = $_
+                $productNamesAndServicePlansTable
+                |? {$_.GUID -eq $subscribedSku.SkuId} |
+                % Product_Display_Name |
+                Select -unique
+            }
+        }
+        {$_.PrepaidUnits.Enabled}
+        'ConsumedUnits' 
+    )| ft -auto
 
 }
 
@@ -9272,7 +9348,65 @@ function Get-AllMigrationUserStatistics {
     return @(
         Get-MigrationUser -ResultSize:unlimited |
         sort Identity |
-        %{Get-MigrationUserStatistics -IncludeReport -IncludeSkippedItems -IncludeCopilotReport -Identity $_}
+        %{
+            Get-MigrationUserStatistics -IncludeReport -IncludeSkippedItems -IncludeCopilotReport -Identity $_ -DiagnosticInfo (
+            <#  we guessed at these paramters by trial and error until no error
+                weas returned when passing it as the DiagnosticInfo parameter to
+                Get-MigrationUSerStatistics (or to Get-MigrationBatch  -- the
+                error message seems to be identical).
+
+                Get-MigrationUSerStatistics (and  Get-MigrationBatch) emit an
+                informative error message when we pasas an obviously bogus value
+                as the DiagnosticInfo parameter.  The error message is:
+
+
+                Get-MigrationUserStatistics: ||Argument 'showtimelinexxx' is not
+                supported for this component. Supported arguments: user=String,
+                organization=String, partition=String, storage, status=String,
+                maxsize=Int32, type=String, batch=String, reports, endpoints,
+                reportid=String, attachmentid=String, verbose, confirm,
+                duration=String, starttime=DateTime, endtime=DateTime,
+                showtimeline, showtimeslots=String
+
+                et-MigrationBatch: ||Argument 'Asdfasdfasdf' is not supported
+                for this component. Supported arguments: user=String,
+                organization=String, partition=String, storage, status=String,
+                maxsize=Int32, type=String, batch=String, reports, endpoints,
+                reportid=String, attachmentid=String, verbose, confirm,
+                duration=String, starttime=DateTime, endtime=DateTime,
+                showtimeline, showtimeslots=String
+
+                Figuring out that this paramter is expecting a string that is a
+                comma-delimited list was a lucky guess.
+
+                There seems to be some (meager amount of) documentation of the
+                DiagnositcInfo parameter to the Get-MigrationEndpoint command on
+                the Microsoft documentation page for that command
+                (https://learn.microsoft.com/en-us/powershell/module/exchange/get-migrationendpoint?view=exchange-ps).
+                The description of the DiagnositcInfo parameter that appears on
+                that page seems to be consistent with the properties that I have
+                sussed out empirically for the DiagnosticInfo parameter to the
+                Get-MigrationUSerStatistics and Get-MigrationBatch commands.
+                Based on everything I have seen, it seems reasonable to
+                speculate that the DiagnosticInfo parameters for
+                Get-MigrationUSerStatistics, Get-MigrationBatch, and
+                Get-MigrationEndpoint commands have the same syntax and
+                semantics. 
+
+
+
+            #>
+
+             @(
+                 'showtimeline'
+                 'storage'
+                 'reports'
+                 'endpoints'
+                 'verbose'
+                 'confirm'
+             ) -join ","
+         ) 
+        }
     )
 }
 

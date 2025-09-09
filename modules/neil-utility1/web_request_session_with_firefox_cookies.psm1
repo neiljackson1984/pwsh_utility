@@ -75,9 +75,15 @@ function Get-WebRequestSessionWithFirefoxCookies {
         # having to redownload the dependency upon every run.
         $globallyUniqueNameOfPackagesDirectory = "0d9099a3b7ac4035861dfa79b2c73022"
         $pathOfPackagesDirectory = (join-path (join-path $env:temp $globallyUniqueNameOfPackagesDirectory) "packages")
-        ## nuget install System.Data.SQLite -OutputDirectory $pathOfPackagesDirectory | write-host
         New-Item -itemtype directory -force -path $pathOfPackagesDirectory | out-null
-        nuget install System.Data.SQLite -OutputDirectory $pathOfPackagesDirectory -Source "https://api.nuget.org/v3/index.json" -Verbosity detailed | write-information
+
+        foreach($packageName in @(
+            "System.Data.SQLite"
+            "Microsoft.Data.Sqlite"
+            "SQLitePCLRaw.bundle_e_sqlite3"
+        )){
+            nuget install $packageName -OutputDirectory $pathOfPackagesDirectory -Source "https://api.nuget.org/v3/index.json" -Verbosity detailed | write-information
+        }
 
     }
         
@@ -119,6 +125,9 @@ function Get-WebRequestSessionWithFirefoxCookies {
             # sustainable way to ensure the compile has the dependencies it
             # needs.
 
+            ##'netstandard'
+            'netstandard, Version=2.1.0.0, Culture=neutral, PublicKeyToken=cc7b13ffcd2ddd51'
+
             'System.Data, Version=4.0.0.0, Culture=neutral, PublicKeyToken=b77a5c561934e089'
             'mscorlib, Version=4.0.0.0, Culture=neutral, PublicKeyToken=b77a5c561934e089'
             'System.Data.Common, Version=0.0.0.0, Culture=neutral, PublicKeyToken=b03f5f7f11d50a3a'
@@ -127,6 +136,8 @@ function Get-WebRequestSessionWithFirefoxCookies {
         )
     } |% { Add-Type @_ } 
 
+
+    <# 2025-09-04-1504: this is not working as of 2025-09-04-1504.  missing e_sqlite  dll dependency.  giving up. #>
     # Query to get cookies from the SQLite database
     $query = "SELECT host, name, value, path, expiry, isSecure FROM moz_cookies"
 
