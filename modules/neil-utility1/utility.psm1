@@ -9415,7 +9415,9 @@ function reportOnLastMatchingMessageTrace([scriptblock] $predicate){
     
     
     $messageTraces =  @(
-        Get-MessageTrace -StartDate (Get-Date).AddHours(-48) -EndDate (Get-Date).AddMinutes(60) 
+        ##Get-MessageTrace -StartDate (Get-Date).AddHours(-48) -EndDate (Get-Date).AddMinutes(60) 
+        Get-MessageTrace -StartDate (Get-Date).AddDays(-10) -EndDate (Get-Date).AddMinutes(60) 
+        ## Get-MessageTraceV2 -StartDate (Get-Date).AddHours(-48) -EndDate (Get-Date).AddMinutes(60) 
     )
 
     $messageTraceIdOfInterest = $(
