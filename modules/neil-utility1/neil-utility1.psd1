@@ -27,6 +27,7 @@
         "softethervpn.psm1"
         "openvpn.psm1"
         "work_session.psm1"
+        "dial.psm1"
     )
 
 
