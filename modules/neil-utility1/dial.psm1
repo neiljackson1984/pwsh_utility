@@ -1,7 +1,7 @@
 
 <# define a dial function replacement that works with my new polycom phone (temporary hack, eventually to be integrated into my powershell utility module) #>
 
-<# TODO: memoize the initialization of the REST parameters (retrievel of
+<# TODO (DONE 2025-10-17-1525): memoize the initialization of the REST parameters (retrievel of
 credentials from Bitwarden, etc.), so we don't have to wait  for it every timne
 we load the module. #>
 
@@ -55,86 +55,6 @@ function Get-PolycomPhoneRestApiParameters {
 
 if($false){   
 
-    function samplePhoneConfigSet([string] $name, [string] $value){
-        $succeeded = $false
-        foreach($credential in $candidateCredentialsForSamplePhoneRestApi){
-            # Write-Host "trying credential"
-            $restApiParameters = $restApiCommonParameters.Clone()
-            $restApiParameters['Credential'] = $credential
-            $response = $null
-            $response = @{
-                Method="POST"
-                Uri = "$restApiRootUrlOfSamplePhone/api/v1/mgmt/config/set"
-                Body = ConvertTo-JSON @{
-                    data=@{
-                        $name = $value
-                    }
-                }
-            } | % {Invoke-WebRequest @restApiParameters @_  -ErrorAction SilentlyContinue 2>$null} -ErrorAction SilentlyContinue 2>$null
-
-            if(
-                $response -and
-                ($response.StatusCode -eq 200)
-            ){
-                $succeeded = $True
-                # Write-Host "success"
-                .{
-                    $response |
-                        select -expand Content |
-                        convertfrom-json |
-                        write-host
-                }
-                break
-            } else {
-                # Write-Host "failure"
-                # $response
-            }
-        }
-        if(-not $succeeded){Write-Host "failed"; Write-Host $response}
-    }
-
-    function samplePhoneConfigGet([string] $name){
-        $succeeded = $false
-        foreach($credential in $candidateCredentialsForSamplePhoneRestApi){
-            # Write-Host "trying credential"
-            $restApiParameters = $restApiCommonParameters.Clone()
-            $restApiParameters['Credential'] = $credential
-            $response = $null
-            $response = @{
-                Method="POST"
-                Uri = "$restApiRootUrlOfSamplePhone/api/v1/mgmt/config/get"
-                Body = ConvertTo-JSON @{
-                    data=@(
-                        $name
-                    )
-                }
-            } | % {Invoke-WebRequest @restApiParameters @_  -ErrorAction SilentlyContinue 2>$null} -ErrorAction SilentlyContinue 2>$null
-
-            if(
-                $response -and
-                ($response.StatusCode -eq 200)
-            ){
-                $succeeded = $True
-                # Write-Host "success"
-                .{
-                    $response |
-                        select -expand Content |
-                        convertfrom-json |
-                        select -expand data |
-                        select -expand $name |
-                        # select -expand Content |
-                        write-output
-                }
-                break
-            } else {
-                # Write-Host "failure"
-                # $response
-            }
-        }
-
-        if(-not $succeeded){Write-Host "failed"; Write-Host $response}
-
-    }
 
     function factoryResetSamplePhone{
         $succeeded = $false
@@ -173,24 +93,115 @@ if($false){
             Write-Host $response
         }
     }
+
+        
+    function dial_deprecated1 {
+        param(
+            [string] $digits,
+            [switch] $initial = $false
+        )
+
+
+        $commonRequestParameters = (Get-PolycomPhoneRestApiParameters).commonRequestParameters
+
+        if($initial){
+            (Invoke-WebRequest @commonRequestParameters -Method POST -Uri "$((Get-PolycomPhoneRestApiParameters).rootUrl)/api/v1/callctrl/dial" -Body (ConvertTo-JSON @{data=@{Dest=$digits}}) ).Content | write-information
+        }  else {
+            (Invoke-WebRequest @commonRequestParameters -Method POST -Uri "$((Get-PolycomPhoneRestApiParameters).rootUrl)/api/v1/callctrl/sendDTMF" -Body (ConvertTo-JSON @{data=@{Digits=$digits}}) ).Content | write-information
+
+        }
+    }
+
 }
 
-function dial_deprecated1 {
+function Set-PolycomPhoneConfiguration {
+    [CmdletBinding()]
     param(
-        [string] $digits,
-        [switch] $initial = $false
+        [string] $name, 
+        [string] $value
     )
-
-
     $commonRequestParameters = (Get-PolycomPhoneRestApiParameters).commonRequestParameters
 
-    if($initial){
-        (Invoke-WebRequest @commonRequestParameters -Method POST -Uri "$((Get-PolycomPhoneRestApiParameters).rootUrl)/api/v1/callctrl/dial" -Body (ConvertTo-JSON @{data=@{Dest=$digits}}) ).Content | write-information
-    }  else {
-        (Invoke-WebRequest @commonRequestParameters -Method POST -Uri "$((Get-PolycomPhoneRestApiParameters).rootUrl)/api/v1/callctrl/sendDTMF" -Body (ConvertTo-JSON @{data=@{Digits=$digits}}) ).Content | write-information
+    $succeeded = $false
 
+
+
+    $response = $null
+    $response = @{
+        Method="POST"
+        Uri = "$((Get-PolycomPhoneRestApiParameters).rootUrl)/api/v1/mgmt/config/set"
+        Body = ConvertTo-JSON @{
+            data=@{
+                $name = $value
+            }
+        }
+    } | % {Invoke-WebRequest @commonRequestParameters @_  -ErrorAction SilentlyContinue 2>$null} -ErrorAction SilentlyContinue 2>$null
+
+    if(
+        $response -and
+        ($response.StatusCode -eq 200)
+    ){
+        $succeeded = $True
+    }
+
+
+    if($succeeded){
+        $response |
+        select -expand Content |
+        convertfrom-json |
+        write-output
+    } else {
+        write-information "failed"; write-information $response
     }
 }
+
+function Get-PolycomPhoneConfiguration {
+    [CmdletBinding()]
+    param(
+        [string] $name
+    )
+    $commonRequestParameters = (Get-PolycomPhoneRestApiParameters).commonRequestParameters
+    
+    $succeeded = $false
+
+
+
+    $response = $null
+    $response = @{
+        Method="POST"
+        Uri = "$((Get-PolycomPhoneRestApiParameters).rootUrl)/api/v1/mgmt/config/get"
+        Body = ConvertTo-JSON @{
+            data=@(
+                $name
+            )
+        }
+    } | % {Invoke-WebRequest @commonRequestParameters @_  -ErrorAction SilentlyContinue 2>$null} -ErrorAction SilentlyContinue 2>$null
+
+    if(
+        $response -and
+        ($response.StatusCode -eq 200) 
+    ){
+        $succeeded = $True
+    } 
+
+    if($succeeded){
+        $content = $(
+            $response.Content |
+            convertfrom-json -AsHashTable
+        )
+
+        if($content.ContainsKey('data') -and $($content['data'].ContainsKey($name))){
+            write-output ([pscustomobject] $content['data'][$name])
+        } else {
+            write-warning "expected key '$($name)' is absent"
+            write-information $response
+        }
+
+    } else {
+        write-error "failed"; write-information $response
+    }
+}
+
 
 function dial {
     [CmdletBinding()]
@@ -220,5 +231,9 @@ function dial {
     } 
 }
 
-Export-ModuleMember -function dial
-Export-ModuleMember -function Get-PolycomPhoneRestApiParameters
+Export-ModuleMember -function @(
+    'dial'
+    'Get-PolycomPhoneRestApiParameters'
+    'Get-PolycomPhoneConfiguration'
+    'Set-PolycomPhoneConfiguration'
+)
