@@ -5,6 +5,8 @@
 credentials from Bitwarden, etc.), so we don't have to wait  for it every timne
 we load the module. #>
 
+<# see (https://docs.poly.com/bundle/voice-rest-api-reference-manual-current/page/rest-api-commands-and-structure.html) #>
+
 $bitwardenItemIdOfNeilDeskphone = 'c63c4108-b859-45f7-b4a8-b36b0182cfa7'
 
 $script:polycomPhoneRestApiParameters = $null
