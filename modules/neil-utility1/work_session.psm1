@@ -138,6 +138,7 @@ function Initialize-RemoteSessions {
         "Set-LocalAccountTokenFilterPolicy"
         "Set-ScreenSaveTimeOut"
         "uploadFileToSpecialPublicSharepointFolder"
+        "Get-InternetConnectedIpAddress"
     )
 
     $namesOfFunctionsToImport  = @($namesOfFunctionsToImport | select -unique)
