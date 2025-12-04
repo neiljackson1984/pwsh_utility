@@ -1043,6 +1043,7 @@ function connectToOffice365 {
            @{ nameOfTargetServicePrincipal = 'Office 365 Exchange Online';
               namesOfRequiredAppRoles = @(
                   'Exchange.ManageAsApp'
+                  'Exchange.ManageAsAppV2'
                   'full_access_as_app'
               )
            }
