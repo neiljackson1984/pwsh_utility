@@ -99,7 +99,7 @@ if($false){
         
     function dial_deprecated1 {
         param(
-            [string] $digits,
+            [string] $phoneNumber,
             [switch] $initial = $false
         )
 
@@ -107,9 +107,9 @@ if($false){
         $commonRequestParameters = (Get-PolycomPhoneRestApiParameters).commonRequestParameters
 
         if($initial){
-            (Invoke-WebRequest @commonRequestParameters -Method POST -Uri "$((Get-PolycomPhoneRestApiParameters).rootUrl)/api/v1/callctrl/dial" -Body (ConvertTo-JSON @{data=@{Dest=$digits}}) ).Content | write-information
+            (Invoke-WebRequest @commonRequestParameters -Method POST -Uri "$((Get-PolycomPhoneRestApiParameters).rootUrl)/api/v1/callctrl/dial" -Body (ConvertTo-JSON @{data=@{Dest=$phoneNumber}}) ).Content | write-information
         }  else {
-            (Invoke-WebRequest @commonRequestParameters -Method POST -Uri "$((Get-PolycomPhoneRestApiParameters).rootUrl)/api/v1/callctrl/sendDTMF" -Body (ConvertTo-JSON @{data=@{Digits=$digits}}) ).Content | write-information
+            (Invoke-WebRequest @commonRequestParameters -Method POST -Uri "$((Get-PolycomPhoneRestApiParameters).rootUrl)/api/v1/callctrl/sendDTMF" -Body (ConvertTo-JSON @{data=@{Digits=$phoneNumber}}) ).Content | write-information
 
         }
     }
@@ -208,8 +208,12 @@ function Get-PolycomPhoneConfiguration {
 function dial {
     [CmdletBinding()]
     param(
-        [string] $digits
+        ## [string] $digits
+        [string] $phoneNumber
     )
+
+    ##$sanitizedPhoneNumber = $phoneNumber -replace "[^0123456789#\*,@!;DTW]",""
+    $sanitizedPhoneNumber = $phoneNumber -replace "[^0123456789#]",""
 
     $commonRequestParameters = (Get-PolycomPhoneRestApiParameters).commonRequestParameters
 
@@ -223,13 +227,13 @@ function dial {
         % data | % State
     )
 
-    write-information "$(get-date): state: $($state). dialing '$($digits)'"
+    write-information "$(get-date): state: $($state). dialing '$($sanitizedPhoneNumber)'"
 
     if($state -eq "Active"){
-        (Invoke-WebRequest @commonRequestParameters -Method POST -Uri "$((Get-PolycomPhoneRestApiParameters).rootUrl)/api/v1/callctrl/sendDTMF" -Body (ConvertTo-JSON @{data=@{Digits=$digits}}) ).Content | write-information
+        (Invoke-WebRequest @commonRequestParameters -Method POST -Uri "$((Get-PolycomPhoneRestApiParameters).rootUrl)/api/v1/callctrl/sendDTMF" -Body (ConvertTo-JSON @{data=@{Digits=$sanitizedPhoneNumber}}) ).Content | write-information
 
     } else {
-        (Invoke-WebRequest @commonRequestParameters -Method POST -Uri "$((Get-PolycomPhoneRestApiParameters).rootUrl)/api/v1/callctrl/dial" -Body (ConvertTo-JSON @{data=@{Dest=$digits}}) ).Content | write-information
+        (Invoke-WebRequest @commonRequestParameters -Method POST -Uri "$((Get-PolycomPhoneRestApiParameters).rootUrl)/api/v1/callctrl/dial" -Body (ConvertTo-JSON @{data=@{Dest=$sanitizedPhoneNumber}}) ).Content | write-information
     } 
 }
 
