@@ -8067,7 +8067,11 @@ function Get-MicrosoftProductNamesAndServicePlansTable {
     param()
     <# see (https://learn.microsoft.com/en-us/entra/identity/users/licensing-service-plan-reference) #>
     $urlOfProductNamesAndServicePlansCsvFile = "https://download.microsoft.com/download/e/3/e/e3e9faf2-f28b-490a-9ada-c6089a1fc5b0/Product%20names%20and%20service%20plan%20identifiers%20for%20licensing.csv"
-    $productNamesAndServicePlansTableWithPossibleDuplicateRows = (import-csv (downloadFileAndReturnPath $urlOfProductNamesAndServicePlansCsvFile))
+    ## $productNamesAndServicePlansTableWithPossibleDuplicateRows = (import-csv (downloadFileAndReturnPath $urlOfProductNamesAndServicePlansCsvFile))
+
+    $pathOfCsvFile = $(join-path $env:temp  "$(new-guid).csv")
+    Invoke-WebRequest -Uri $urlOfProductNamesAndServicePlansCsvFile -OutFile $pathOfCsvFile
+    $productNamesAndServicePlansTableWithPossibleDuplicateRows = (import-csv $pathOfCsvFile)
 
     $groupedRows = @(
         $productNamesAndServicePlansTableWithPossibleDuplicateRows | 
