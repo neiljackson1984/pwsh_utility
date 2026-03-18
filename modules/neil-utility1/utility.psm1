@@ -5597,22 +5597,38 @@ function publishFile {
                     [array]::Resize[byte]([ref] $chunk, $countOfBytesRead)
                 }
             
-                Write-Information (
-                    "$(get-date): invoking webrequest"
-                )
-                @{
-                    Method = "PUT"
-                    ContentType = 'application/octet-stream'
-                    Headers              = @{
-                        "Content-Range"  = "bytes $($sliceStart)-$($sliceStart + $chunk.Count - 1)/$($totalLength)"
-                        # "Content-Length" = "$($chunk.Count)"
-                    }
-                    Uri = $uploadSession.UploadUrl
-                    Body = $chunk
-                } |% {Invoke-WebRequest @_} |  
-                out-null
-                <# TODO: error handling and retries #>
 
+                $thisChunkSucceeded  = $false
+                
+                while(-not $thisChunkSucceeded){
+                    Write-Information (
+                        "$(get-date): invoking webrequest"
+                    )
+                    try{
+                        $response = @{
+                            Method = "PUT"
+                            ContentType = 'application/octet-stream'
+                            Headers              = @{
+                                "Content-Range"  = "bytes $($sliceStart)-$($sliceStart + $chunk.Count - 1)/$($totalLength)"
+                                # "Content-Length" = "$($chunk.Count)"
+                            }
+                            Uri = $uploadSession.UploadUrl
+                            Body = $chunk
+                        } |% {Invoke-WebRequest @_} 
+                        
+                        $thisChunkSucceeded  = $true
+
+                        ## write-information "`$response.StatusCode: $($response.StatusCode)"
+
+                    } catch {
+                        write-warning "request failed with exception: $($_)"
+
+                        $holdoffPeriod = $(new-timespan -seconds 20)
+                        write-information "waiting $($holdoffPeriod) and will then retry."
+                        start-sleep -Seconds $holdoffPeriod.TotalSeconds
+                    }
+                    
+                }
                 $countOfBytesUploaded += $chunk.Count
 
                 Write-Information (
@@ -5627,7 +5643,11 @@ function publishFile {
 
         }
 
+        <#  2026-03-18-1355: We might consider using the Add-PnPFile command,
+            from the PnP PowerShell module, instead of my own invokation of
+            Invoke-WebRequest.
 
+        #>
 
     }
 
