@@ -70,6 +70,7 @@ function Expand-Attachments {
 
     if ($pathOfSourceFolder){
         $pathsOfMessageFilesToProcess = $pathsOfMessageFilesToProcess + @(( Get-Item -Path (Join-Path $pathOfSourceFolder "*.msg") ).FullName)
+        <# 2026-01-27-1240 TODO: figure out how to support eml files in addtion to msg files. #>
     }
 
     if ($pathOfSourceMessageFile){

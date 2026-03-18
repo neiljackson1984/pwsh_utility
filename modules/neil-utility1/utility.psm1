@@ -193,7 +193,8 @@ function Show-BitwardenItem {
         [String] $bitwardenItemId 
     )
 
-    $idOfFirefoxExtension = "0516f8c4-cf97-4186-b8d6-403e911d48ab"
+    ## $idOfFirefoxExtension = "0516f8c4-cf97-4186-b8d6-403e911d48ab"
+    $idOfFirefoxExtension = "deb386c8-322e-4cfc-a54b-0e9d6f195507"
     <#  it is a bit of a hack to hardcode this here.  It tends to vary every
         time the bitwarden extension is updated, and possibly also varies across
         machines.

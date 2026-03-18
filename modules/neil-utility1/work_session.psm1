@@ -110,6 +110,7 @@ function Initialize-RemoteSessions {
         "findFileInProgramFiles"
         "format-sortedlist"
         "Get-EncodedPowershellCommand"
+        "Get-InternetConnectedIpAddress"
         "Get-LastLoggedOnUserName"
         "Get-LastLoggedOnUserProfile"
         "Get-LastLoggedOnUserSID"
@@ -121,6 +122,7 @@ function Initialize-RemoteSessions {
         "getPathOfPossiblyNestedFileMatchingPattern"
         "getStronglyNamedPath"
         "grantEveryoneFullAccessToFile"
+        "Import-VeeamExecutableAliases"
         "Install-Winget"
         "installGoodies"
         "Invoke-Periodically"
@@ -138,7 +140,6 @@ function Initialize-RemoteSessions {
         "Set-LocalAccountTokenFilterPolicy"
         "Set-ScreenSaveTimeOut"
         "uploadFileToSpecialPublicSharepointFolder"
-        "Get-InternetConnectedIpAddress"
     )
 
     $namesOfFunctionsToImport  = @($namesOfFunctionsToImport | select -unique)
