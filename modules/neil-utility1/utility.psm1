@@ -11,7 +11,7 @@ function unlockTheBitwardenVault(){
     }
 }
 
-# function getBitwardenItem {
+Set-Alias getBitwardenItem Get-BitwardenItem
 function Get-BitwardenItem {
     [OutputType([HashTable])] # I really want an Optional[HashTable] -- I will return null in case of failure.
     
@@ -4740,6 +4740,7 @@ function findFileInProgramFiles {
         File = $True
         Recurse = $True
         Filter = $Filter
+        Force = $true
     } | % {Get-ChildItem  @_ } |
     Select -Expand FullName
 }
