@@ -4,27 +4,31 @@ import-module (join-path $psScriptRoot "utility.psm1")
 function Expand-Attachments {
     <#
         .SYNOPSIS
-            Look at all .msg files in the specified source folder, assumed to be
-            email message files as saved by Outlook.  For each, dump attached
+            Look at all .msg and .eml files in the specified source folder, assumed to be
+            email message files as saved by Outlook or similar.  For each, dump attached
             files into the destination folder.
 
-            If appendHashToOutputFileNames is specified, de hash-based file
+            If appendHashToOutputFileNames is specified, do hash-based file
             names to ensure file name uniqueness. we regard two attached files
             as "the same" iff. they have the same filename and the same hash.
 
-        .DESCRIPTION
-            Long description
+            Returns the path of the folder  into which the attachments were expanded
+
 
         .PARAMETER pathOfSourceFolder
 
 
         .PARAMETER pathOfDestinationFolder
+            Leave nullish to generate a new temporary folder
 
 
-        .PARAMETER pathOfSourceMessageFile
+        .PARAMETER pathsOfSourceMessageFiles
 
 
         .PARAMETER appendHashToOutputFileNames
+
+        .PARAMETER recurse
+            recurse when scanning the source folder.
 
     #>
     
@@ -45,8 +49,24 @@ function Expand-Attachments {
 
     #>
 
+    <# 2026-04-18-1013
+
+        We have now switched  from  relying on the Outlook COM api, which could
+        only handle msg files, to relying on edecoder, a plugin  for 7zip
+        produced by some Russian organization called tc4shell.   See
+        (https://www.tc4shell.com/en/7zip/edecoder).
+
+        edecoder can be installed (As of 2026-04-18-1015) by doing:
+        ```
+        choco upgrade edecoder --checksum CBD6C0357DF0D419A6AC4BCF89DCC972A8CCFB8D5BA0CDD2B876AD21EF4217AB  --source chocolatey  --yes
+        ```
 
 
+    #>
+
+
+    [CmdletBinding()]
+    [OutputType([String])]
     Param(
         [Parameter(Position=0)]
         [String]$pathOfSourceFolder,
@@ -55,51 +75,137 @@ function Expand-Attachments {
         [String]$pathOfDestinationFolder,
 
         [Parameter(Position=2)]
-        [String]$pathOfSourceMessageFile,
+        [String[]]$pathsOfSourceMessageFiles,
 
         [Parameter(Position=3)]
-        [Boolean]$appendHashToOutputFileNames = $True
+        [switch] $appendHashToOutputFileNames = $false,
+
+        [Parameter(Position=4)]
+        [switch] $recurse = $false
     )
 
-    # $pathOfSourceFolder=(Join-Path $PSScriptRoot "message_files")
-    # $pathOfDestinationFolder=(Join-Path $PSScriptRoot "attachments")
+    if(-not $pathOfDestinationFolder){
+        $pathOfDestinationFolder = $(New-TemporaryDirectory |%  FullName)
+    }
+
+    
+    if(-not (test-path $pathOfDestinationFolder -pathtype:container)){
+        write-error (-join @(
+            "The destination folder '$($pathOfDestinationFolder)'  does not exist.  We cannot proceed."
+        ))
+        return
+    }
 
 
 
     $pathsOfMessageFilesToProcess = @()
 
     if ($pathOfSourceFolder){
-        $pathsOfMessageFilesToProcess = $pathsOfMessageFilesToProcess + @(( Get-Item -Path (Join-Path $pathOfSourceFolder "*.msg") ).FullName)
+        $pathsOfMessageFilesToProcess = $pathsOfMessageFilesToProcess + @(
+            ## ( Get-Item -Path (Join-Path $pathOfSourceFolder "*.msg") ).FullName
+            
+            gci -file -force -path $pathOfSourceFolder -recurse:$recurse |
+            ?  {[System.IO.Path]::GetExtension($_).ToLower() -in @(".eml"; ".msg")} |
+            %  FullName
+        )
         <# 2026-01-27-1240 TODO: figure out how to support eml files in addtion to msg files. #>
     }
 
-    if ($pathOfSourceMessageFile){
-        $pathsOfMessageFilesToProcess = $pathsOfMessageFilesToProcess +  @((Get-Item -Path $pathOfSourceMessageFile).FullName)
+    if ($pathsOfSourceMessageFiles){
+        $pathsOfMessageFilesToProcess = $pathsOfMessageFilesToProcess +  @(
+            ## (Get-Item -Path $pathOfSourceMessageFile).FullName
+            $pathsOfSourceMessageFiles
+        )
     }
 
-    # Add-Type -assembly "Microsoft.Office.Interop.Outlook"
-    # add-type -assembly "System.Runtime.Interopservices"
-    # $outlook = [Runtime.Interopservices.Marshal]::GetActiveObject('Outlook.Application')
-
-    $outlook = New-Object -ComObject Outlook.Application
+    if($false){
+        ## Add-Type -assembly "Microsoft.Office.Interop.Outlook"
+        ## add-type -assembly "System.Runtime.Interopservices"
+        ## $outlook = [Runtime.Interopservices.Marshal]::GetActiveObject('Outlook.Application')
+        
+        $outlook = New-Object -ComObject Outlook.Application
+    }
 
     foreach ($pathOfMessageFile in $pathsOfMessageFilesToProcess){
-        write-host "working on $pathOfMessageFile"
-        $message = $outlook.CreateItemFromTemplate($pathOfMessageFile)
-        Write-Output ('$message.Attachments.Count: ' + $message.Attachments.Count)
+        write-information "working on $pathOfMessageFile"
         
-        foreach ($attachedFile in $message.Attachments) {
-            $pathOfStagedFile = (join-path (New-TemporaryDirectory) $attachedFile.Filename)
+        if($false){
+            $message = $outlook.CreateItemFromTemplate($pathOfMessageFile)
+            write-information ('$message.Attachments.Count: ' + $message.Attachments.Count)
             
-            $pathOfTempFile = [System.IO.Path]::GetTempFileName()
-            $attachedFile.SaveAsFile($pathOfStagedFile)
-            $hashOfAttachedFile = (Get-FileHash -Path $pathOfStagedFile -Algorithm SHA256).hash
+            foreach ($attachedFile in $message.Attachments) {
+                $pathOfStagedFile = (join-path (New-TemporaryDirectory) $attachedFile.Filename)
+                
+                $pathOfTempFile = [System.IO.Path]::GetTempFileName()
+                $attachedFile.SaveAsFile($pathOfStagedFile)
+                $hashOfAttachedFile = (Get-FileHash -Path $pathOfStagedFile -Algorithm SHA256).hash
+
+                if($appendHashToOutputFileNames) {
+                    # $filenameOfDestinationFile = (Split-Path -LeafBase -Path $attachedFile.Filename ) + "--" + $hashOfAttachedFile + (Split-Path -Extension -Path $attachedFile.Filename ) 
+                    $filenameOfDestinationFile = (split-path -leaf (getStronglyNamedPath $pathOfStagedFile)) 
+                } else {
+                    # $filenameOfDestinationFile = Split-Path -Leaf -Path $attachedFile.Filename 
+                    $filenameOfDestinationFile = Split-Path -Leaf -Path $pathOfStagedFile
+                }
+
+                $pathOfDestinationFile = (Join-Path $pathOfDestinationFolder $filenameOfDestinationFile)
+                
+
+                #make the destination folder if it does not already exist
+                New-Item -ItemType directory -Path (Split-Path -Path $pathOfDestinationFile -Parent) -ErrorAction SilentlyContinue | out-null
+                Move-Item -Path $pathOfStagedFile -Destination $pathOfDestinationFile
+
+                write-information ('$attachedFile.Filename: ' + $attachedFile.Filename )
+                # write-information ('$pathOfStagedFile: ' + $pathOfStagedFile )
+                write-information ('$pathOfDestinationFile: ' + $pathOfDestinationFile )
+                # write-information ('$hashOfAttachedFile: ' + $hashOfAttachedFile )
+            }
+        }
+
+        $pathOfExpandedArchiveDirectory = $(expandArchiveFile $pathOfMessageFile)
+        <# we assume that expandArchiveFile invokes 7zip, and that 7zip uses the edecoder plugin #>
+
+        <#  the edecoder plugin for 7zip does not quite treat the message file
+            like an archive file containing exactly the attached files. Rather,
+            some other files appear in the archive file,  and the folder
+            structure within the archive file is slightly different for a .msg
+            message file than for a .eml message file.  Hence, we have to do
+            some tests below to  handle the different cases, and at the moment
+            (2026-04-18-1029), we are not bothering to filter  out the files in
+            the archive that are not strictly attached files (things like html
+            images,  etc.).
+
+            For an .msg file, the edecoder plugin sees the msg fdile as an
+            archive file containing, in its root, a .eml file and a  folder
+            named "Attachments".  That "Attachments" folder contains the
+            attached files.  That .eml file seems to be a .eml version of the
+            message.  We might convert the .msg file into an .eml file (by
+            getting the .eml file that edecoder extracts from the .msg file),
+            and then operate on exclusively  .eml files for the final extraction
+            of attached files.  However, I think there might be some benefit to
+            treating .msg files specially and looking in the Attachments folder;
+            this might filter out some of the cruft files that are not true
+            attached files.
+
+        #>
+
+        $pathsOfAttachedFiles = @(
+            if(test-path -literalpath (join-path $pathOfExpandedArchiveDirectory "Attachments") -pathtype:Container){
+                <# in this case, we are dealing with a .msg file. #>
+                gci -force -file -literalpath (join-path $pathOfExpandedArchiveDirectory "Attachments") 
+            } else {
+                gci -force -file -literalpath $pathOfExpandedArchiveDirectory
+            }
+        )
+
+        foreach ($pathOfStagedFile  in $pathsOfAttachedFiles){
+            ## copy-item -force -literalpath $pathOfStagedFile -destination $pathOfDestinationFolder
+
+
 
             if($appendHashToOutputFileNames) {
-                # $filenameOfDestinationFile = (Split-Path -LeafBase -Path $attachedFile.Filename ) + "--" + $hashOfAttachedFile + (Split-Path -Extension -Path $attachedFile.Filename ) 
                 $filenameOfDestinationFile = (split-path -leaf (getStronglyNamedPath $pathOfStagedFile)) 
             } else {
-                # $filenameOfDestinationFile = Split-Path -Leaf -Path $attachedFile.Filename 
                 $filenameOfDestinationFile = Split-Path -Leaf -Path $pathOfStagedFile
             }
 
@@ -108,14 +214,14 @@ function Expand-Attachments {
 
             #make the destination folder if it does not already exist
             New-Item -ItemType directory -Path (Split-Path -Path $pathOfDestinationFile -Parent) -ErrorAction SilentlyContinue | out-null
-            Move-Item -Path $pathOfStagedFile -Destination $pathOfDestinationFile
+            Move-Item -force -Path $pathOfStagedFile -Destination $pathOfDestinationFile | out-null
 
-            Write-Host ('$attachedFile.Filename: ' + $attachedFile.Filename )
-            # Write-Host ('$pathOfStagedFile: ' + $pathOfStagedFile )
-            Write-Host ('$pathOfDestinationFile: ' + $pathOfDestinationFile )
-            # Write-Host ('$hashOfAttachedFile: ' + $hashOfAttachedFile )
+            # write-information ('$pathOfStagedFile: ' + $pathOfStagedFile )
+            write-information ('$pathOfDestinationFile: ' + $pathOfDestinationFile )
         }
     }
+
+    return $pathOfDestinationFolder
 }
 
 <#
