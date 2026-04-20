@@ -6718,6 +6718,24 @@ function Convert-MacAddressToLinkLocalIpv6Address {
 }
 
 
+function  Convert-Ipv6AddressToIpv6LiteralHostname {
+    [OutputType([string])]
+    [CmdletBinding()]
+    param(
+        [System.Net.IPAddress] $ipv6Address
+    )
+
+    if(-not ($ipv6Address.AddressFamily -eq 'InterNetworkV6')){
+        write-error "The ip address '$($ipv6Address)' is not an ipv6 address.  We cannot proceed."
+        return
+    }
+    
+    $ipv6Address |
+    % {$_ -replace ":","-"} |
+    % {$_ -replace "%","s"} |
+    % {"$($_).ipv6-literal.net"}
+}
+
 function Convert-FromBase64EncodedStringToByteArray{
     [CmdletBinding()]
     [OutputType([Byte[]])]
