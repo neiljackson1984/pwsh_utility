@@ -6731,6 +6731,7 @@ function  Convert-Ipv6AddressToIpv6LiteralHostname {
     }
     
     $ipv6Address |
+    % {"$($_)"} |
     % {$_ -replace ":","-"} |
     % {$_ -replace "%","s"} |
     % {"$($_).ipv6-literal.net"}
