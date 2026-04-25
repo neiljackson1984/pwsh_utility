@@ -399,9 +399,17 @@ function initializeUser {
                 
                 if ($companyParameters['emailDomainName'] -eq 'lucasinterior.com'){
 
+
+                    
                     "Your $($companyParameters['companyName']) email account is provided " +
                     "by Gmail.  To access $($companyParameters['companyName']) email, use the web interface at " +
                     "https://gmail.com or use your email client of choice.  "
+                    
+
+                    ## <# 2026-04-24-1635: (pondered, but have not yet) updated the verbiage to mention both gmail and Exchange Online mailboxes. #>
+                        ## 
+                    ## "You have both a Gmail mailbox and an Exchange Online mailbox.  "
+                    ## "Messages sent to $($userPrincipalName) arrive in both mailboxes.  You may use whichever email system you prefer."
 
                 } else {
 
@@ -467,6 +475,20 @@ function initializeUser {
                         "computer is " 
                         $userSpec.computers | select -first 1
                         "."
+                    )
+                }
+
+                if ($companyParameters['emailDomainName'] -eq 'lucasinterior.com'){
+                    ""
+                    
+                    -join @(
+                        "In addition to your Lucas Gmail mailbox, you also "
+                        "have a Lucas Exchange Online mailbox.  Messages sent "
+                        "to $($userPrincipalName) go to both mailboxes.  "
+                        "The URL of the web interface for your Lucas Exchange Online mailbox "
+                        "is https://outlook.office.com/mail/$($userPrincipalName) .  "
+                        "Most Lucas people use the Gmail interface exclusively, but you "
+                        "are free to use whichever you prefer."
                     )
                 }
 
