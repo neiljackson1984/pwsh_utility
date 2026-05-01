@@ -411,7 +411,7 @@ function getSshOptionArgumentsFromBitwardenItem {
 
     [System.Uri] $sshUri = $(
         $bitwardenItem.login.uris |
-        % {[System.Uri] $_.uri} |
+        % {try{[System.Uri] $_.uri}catch{$null}} |? {$_} |
         ? {$_.Scheme -eq "ssh"} |
         select -first 1
     )
@@ -428,7 +428,8 @@ function getSshOptionArgumentsFromBitwardenItem {
             % {$_.value}
     
             $bitwardenItem.login.uris |
-            % { ([System.Uri] $_.uri ).Host } 
+            % {try{[System.Uri] $_.uri}catch{$null}} |? {$_} |
+            % { $_.Host } 
         ) |
         ? {$_} |
         select -first 1
