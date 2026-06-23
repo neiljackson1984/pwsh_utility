@@ -4042,6 +4042,14 @@ function runInActiveSession {
         I suspect this might simply be that the command I was trying to run is
         not on the path.
     #>
+
+    <# 
+        2026-05-11-1555: I think I have observed that when attempting to run
+        this command on a laptop running on battery power with a nearly-depleted
+        battery, the scheduled task is "queued", but does not run.   This is
+        probably a default scheduled tasks setting that  could be fixed  (i.e.
+        made to run at all costs) by tweaking arguments above.
+    #>
 }
 
 function runWithPerpetuallyOpenStandardInput(){

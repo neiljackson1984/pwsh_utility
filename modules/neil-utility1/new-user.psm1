@@ -478,18 +478,20 @@ function initializeUser {
                     )
                 }
 
-                if ($companyParameters['emailDomainName'] -eq 'lucasinterior.com'){
-                    ""
-                    
-                    -join @(
-                        "In addition to your Lucas Gmail mailbox, you also "
-                        "have a Lucas Exchange Online mailbox.  Messages sent "
-                        "to $($userPrincipalName) go to both mailboxes.  "
-                        "The URL of the web interface for your Lucas Exchange Online mailbox "
-                        "is https://outlook.office.com/mail/$($userPrincipalName) .  "
-                        "Most Lucas people use the Gmail interface exclusively, but you "
-                        "are free to use whichever you prefer."
-                    )
+                if($false){
+                    if ($companyParameters['emailDomainName'] -eq 'lucasinterior.com'){
+                        ""
+                        
+                        -join @(
+                            "In addition to your Lucas Gmail mailbox, you also "
+                            "have a Lucas Exchange Online mailbox.  Messages sent "
+                            "to $($userPrincipalName) go to both mailboxes.  "
+                            "The URL of the web interface for your Lucas Exchange Online mailbox "
+                            "is https://outlook.office.com/mail/$($userPrincipalName) .  "
+                            "Most Lucas people use the Gmail interface exclusively, but you "
+                            "are free to use whichever you prefer."
+                        )
+                    }
                 }
 
 
