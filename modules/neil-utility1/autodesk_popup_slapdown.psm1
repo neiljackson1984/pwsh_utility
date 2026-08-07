@@ -29,8 +29,11 @@ function Start-AutodeskPopupSlapdown(){
             "GroupAdd, drawingFileNotValidWindowDefinition               ,AutoCAD Message ahk_exe acad.exe,Drawing file is not valid.                              "
             "; GroupAdd, openDrawingErrorsFoundWindowDefinition          ,Open Drawing - Errors Found,Would you like to cancel this open                           "
             "GroupAdd, openDrawingErrorsFoundWindowDefinition            ,Open Drawing - Errors Found                                                              "
+            
             ## "GroupAdd, trialPromptWindowDefinition                       ,IE WebBrowser ahk_exe AdskLicensingAgent.exe                                             "
             "GroupAdd, trialPromptWindowDefinition                       ,WebView2 WebBrowser ahk_exe AdskLicensingAgent.exe                                             "
+            "GroupAdd, trialPromptWindowDefinition                       ,ahk_class webview ahk_exe AdskLicensingAgent.exe                                             "
+            
             "GroupAdd, drawingNotBelongToCurrentProjectWindowDefinition  ,Drawing does Not Belong to the Current Project ahk_exe acad.exe                          "
             "GroupAdd, drawingRecoveryWindowDefinition                   ,Drawing Recovery ahk_exe acad.exe                                                        "
             "GroupAdd, revitInvalidSignatureWindowDefinition             ,Security - Invalid Signature ahk_exe Revit.exe                                           "
@@ -41,7 +44,36 @@ function Start-AutodeskPopupSlapdown(){
             "GroupAdd, acadSaveDrawing1WindowDefinition                  ,AutoCAD ahk_exe acad.exe,Save changes to Drawing1\.dwg\?                                 "
             "GroupAdd, acadSaveChangesWindowDefinition                   ,AutoCAD ahk_exe acad.exe,Save changes to .+\?                                            "
             "GroupAdd, fusion360ErrorReportWindowDefinition              ,Fusion 360 .*Error Report ahk_exe senddmp.exe                                            "
+            
             "GroupAdd, revitOrAutocadPrivacyWindowDefinition             ,Privacy Settings ahk_exe Revit\.exe|acad\.exe,We care about your privacy                 "
+            ##  "GroupAdd, revitOrAutocadPrivacyWindowDefinition             ,ahk_exe Revit\.exe|acad\.exe,Privacy Settings                 "
+            <#  as of 2026-08-06-1531, Autodesk  has changed the "we care about
+                your privacy" popup window has changed.  The window title is now
+                an empty string, the string "Privacy Settings" is seen by
+                autohoteky as being window text rather than title text (Even
+                though graphically,  "Privacy Settings" appears at the top of
+                the window and would be what the naive user would describe as a
+                title).  The  string "We care about your privacy" is not seens
+                by  Autohotkey as either windows text or title text (even though
+                it does appear graphically within the window).  Moving "Privacy
+                Settings" from the title text argument to the window text
+                argument of GroupAdd, above, allows does detect the window
+                (although I suspect it would also might incorrectly detect other
+                windows (basically any window whose process is revit.exe or
+                acad.exe and  that acontains the window text "Privacy Settings"
+                -- this seems like a wide net to cast.).  Also, our slap-down
+                technique for this  window no longer works, because none of the
+                controls on the window have menaingful names anymore.  I will
+                elave our existing revitOrAutocadPrivacyWindowDefinition
+                definition and response in this script, so that it might still
+                handle older versions of  the window, but as of 2026-08-06-1538,
+                for the latest version of Revit (Revit 2027) at least, and
+                probably also for the latest version of Autocad, we are no
+                longer ablke to  reliably detect or slapdown the "we care about
+                your privacy" popup.
+            #>
+
+
             "GroupAdd, acadProxyGraphicsWindowDefinition                 ,Proxy Information ahk_exe acad.exe                                                       "
             "                                                                                                                                                      "
             "GroupAdd, anyPopupWindowDefinition                ,ahk_group lostSheetSetAssociationWindowDefinition                                                  "
