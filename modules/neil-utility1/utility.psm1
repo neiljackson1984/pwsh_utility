@@ -3819,7 +3819,7 @@ function installGoodies(){
     )){
         ## write-information "$($MyInvocation.MyCommand.Name) $(get-date -format o): Now attempting to install (or upgrade) the chocolatey package '$($package)'."
         write-information "$($PSCmdlet.MyInvocation.MyCommand.Name) $(get-date -format o): Now attempting to install (or upgrade) the chocolatey package '$($package)'."
-        choco upgrade $package --source 'https://chocolatey.org/api/v2/' --yes 
+        choco upgrade $package --source 'https://chocolatey.org/api/v2/' --yes --no-progress
     }
     
 
