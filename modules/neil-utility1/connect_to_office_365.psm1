@@ -1668,7 +1668,10 @@ function connectToOffice365 {
                                             "Place"                            #     1
                                              "PlaceDevice"                      #     2
                                              "PlaceDeviceTelemetry"             #     1
-                                            "Policy"                           #    19
+                                            
+                                             ## "Policy"                           #    19
+                                            <# 2026-10-01-1151: we are now longer excluding "Policy" #>
+                                            
                                              "Presence"                         #     2
                                             "Printer"                          #     2
                                             "PrintJob"                         #     5
