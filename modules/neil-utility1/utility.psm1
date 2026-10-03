@@ -6059,7 +6059,7 @@ function New-Scratchpad {
     $preamble = @(
         "#!pwsh"
         ". { #initialize"
-        "    `$informationPreference = 'Continue'"
+        "    Set-StrictMode  -version:latest; `$informationPreference = 'Continue'"
         "    import-module neil-utility1"
         "    Start-ScriptingJournalTranscript"
         "}; return"
