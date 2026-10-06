@@ -2130,6 +2130,15 @@ function connectToOffice365 {
                     principalId    = $mgServicePrincipal.Id
                 }
 
+                <# the API will let us create a RoleAssignment with scope "/"
+                and the "Owner" roleDefinition.  However, I don't know if there
+                is any benefit to doing this.  #>
+                ## @{
+                ##     RoleDefinition = $(get-azroledefinition -scope  "/"  -name "Owner" )
+                ##     Scope          = "/"
+                ##     principalId    = $mgServicePrincipal.Id
+                ## }
+
                 
             )
 
