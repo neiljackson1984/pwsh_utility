@@ -2111,6 +2111,15 @@ function connectToOffice365 {
                 -makeNewConfiguration` once the management group exists, in
                 order to grant our app  owner permissions on the tenant root
                 management group.
+
+                In the aforementiuoned Tenant, the Azure REsource Management Web
+                GUI, at
+                (https://portal.azure.com/#servicemenu/Microsoft_Azure_Resources/ResourceManager/managementgroupsgettingstarted),
+                had a button named "Start Using Management Groups".  I clicked
+                this button.  Shortly after I clicked the button, I observed
+                that a root management group did exist.  I am not sure how to
+                undo the effect of clicking the "Start Using Management Groups",
+                or why one might want to.
             #>
 
             ## $desiredAzureRoleDefinitions = @(get-azroledefinition  -name "Owner")
