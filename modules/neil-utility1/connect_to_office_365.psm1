@@ -356,15 +356,28 @@ function Install-MicrosoftGraphDependencies {
             }
         }
 
-        #%%
-        .{
-            while(@(Get-InstalledPsResource  Microsoft.Graph*,Microsoft.Graph.Beta*,ExchangeOnlineManagement,PnP.Powershell,Az,Az.* -Version *)){
-                Get-InstalledPsResource Microsoft.Graph*,Microsoft.Graph.Beta*,ExchangeOnlineManagement,PnP.Powershell,Az,Az.* -Version * |% {$_ | Uninstall-PsResource}
-            }
-        }
-        #%%
-        Install-PSResource -Repository PSGallery -Confirm:$false -TrustRepository -AcceptLicense -Prerelease -Name "Microsoft.Graph","Microsoft.Graph.Beta","ExchangeOnlineManagement","PnP.Powershell","Az"
 
+        $nonWildcardResourceNames = @(
+            "Microsoft.Graph"
+            "Microsoft.Graph.Beta"
+            "ExchangeOnlineManagement"
+            "PnP.Powershell"
+            "Az"
+            "Az.Subscription"
+        )
+        $wildcardResourceNames = @(
+            "Microsoft.Graph*"
+            "Microsoft.Graph.Beta*"
+            "Az.*"
+        )
+
+
+
+        while(@(Get-InstalledPsResource  @($nonWildcardResourceNames;$wildcardResourceNames) -Version *)){
+            Get-InstalledPsResource @($nonWildcardResourceNames;$wildcardResourceNames) -Version * |% {$_ | Uninstall-PsResource}
+        }
+
+        Install-PSResource -Repository PSGallery -Confirm:$false -TrustRepository -AcceptLicense -Prerelease -Name $nonWildcardResourceNames
 
     }
 
