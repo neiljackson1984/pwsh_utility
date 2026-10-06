@@ -2101,6 +2101,18 @@ function connectToOffice365 {
             $tenantRootManagementGroup = $(Get-AzManagementGroup -GroupName ((Get-AzContext).Tenant.Id))
             write-information "tenantRootManagementGroup.Id: $($tenantRootManagementGroup.Id)"
 
+            <#  2026-10-06-1241: It seems that the existence of a tenant root
+                management group is not guaranteed.  I observed one tenant,
+                which happened not to have ever used any Azure services, in
+                which there was no root management group.   Perhaps  a tenant
+                root management group would be created automatically as a side
+                effect of creating the Tenant's first Azure subscription?  IF
+                so, we will have  to remember to re-run `ConnectToOffice365
+                -makeNewConfiguration` once the management group exists, in
+                order to grant our app  owner permissions on the tenant root
+                management group.
+            #>
+
             ## $desiredAzureRoleDefinitions = @(get-azroledefinition  -name "Owner")
             $desiredAzureRoleAssignmentSpecs = @(
 
