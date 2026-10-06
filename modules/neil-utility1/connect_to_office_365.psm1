@@ -329,30 +329,43 @@ function Install-MicrosoftGraphDependencies {
     #>
     process {
         
-        @(
-            "Microsoft.Graph"
-            "Microsoft.Graph.Beta"
-            "ExchangeOnlineManagement"
-            "PnP.PowerShell"
-        ) | % { 
-            <#  During testing, before running this function, I go manually delete any
-                graph, Exchange, and pnp -related folders from within the following folders:
-                  * %programfiles%\WindowsPowerShell\Modules 
-                  * %userprofile%\Documents\PowerShell\Modules
-                  * %userprofile%\Documents\WindowsPowerShell\Modules (this folder does not exist as of 2023-02-26-1411 (I deleted it)) 
-            #>
+        if($false){
+            @(
+                "Microsoft.Graph"
+                "Microsoft.Graph.Beta"
+                "ExchangeOnlineManagement"
+                "PnP.PowerShell"
+            ) | % { 
+                <#  During testing, before running this function, I go manually delete any
+                    graph, Exchange, and pnp -related folders from within the following folders:
+                    * %programfiles%\WindowsPowerShell\Modules 
+                    * %userprofile%\Documents\PowerShell\Modules
+                    * %userprofile%\Documents\WindowsPowerShell\Modules (this folder does not exist as of 2023-02-26-1411 (I deleted it)) 
+                #>
 
-            Write-Host "now installing $($_) in Windows Powershell."
-            powershell -c "Install-Module -Confirm:0 -Force -AllowPrerelease -Name $($_)"
-            <#  I don't think I am using windows powershell at all anymore, so
-                installing the modules in windows in windows powershell is
-                probably completely unnecessary and serves no purpose. 
-            #>
+                Write-Host "now installing $($_) in Windows Powershell."
+                powershell -c "Install-Module -Confirm:0 -Force -AllowPrerelease -Name $($_)"
+                <#  I don't think I am using windows powershell at all anymore, so
+                    installing the modules in windows in windows powershell is
+                    probably completely unnecessary and serves no purpose. 
+                #>
 
-            Write-Host "now installing $($_) in Powershell core."
-            pwsh -c "Install-Module -Confirm:0 -Force -AllowPrerelease -Name $($_)"
+                Write-Host "now installing $($_) in Powershell core."
+                pwsh -c "Install-Module -Confirm:0 -Force -AllowPrerelease -Name $($_)"
 
+            }
         }
+
+        #%%
+        .{
+            while(@(Get-InstalledPsResource  Microsoft.Graph*,Microsoft.Graph.Beta*,ExchangeOnlineManagement,PnP.Powershell,Az,Az.* -Version *)){
+                Get-InstalledPsResource Microsoft.Graph*,Microsoft.Graph.Beta*,ExchangeOnlineManagement,PnP.Powershell,Az,Az.* -Version * |% {$_ | Uninstall-PsResource}
+            }
+        }
+        #%%
+        Install-PSResource -Repository PSGallery -Confirm:$false -TrustRepository -AcceptLicense -Prerelease -Name "Microsoft.Graph","Microsoft.Graph.Beta","ExchangeOnlineManagement","PnP.Powershell","Az"
+
+
     }
 
     <#  As of 2023-02-26-1616, in order to avoid the Edm.Binary error when
@@ -973,54 +986,129 @@ function connectToOffice365 {
         <#  The disconnect command will clear out any cached identity/crednetials
             that the Graph powershell module might have cached. 
         #>
-    
-        Write-Host "attempting to connect to MGGraph"
-        try{ 
-            (
-                $(
-                    if($tenantIdHint){
-                        @{TenantId = $tenantIdHint}
-                    } else {
-                        @{}
+
+        write-information "disconnecting from any existing azure session."
+        Disconnect-AzAccount -ErrorAction SilentlyContinue 1>$null
+
+
+        .{<#  disable the "web account manager" #>
+            <#  disable the "web account manager" (a mini-browser used by Windows
+                instead of the regular broser to log in interactively)"
+                AccountsControlHost.exe is the executable associated with "Web account
+                manager", asa of 2026-10-05-1549.
+            #>
+            Update-AzConfig -EnableLoginByWam:$false
+            Set-MgGraphOption  -DisableLoginByWAM:$true
+
+            <#  damnit: as of 2026-10-05-1558, it looks like WAM is required when
+                doing Connect-MgGraph without specifying a custom client id.
+            #>
+        }
+
+
+        .{  Write-Host "attempting to connect to MGGraph"
+            try{ 
+                (
+                    $(
+                        if($tenantIdHint){
+                            @{TenantId = $tenantIdHint}
+                        } else {
+                            @{}
+                        }
+                    ) +
+                    @{
+                        ContextScope = "Process"
+                        Scopes = @(
+                            ##"Application.Read.All"
+                            ##"Application.ReadWrite.All" 
+                            ##"Directory.ReadWrite.All"
+                            ##"RoleManagement.ReadWrite.Directory"
+                            ##"Directory.Read.All"
+                            ##"AppRoleAssignment.ReadWrite.All"
+                        
+                        
+                        
+
+
+
+                            ## "Application.Read.All"
+                            ## "Directory.Read.All"
+
+
+
+                        
+                            "Application.ReadWrite.All" 
+                            "AppRoleAssignment.ReadWrite.All"
+                            "DeviceManagementRBAC.ReadWrite.All"
+                            "Directory.ReadWrite.All"
+                            "EntitlementManagement.ReadWrite.All"
+                            "RoleManagement.ReadWrite.CloudPC"
+                            "RoleManagement.ReadWrite.Directory"
+                            "RoleManagement.ReadWrite.Exchange"
+
+
+
+                        )
                     }
-                ) +
-                @{
-                    ContextScope = "Process"
-                    Scopes = @(
-                        ##"Application.Read.All"
-                        ##"Application.ReadWrite.All" 
-                        ##"Directory.ReadWrite.All"
-                        ##"RoleManagement.ReadWrite.Directory"
-                        ##"Directory.Read.All"
-                        ##"AppRoleAssignment.ReadWrite.All"
+                ) |%{Connect-MgGraph @_ -ErrorAction "Stop" }
+            } catch {
+                Throw "failed to connect to MGGraph, therefore we will return.  The error is: $_"
+            }
+        }
+    
+        .{  Write-Host "attempting to connect to Azure.  If prompted to choose an Azure subscription, choose arbitrarily -- this is an irrelevant choice. "
+            <#  TODO: see if we can use the already-obtained connection to Microsoft
+                Graph to connect to the Azure API without needing to bother the user
+                with a second interactive login.
+            #>
+
+
+            <# attempt to suppress the interactive prompt for user to choose a subscription: #>
+            Update-AzConfig -LoginExperienceV2:Off
+
+            try{ 
+                (
+                    @{
+                        Scope = "Process"
+                        Tenant = $(get-mgcontext |% TenantId)
+                    }
+                ) |%{Connect-AzAccount @_ -ErrorAction "Stop" }
+            } catch {
+                Throw "failed to connect to Azure.  The error is: $_"
+            }
+
+            
+            .{<# ensure that we have the necessary permissions to assign permissions #>
+                <# TODO: check whether we already have this permission and only
+                assign if needed (it's dsiruptive because it requires another
+                interactive login. 
+
+                    Also  maybe TODO: assign this permission only temporarily (i.e. remove it when we are finished with it)
+                #>
+                <#  before the interactively-signed-in user can create role assignments for azure, below, he must "elevate" himself
+                    (i.e. grant himself the necessary permission to manipulate role assignments).
+
+                    see (https://learn.microsoft.com/en-us/azure/role-based-access-control/elevate-access-global-admin)
+                #>
+
+                $elevationUri = "https://management.azure.com/providers/Microsoft.Authorization/elevateAccess?api-version=2016-07-01"
+                $response = $(Invoke-AzRestMethod -Uri $elevationUri -Method POST)
+
+                if ($response.StatusCode -eq 200 -or $response.StatusCode -eq 204) {
+                    Write-Information "Elevated access successfully granted (User Access Administrator at '/' scope)." 
                     
-                    
-                    
+                    <# re-connect to obtain the updated token #>
+                    write-information "reconnecting to azure to obtain the updated token"
+                    Disconnect-AzAccount -ErrorAction SilentlyContinue 1>$null
+                    <# 2026-10-06-1100 TODO: do this token-refreshing operation in some way that does not require interaction with the user. #>
+                    start-sleep -seconds 10
+                    Connect-AzAccount -Scope:Process -Tenant:$(get-mgcontext |% TenantId)
 
-
-
-                        ## "Application.Read.All"
-                        ## "Directory.Read.All"
-
-
-
-                    
-                        "Application.ReadWrite.All" 
-                        "AppRoleAssignment.ReadWrite.All"
-                        "DeviceManagementRBAC.ReadWrite.All"
-                        "Directory.ReadWrite.All"
-                        "EntitlementManagement.ReadWrite.All"
-                        "RoleManagement.ReadWrite.CloudPC"
-                        "RoleManagement.ReadWrite.Directory"
-                        "RoleManagement.ReadWrite.Exchange"
-
-
-
-                    )
+                    write-information "finished reconnecting to azure to obtain the updated token"
+                } else {
+                    Write-Error "Failed to elevate access: $($response.Content)"
                 }
-             ) |%{Connect-MgGraph @_ -ErrorAction "Stop" }
-        } catch {
-            Throw "failed to connect to MGGraph, therefore we will return.  The error is: $_"
+            }
         }
 
 
@@ -1954,8 +2042,7 @@ function connectToOffice365 {
             # we could have probably gotten away simply wrapping Add-AzureADDirectoryRoleMember in a try/catch statement.
         }
 
-
-        .{# ensure that the service principal has all desired directory roles (this should ensure global administrator independently of tha above)
+        .{# ensure that the service principal has all desired directory roles (this should ensure global administrator independently of the above)
             $desiredDirectoryRoleDefinitions = @(Get-MgRoleManagementDirectoryRoleDefinition  -countvariable $null  -headers @{ConsistencyLevel="eventual"} -all)
             
             foreach($desiredDirectoryRoleDefinition in $desiredDirectoryRoleDefinitions){
@@ -1976,7 +2063,6 @@ function connectToOffice365 {
             }
         }
 
-
         .{# ensure that the service principal has all desired Exchange management roles
             $desiredExchangeRoleDefinitions = @(Get-MgBetaRoleManagementExchangeRoleDefinition  -countvariable $null  -all)
             
@@ -1993,6 +2079,61 @@ function connectToOffice365 {
                     PrincipalId = $principalId
                     RoleDefinitionId  =  $desiredExchangeRoleDefinition.Id
                 } |% {New-MgBetaRoleManagementExchangeRoleAssignment @_}
+
+            }
+        }
+
+        .{# ensure that the service principal has all desired Azure roles 
+            <# As  of 2026-10-03, the Azure permiussions are different from the
+                Exhange  and Entra  permissions in that, whereas Exchange and
+                Entra permissions could be assigned via the Microsoft Graph API
+                (specificially, the part of the API rooted at /roleManagemenbt/)
+                (that's what the aommands
+                Get-MgBetaRoleManagementExchangeRoleDefinition and
+                Get-MgRoleManagementDirectoryRoleDefinition access), Azure uses
+                its own API for controlling permissions distinct from the
+                Microosft Graph API .  Hence the need to do `Connect-AzAccount`,
+                above, in addition to  `Connect-MgGraph`.
+            #>
+
+
+
+            $tenantRootManagementGroup = $(Get-AzManagementGroup -GroupName ((Get-AzContext).Tenant.Id))
+            write-information "tenantRootManagementGroup.Id: $($tenantRootManagementGroup.Id)"
+
+            ## $desiredAzureRoleDefinitions = @(get-azroledefinition  -name "Owner")
+            $desiredAzureRoleAssignmentSpecs = @(
+
+
+                @{
+                    RoleDefinition = $(get-azroledefinition -scope  "/"  -name "User Access Administrator" )
+                    Scope            = "/"
+                    ## principalId    = $(get-azcontext |% account |% id)
+                    principalId    = $mgServicePrincipal.Id
+                }
+
+                @{
+                    RoleDefinition = $(get-azroledefinition -scope  "/"  -name "Owner" )
+                    Scope          = $tenantRootManagementGroup.Id
+                    principalId    = $mgServicePrincipal.Id
+                }
+
+                
+            )
+
+
+            foreach($desiredAzureRoleAssignmentSpec in $desiredAzureRoleAssignmentSpecs){
+                write-host (-join @(
+                    "now assigning Azure role '$($desiredAzureRoleAssignmentSpec.RoleDefinition.Name)' "
+                    "(id of roleDefinition: '$($desiredAzureRoleAssignmentSpec.RoleDefinition.id)') "
+                    "with scope  '$($desiredAzureRoleAssignmentSpec.Scope)' "
+                    "to principalId '$($desiredAzureRoleAssignmentSpec.principalId)'."
+                ))
+                @{
+                    ObjectId         = $desiredAzureRoleAssignmentSpec.principalId
+                    RoleDefinitionId = $desiredAzureRoleAssignmentSpec.RoleDefinition.id
+                    Scope            = $desiredAzureRoleAssignmentSpec.Scope
+                } |% {New-AzRoleAssignment @_}
 
             }
         }
@@ -2083,6 +2224,7 @@ function connectToOffice365 {
         
 
         Disconnect-MgGraph
+        Disconnect-AzAccount
         
         # $configuration = Get-Content -Raw $pathOfTheConfigurationFile | ConvertFrom-JSON
     }
@@ -2571,11 +2713,97 @@ function connectToOffice365 {
         }
     }
 
+    .{ #functions for Azure
+        function getWeAreConnectedToAzure {
+            [OutputType([Boolean])]
+            param ()
+            
+
+            return (
+                [Boolean] $(
+                    &{
+                        try{
+                            $a = $([guid] (Get-AzContext).Tenant.Id)
+                            $b = $([guid] $configuration.tenantId)
+                            ($null -ne  $a) -and ($null -ne $b) -and ($a -eq $b)
+                        } catch  {
+                            $false
+                        }
+                    } -erroraction silentlycontinue 2>$null
+                )
+            )
+
+        }
+
+        function connectToAzure {
+            [OutputType([Void])]
+            param ()
+            Write-Debug "about to connect to Azure"
+            <# disconnect from any existing session #>
+            Disconnect-AzAccount -ErrorAction SilentlyContinue 1>$null
+            Write-Debug "about to do Connect-AzAccount"
+            
+            Disable-AzContextAutosave |  out-null
+            <#  2026-10-06-1034:  I am not sure exactly what
+                `Disable-AzContextAutosave` does.  My goal including it here is
+                to not leave behind any persistent state outside  of the current
+                session.
+            #>
+
+            Disable-AzDataCollection
+            <# opt-out of telemetry data collection #>
+
+            $result = $(
+                @{
+                    ApplicationId       = $configuration['appId']
+                    ServicePrincipal    = $true
+                    Tenant              = $configuration['tenantId']
+                    Scope               = "Process"
+                    CertificatePath     = $pathOfTemporaryCertificateFile
+                    CertificatePassword = ConvertTo-SecureString -AsPlainText $configuration['pfxPassword']
+                    
+                    ## Subscription     = ...
+                    <#  fortunately, when we do Connect-AzAccount with
+                        ServicePrincipal = $true, Connect-AzAccount does not
+                        force us to interactively choose a subscription, but
+                        instead defaults to an arbitrary subscription, or else
+                        connects with no specific subscription (which really
+                        ought to be tte default way to connect, rather than to
+                        force the user to interactively choose a subscription as
+                        part of the function.)
+                    #>
+
+
+                } |%{Connect-AzAccount @_ } 
+            )
+
+            Write-Debug "Finished doing Connect-AzAccount"
+        }
+
+        function tryToEnsureThatWeAreConnectedToAzure {
+            [OutputType([Void])]
+            param ()
+            try{ 
+                if( getWeAreConnectedToAzure ){
+                    Write-Host ("It seems that a connection to Azure already " +
+                        "exists, so we will not bother attempting to reconnect.")
+                } else {
+                    connectToAzure
+                } 
+            } 
+            catch {
+                Write-Host ("encountered error when attempting to ensure that we are " +
+                    "connected to Azure: $($_)")
+            }
+        }
+    }
+
 
     tryToEnsureThatWeAreConnectedToMgGraph
     tryToEnsureThatWeAreConnectedToSharepointOnline
     tryToEnsureThatWeAreConnectedToIPPSSession
     tryToEnsureThatWeAreConnectedToExchangeOnline
+    tryToEnsureThatWeAreConnectedToAzure
 
     <#  I am intentionally doing Connect-ExchangeOnline after
         Connect-IPPSSession, in the hopes that, wherever there is overlap in
@@ -2635,6 +2863,17 @@ function connectToOffice365 {
         ))
     } else {
         Write-warning "You are not connected to IPPSSession."
+    }
+
+    if(getWeAreConnectedToAzure){
+        Write-Host (-join @(
+            "You are connected to Azure for the tenant "
+            "'$((Get-AzContext).Tenant.Id)'."
+        ))
+    } else {
+        Write-warning (-join @(
+            "You are not connected to Azure."
+        ))
     }
 
     <#  It is important that the Exchange Online stuff occurs before the MgGraph
